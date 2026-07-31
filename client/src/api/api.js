@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Node environment ke hisab se automatic URL switch (Local vs Live)
 const BASE_URL = process.env.NODE_ENV === "production"
-  ? "https://rapidbill-f143.onrender.com"
+  ? "https://crinza-saleshub.onrender.com"
   : "http://localhost:5000/api";
 
 const API = axios.create({

@@ -100,7 +100,7 @@ const InvoiceForm = ({ onLogout }) => {
     try {
       const token = localStorage.getItem('token');
       const API_BASE = process.env.NODE_ENV === "production"
-        ? "https://rapidbill-f143.onrender.com"
+        ? "https://crinza-saleshub.onrender.com"
         : "http://localhost:5000";
 
       const res = await fetch(`${API_BASE}/api/coupons/verify`, {

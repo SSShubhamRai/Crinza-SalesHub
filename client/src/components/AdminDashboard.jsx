@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 
 const AdminDashboard = ({ userId, onLogout }) => {
   const API_BASE = process.env.NODE_ENV === "production"
-    ? "https://rapidbill-f143.onrender.com"
+    ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
 
   const [activeTab, setActiveTab] = useState('performance');

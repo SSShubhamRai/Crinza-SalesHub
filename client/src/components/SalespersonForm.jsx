@@ -40,7 +40,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
   // --- API Base URL Configuration ---
   const API_BASE = process.env.NODE_ENV === "production"
-    ? "https://rapidbill-f143.onrender.com"
+    ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
 
   // --- Initial Form States ---
@@ -246,7 +246,20 @@ const SalespersonForm = ({ userId, onLogout }) => {
         if (data[0] && data[0].Status === 'Success') {
           const details = data[0].PostOffice[0];
           const matchedState = indianStates.find((s) => s.name.toLowerCase() === details.State.toLowerCase());
-          setSelectedStateCode(matchedState ? matchedState.isoCode : '');
+          
+          if (matchedState) {
+            setSelectedStateCode(matchedState.isoCode);
+          }
+          
+          if (details.District) {
+            const poRes = await fetch(`https://api.postalpincode.in/postoffice/${details.District}`);
+            const poData = await poRes.json();
+            if (poData[0] && poData[0].Status === 'Success') {
+              const pincodes = Array.from(new Set(poData[0].PostOffice.map((po) => po.Pincode)));
+              setAvailablePincodes(pincodes);
+            }
+          }
+
           setFormData((prev) => ({
             ...prev,
             state: matchedState ? matchedState.name : details.State,
@@ -271,7 +284,20 @@ const SalespersonForm = ({ userId, onLogout }) => {
         if (data[0] && data[0].Status === 'Success') {
           const details = data[0].PostOffice[0];
           const matchedState = indianStates.find((s) => s.name.toLowerCase() === details.State.toLowerCase());
-          setLeadStateCode(matchedState ? matchedState.isoCode : '');
+          
+          if (matchedState) {
+            setLeadStateCode(matchedState.isoCode);
+          }
+
+          if (details.District) {
+            const poRes = await fetch(`https://api.postalpincode.in/postoffice/${details.District}`);
+            const poData = await poRes.json();
+            if (poData[0] && poData[0].Status === 'Success') {
+              const pincodes = Array.from(new Set(poData[0].PostOffice.map((po) => po.Pincode)));
+              setLeadAvailablePincodes(pincodes);
+            }
+          }
+
           setLeadFormData((prev) => ({
             ...prev,
             state: matchedState ? matchedState.name : details.State,
@@ -323,6 +349,31 @@ const SalespersonForm = ({ userId, onLogout }) => {
     setLeadFormData((prev) => ({ ...prev, [name]: value }));
     if (name === 'pincode') {
       fetchLeadByPincode(value);
+    }
+  };
+
+  // --- Handle State Selection Change for Invoice Form ---
+  const handleInvoiceStateChange = (e) => {
+    const iso = e.target.value;
+    const stObj = indianStates.find(s => s.isoCode === iso);
+    setSelectedStateCode(iso);
+    setAvailablePincodes([]);
+    setFormData(prev => ({ ...prev, state: stObj ? stObj.name : '', city: '', pincode: '' }));
+  };
+
+  // --- Handle City Selection Change & Fetch Pincodes for Invoice Form ---
+  const handleInvoiceCityChange = async (e) => {
+    const cName = e.target.value;
+    setFormData(prev => ({ ...prev, city: cName, pincode: '' }));
+    if (!cName) return;
+    try {
+      const response = await fetch(`https://api.postalpincode.in/postoffice/${cName}`);
+      const data = await response.json();
+      if (data[0]?.Status === 'Success') {
+        setAvailablePincodes(Array.from(new Set(data[0].PostOffice.map(po => po.Pincode))));
+      }
+    } catch (err) {
+      console.error('Invoice City pincodes error:', err);
     }
   };
 
@@ -400,14 +451,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
               setLeadStateCode(matchedState.isoCode);
             }
 
-            setLeadFormData((prev) => ({
-              ...prev,
-              address: fullRoadAddress,
-              state: matchedState ? matchedState.name : fetchedStateName,
-              city: fetchedCityName,
-              pincode: fetchedPincode
-            }));
-
             if (fetchedCityName) {
               const poRes = await fetch(`https://api.postalpincode.in/postoffice/${fetchedCityName}`);
               const poData = await poRes.json();
@@ -416,6 +459,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 setLeadAvailablePincodes(pincodes);
               }
             }
+
+            setLeadFormData((prev) => ({
+              ...prev,
+              address: fullRoadAddress,
+              state: matchedState ? matchedState.name : fetchedStateName,
+              city: fetchedCityName,
+              pincode: fetchedPincode
+            }));
 
             setStatus({ loading: false, success: 'Location auto-detected and address filled successfully!', error: '' });
           }
@@ -458,14 +509,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
               setSelectedStateCode(matchedState.isoCode);
             }
 
-            setFormData((prev) => ({
-              ...prev,
-              address: fullRoadAddress,
-              state: matchedState ? matchedState.name : fetchedStateName,
-              city: fetchedCityName,
-              pincode: fetchedPincode
-            }));
-
             if (fetchedCityName) {
               const poRes = await fetch(`https://api.postalpincode.in/postoffice/${fetchedCityName}`);
               const poData = await poRes.json();
@@ -474,6 +517,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 setAvailablePincodes(pincodes);
               }
             }
+
+            setFormData((prev) => ({
+              ...prev,
+              address: fullRoadAddress,
+              state: matchedState ? matchedState.name : fetchedStateName,
+              city: fetchedCityName,
+              pincode: fetchedPincode
+            }));
 
             setStatus({ loading: false, success: 'Location auto-detected and invoice address filled!', error: '' });
           }
@@ -1099,7 +1150,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 <div>
                   <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Pincode *</label>
                   {leadAvailablePincodes.length > 0 ? (
-                    <select name="pincode" required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]">
+                    <select name="pincode" required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] font-medium">
                       <option value="">Select Pincode</option>
                       {leadAvailablePincodes.map((pin) => <option key={pin} value={pin}>{pin}</option>)}
                     </select>
@@ -1190,28 +1241,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">State *</label>
-                  <select name="state" required value={selectedStateCode} onChange={(e) => {
-                    const iso = e.target.value;
-                    const stObj = indianStates.find(s => s.isoCode === iso);
-                    setSelectedStateCode(iso);
-                    setAvailablePincodes([]);
-                    setFormData(prev => ({ ...prev, state: stObj ? stObj.name : '', city: '', pincode: '' }));
-                  }} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
+                  <select name="state" required value={selectedStateCode} onChange={handleInvoiceStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
                     <option value="">Select State</option>
                     {indianStates.map((st) => <option key={st.isoCode} value={st.isoCode}>{st.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">City *</label>
-                  <select name="city" required disabled={!selectedStateCode} value={formData.city} onChange={(e) => {
-                    const cName = e.target.value;
-                    setFormData(prev => ({ ...prev, city: cName, pincode: '' }));
-                    fetch(`https://api.postalpincode.in/postoffice/${cName}`)
-                      .then(res => res.json())
-                      .then(data => {
-                        if(data[0]?.Status === 'Success') setAvailablePincodes(Array.from(new Set(data[0].PostOffice.map(po => po.Pincode))));
-                      });
-                  }} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 disabled:opacity-50 font-medium">
+                  <select name="city" required disabled={!selectedStateCode} value={formData.city} onChange={handleInvoiceCityChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 disabled:opacity-50 font-medium">
                     <option value="">Select City</option>
                     {citiesOfSelectedState.map((ct) => <option key={ct.name} value={ct.name}>{ct.name}</option>)}
                   </select>
@@ -1219,7 +1256,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 <div>
                   <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Pincode *</label>
                   {availablePincodes.length > 0 ? (
-                    <select name="pincode" required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3">
+                    <select name="pincode" required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
                       <option value="">Select Pincode</option>
                       {availablePincodes.map(pin => <option key={pin} value={pin}>{pin}</option>)}
                     </select>
