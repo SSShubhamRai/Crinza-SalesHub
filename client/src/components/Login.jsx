@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import toast from 'react-hot-toast';
 import { loginUser } from '../api/api';
-import logoImage from '../assets/logo.png'; 
+import logoImage from '../Assets/logo.png'; 
 
 const Login = ({ onLoginSuccess }) => {
   const [credentials, setCredentials] = useState({ userId: '', password: '' });
