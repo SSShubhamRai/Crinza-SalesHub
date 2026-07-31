@@ -108,7 +108,7 @@ const createInvoicePDF = async (data) => {
       browser = await puppeteerCore.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
+        executablePath: chromium.executablePath,
         headless: true,
         ignoreHTTPSErrors: true,
       });
