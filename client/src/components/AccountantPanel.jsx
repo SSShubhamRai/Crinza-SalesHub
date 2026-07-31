@@ -22,7 +22,6 @@ const AccountantPanel = ({ userId, onLogout }) => {
     iosApp: 45000,
   };
 
-  // Base URL for serving static uploaded image files
   // Base URL for serving static uploaded image files (Fixed for Vite)
   const API_BASE = import.meta.env.PROD
     ? "https://crinza-saleshub.onrender.com"
@@ -46,9 +45,10 @@ const AccountantPanel = ({ userId, onLogout }) => {
   const fetchPendingInvoices = async () => {
     try {
       const data = await getPendingInvoices();
-      setPendingList(data);
+      setPendingList(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error("Fetch pending error:", err);
+      setPendingList([]);
     }
   };
 
@@ -61,10 +61,11 @@ const AccountantPanel = ({ userId, onLogout }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        setHistoryList(data);
+        setHistoryList(Array.isArray(data) ? data : []);
       }
     } catch (err) {
       console.error("Fetch history error:", err);
+      setHistoryList([]);
     }
   };
 
@@ -78,8 +79,8 @@ const AccountantPanel = ({ userId, onLogout }) => {
     loadAllData();
   }, []);
 
-  // Filtered lists logic based on search and status filter
-  const filteredPendingList = pendingList.filter((item) => {
+  // Filtered lists logic with safety Array checks
+  const filteredPendingList = (Array.isArray(pendingList) ? pendingList : []).filter((item) => {
     return (
       item.instituteName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.invoiceId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -87,7 +88,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
     );
   });
 
-  const filteredHistoryList = historyList.filter((item) => {
+  const filteredHistoryList = (Array.isArray(historyList) ? historyList : []).filter((item) => {
     const matchesSearch =
       item.instituteName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.invoiceId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
