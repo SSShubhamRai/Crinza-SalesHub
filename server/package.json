@@ -27,8 +27,8 @@
     "mongoose": "^9.8.0",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
-    "puppeteer": "^25.3.0",
-    "puppeteer-core": "^25.3.0",
+    "puppeteer": "^25.4.0",
+    "puppeteer-core": "^25.4.0",
     "xss-clean": "^0.1.4"
   },
   "devDependencies": {

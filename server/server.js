@@ -9,7 +9,6 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const puppeteer = require('puppeteer');
 const nodemailer = require('nodemailer');
 const multer = require('multer');
 const path = require('path');
@@ -76,7 +75,7 @@ const loginLimiter = rateLimit({
 });
 
 // =========================================================================
-// --- 📄 PDF GENERATOR HELPER ---
+// --- 📄 PDF GENERATOR HELPER (Smart Dual Mode: Local & Cloud) ---
 // =========================================================================
 const createInvoicePDF = async (data) => {
   let browser;
@@ -93,17 +92,27 @@ const createInvoicePDF = async (data) => {
       logoBase64 = `data:image/jpeg;base64,${logoBuffer.toString('base64')}`;
     }
 
-    browser = await puppeteer.launch({
-      headless: 'new',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote'
-      ]
-    });
+    const isLocal = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
+
+    if (isLocal) {
+      // Localhost / Development Mode
+      const puppeteer = require('puppeteer');
+      browser = await puppeteer.launch({
+        headless: 'new',
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+      });
+    } else {
+      // Render / Production Cloud Mode
+      const chromium = require('@sparticuz/chromium');
+      const puppeteerCore = require('puppeteer-core');
+      browser = await puppeteerCore.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: true,
+        ignoreHTTPSErrors: true,
+      });
+    }
 
     const page = await browser.newPage();
 
@@ -364,7 +373,6 @@ app.get('/api/invoices/pending', verifyToken, async (req, res) => {
     }
 
     const pendingInvoices = await Invoice.find({ status: 'pending' }).sort({ createdAt: -1 });
-    // Support both direct array format and object format for frontend compatibility
     res.json(pendingInvoices);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching pending list', error: err.message });
