@@ -99,7 +99,8 @@ const InvoiceForm = ({ onLogout }) => {
     setCouponError('');
     try {
       const token = localStorage.getItem('token');
-      const API_BASE = process.env.NODE_ENV === "production"
+      // Vite ke liye import.meta.env use hota hai
+      const API_BASE = import.meta.env.PROD
         ? "https://crinza-saleshub.onrender.com"
         : "http://localhost:5000";
 

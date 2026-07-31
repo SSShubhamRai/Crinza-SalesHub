@@ -1,7 +1,7 @@
 import axios from "axios";
 
-// Node environment ke hisab se automatic URL switch (Local vs Live)
-const BASE_URL = process.env.NODE_ENV === "production"
+// Vite ke liye import.meta.env use hota hai
+const BASE_URL = import.meta.env.PROD
   ? "https://crinza-saleshub.onrender.com"
   : "http://localhost:5000/api";
 
@@ -34,7 +34,6 @@ export const createEmployee = async (newEmpData) => {
 
 // --- 2. Invoice Request API Calls ---
 export const submitInvoiceRequest = async (formDataPayload) => {
-  // Axios automatically handles 'multipart/form-data' boundary
   const response = await API.post("/invoices/request", formDataPayload);
   return response.data;
 };
