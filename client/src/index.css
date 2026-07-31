@@ -1,0 +1,79 @@
+@import "tailwindcss";
+/* @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700;800&display=swap'); */
+
+/* ==========================================
+   🎨 CRINZA BRAND THEME CONFIGURATION
+   ========================================== */
+@theme {
+  /* Brand Colors */
+  --color-primary: #6C63FF;
+  --color-primary-light: #9D99FF;
+  --color-primary-dark: #4F47D6;
+
+  --color-secondary: #F472B6;
+  --color-secondary-light: #F9A8D4;
+  --color-secondary-dark: #DB2777;
+
+  --color-accent: #F9A8D4;
+
+  /* Surface Colors */
+  --color-background: #FCFCFF;
+  --color-surface: #F8FAFC;
+  --color-card: #FFFFFF;
+
+  /* Text Colors */
+  --color-heading: #111827;
+  --color-body: #6B7280;
+  --color-inverse: #FFFFFF;
+
+  /* Border Colors */
+  --color-border: #E5E7EB;
+
+  /* Status Colors */
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-danger: #EF4444;
+
+  /* Fonts */
+  --font-heading: "Poppins", sans-serif;
+  --font-body: "Inter", sans-serif;
+}
+
+/* Base Body Styles */
+body {
+  background-color: var(--color-background);
+  color: var(--color-body);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  margin: 0;
+}
+
+/* Headings Font Family */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--color-heading);
+}
+
+/* Custom Smooth Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+@keyframes pulseShimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-pulse-shimmer {
+  animation: pulseShimmer 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
