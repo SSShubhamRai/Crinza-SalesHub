@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Vite ke liye import.meta.env use hota hai
 const BASE_URL = import.meta.env.PROD
-  ? "https://crinza-saleshub.onrender.com"
+  ? "https://crinza-saleshub.onrender.com/api"
   : "http://localhost:5000/api";
 
 const API = axios.create({
