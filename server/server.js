@@ -257,7 +257,6 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/invoice_db'
   .then(async () => {
     console.log('MongoDB Connected Successfully');
 
-    // Seed default salesperson if not exists
     const sales = await User.findOne({ userId: 'EMP101' });
     if (!sales) {
       await User.create({
@@ -269,7 +268,6 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/invoice_db'
       });
     }
 
-    // Seed default accountant if not exists
     const acct = await User.findOne({ userId: 'ACCT101' });
     if (!acct) {
       await User.create({
@@ -281,7 +279,6 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/invoice_db'
       });
     }
 
-    // Seed default admin/boss if not exists
     const boss = await User.findOne({ $or: [{ userId: 'BOSS101' }, { userId: 'ADMIN101' }] });
     if (!boss) {
       await User.create({
@@ -297,8 +294,6 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/invoice_db'
 // =========================================================================
 // --- 🔐 AUTHENTICATION API ROUTES ---
 // =========================================================================
-
-// User Login Route (Protected with Rate Limiter & Express Validator)
 app.post('/api/auth/login', loginLimiter, [
   body('userId', 'User ID is required').notEmpty(),
   body('password', 'Password is required').notEmpty()
@@ -323,42 +318,9 @@ app.post('/api/auth/login', loginLimiter, [
   }
 });
 
-// Create Employee Route (Admin/Boss Only with Validation)
-app.post('/api/auth/create-employee', verifyToken, [
-  body('userId', 'User ID is required').notEmpty(),
-  body('name', 'Name is required').notEmpty(),
-  body('email', 'Please provide a valid email').isEmail(),
-  body('password', 'Password must be at least 6 characters').isLength({ min: 6 })
-], async (req, res) => {
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
-
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied! Admin role required.' });
-    }
-
-    const { userId, name, email, password, role } = req.body;
-    const existingUser = await User.findOne({ $or: [{ userId }, { email }] });
-    if (existingUser) return res.status(400).json({ message: 'User ID or Email already exists!' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const assignedRole = role || 'salesperson';
-    await User.create({ userId, name, email, password: hashedPassword, role: assignedRole });
-
-    res.status(201).json({ message: `Employee ${name} (${userId}) created!` });
-  } catch (err) {
-    res.status(500).json({ message: 'Creation failed', error: err.message });
-  }
-});
-
 // =========================================================================
 // --- 🧾 INVOICE & BILLING API ROUTES ---
 // =========================================================================
-
-// Submit Invoice Request (Salesperson)
 app.post('/api/invoices/request', verifyToken, upload.single('paymentProof'), async (req, res) => {
   try {
     const invoiceId = 'CRINZA-' + Date.now().toString().slice(-6);
@@ -395,81 +357,33 @@ app.post('/api/invoices/request', verifyToken, upload.single('paymentProof'), as
   }
 });
 
-// Get Pending Invoices List (Accountant / Admin with Pagination & Search)
 app.get('/api/invoices/pending', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'accountant' && req.user.role !== 'boss' && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied!' });
     }
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const search = req.query.search || '';
-
-    const query = { status: 'pending' };
-    if (search) {
-      query.$or = [
-        { instituteName: { $regex: search, $options: 'i' } },
-        { invoiceId: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    const pendingInvoices = await Invoice.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit);
-    const total = await Invoice.countDocuments(query);
-
-    res.json({
-      invoices: pendingInvoices,
-      total,
-      page,
-      pages: Math.ceil(total / limit)
-    });
+    const pendingInvoices = await Invoice.find({ status: 'pending' }).sort({ createdAt: -1 });
+    // Support both direct array format and object format for frontend compatibility
+    res.json(pendingInvoices);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching pending list', error: err.message });
   }
 });
 
-// Get Invoice History List (Accountant / Admin with Pagination, Search & Filter)
 app.get('/api/invoices/history', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'accountant' && req.user.role !== 'boss' && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied!' });
     }
 
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const search = req.query.search || '';
-    const statusFilter = req.query.status || 'all';
-
-    const query = { status: { $ne: 'pending' } };
-    if (statusFilter !== 'all') {
-      query.status = statusFilter;
-    }
-    if (search) {
-      query.$or = [
-        { instituteName: { $regex: search, $options: 'i' } },
-        { invoiceId: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    const historyInvoices = await Invoice.find(query).sort({ updatedAt: -1 }).skip(skip).limit(limit);
-    const total = await Invoice.countDocuments(query);
-
-    res.json({
-      invoices: historyInvoices,
-      total,
-      page,
-      pages: Math.ceil(total / limit)
-    });
+    const historyInvoices = await Invoice.find({ status: { $ne: 'pending' } }).sort({ updatedAt: -1 });
+    res.json(historyInvoices);
   } catch (err) {
     res.status(500).json({ message: 'Error fetching invoice history', error: err.message });
   }
 });
 
-// Approve Invoice & Dispatch Email with PDF (Accountant / Admin)
 app.post('/api/invoices/approve/:id', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'accountant' && req.user.role !== 'boss' && req.user.role !== 'admin') {
@@ -492,7 +406,6 @@ app.post('/api/invoices/approve/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Update Invoice Details (Accountant / Admin)
 app.put('/api/invoices/update/:id', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'accountant' && req.user.role !== 'boss' && req.user.role !== 'admin') {
@@ -510,7 +423,6 @@ app.put('/api/invoices/update/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Reject Invoice Request (Accountant / Admin)
 app.post('/api/invoices/reject/:id', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'accountant' && req.user.role !== 'boss' && req.user.role !== 'admin') {
@@ -534,8 +446,6 @@ app.post('/api/invoices/reject/:id', verifyToken, async (req, res) => {
 // =========================================================================
 // --- 👤 SALESPERSON SPECIFIC ROUTES ---
 // =========================================================================
-
-// Get Logged-in Salesperson's Own Deals History
 app.get('/api/salesperson/my-deals', verifyToken, async (req, res) => {
   try {
     const deals = await Invoice.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 });
@@ -545,7 +455,6 @@ app.get('/api/salesperson/my-deals', verifyToken, async (req, res) => {
   }
 });
 
-// Get Logged-in Salesperson's Generated Leads
 app.get('/api/salesperson/my-leads', verifyToken, async (req, res) => {
   try {
     const leads = await Lead.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 });
@@ -555,7 +464,6 @@ app.get('/api/salesperson/my-leads', verifyToken, async (req, res) => {
   }
 });
 
-// Save New Prospect Lead Route (Email & Address Optional)
 app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), async (req, res) => {
   try {
     const { 
@@ -595,7 +503,6 @@ app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), a
   }
 });
 
-// Update Lead Pipeline Status, Demo Status, or Follow-up Schedule
 app.put('/api/salesperson/leads/:id', verifyToken, async (req, res) => {
   try {
     const { demoStatus, leadStatus, notes, followUpDate, followUpTime, followUpAction } = req.body;
@@ -610,185 +517,6 @@ app.put('/api/salesperson/leads/:id', verifyToken, async (req, res) => {
     res.json({ message: 'Lead updated successfully!', lead: updatedLead });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update lead', error: err.message });
-  }
-});
-
-// =========================================================================
-// --- 👑 ADMIN / BOSS MANAGEMENT ROUTES ---
-// =========================================================================
-
-// Get All Employees List (Admin/Boss)
-app.get('/api/boss/employees', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required!' });
-    }
-    const users = await User.find({}, 'userId name email role createdAt');
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch employees' });
-  }
-});
-
-// Delete Employee Account (Admin/Boss)
-app.delete('/api/boss/delete-employee/:id', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required!' });
-    }
-    
-    const userToDelete = await User.findById(req.params.id);
-    if (userToDelete && (userToDelete.role === 'boss' || userToDelete.role === 'admin')) {
-      return res.status(400).json({ message: 'Cannot delete Admin account!' });
-    }
-
-    await User.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Employee removed successfully!' });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to delete employee' });
-  }
-});
-
-// Get Performance Analytics for All Salespersons (Admin/Boss)
-app.get('/api/boss/performance', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required!' });
-    }
-
-    const stats = await Invoice.aggregate([
-      { $match: { salespersonId: { $ne: null } } },
-      {
-        $group: {
-          _id: "$salespersonId",
-          totalDeals: { $sum: 1 },
-          totalBusiness: { $sum: "$totalAmount" },
-          totalPaid: { $sum: "$paidAmount" },
-          approvedDeals: { $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] } },
-          pendingDeals: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
-          rejectedDeals: { $sum: { $cond: [{ $eq: ["$status", "rejected"] }, 1, 0] } }
-        }
-      },
-      {
-        $project: {
-          salespersonId: "$_id",
-          totalDeals: 1,
-          totalBusiness: 1,
-          totalPaid: 1,
-          approvedDeals: 1,
-          pendingDeals: 1,
-          rejectedDeals: 1,
-          _id: 0
-        }
-      }
-    ]);
-
-    res.json(stats);
-  } catch (err) {
-    res.status(500).json({ message: 'Error fetching performance statistics' });
-  }
-});
-
-// Transfer Leads/Invoices from One Salesperson to Another (Admin/Boss)
-app.post('/api/boss/transfer-leads', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required!' });
-    }
-
-    const { fromSalesperson, toSalesperson } = req.body;
-    if (!fromSalesperson || !toSalesperson) {
-      return res.status(400).json({ message: 'Both source and target salesperson required!' });
-    }
-
-    const result = await Invoice.updateMany(
-      { salespersonId: fromSalesperson },
-      { $set: { salespersonId: toSalesperson } }
-    );
-
-    res.json({ message: `Successfully transferred ${result.modifiedCount} lead(s)/invoice(s) from ${fromSalesperson} to ${toSalesperson}!` });
-  } catch (err) {
-    res.status(500).json({ message: 'Lead transfer failed', error: err.message });
-  }
-});
-
-// Get Detailed Invoice History for a Specific Employee (Admin/Boss)
-app.get('/api/boss/employee-details/:salespersonId', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required!' });
-    }
-
-    const deals = await Invoice.find({ salespersonId: req.params.salespersonId }).sort({ createdAt: -1 });
-    res.json(deals);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch employee details', error: err.message });
-  }
-});
-
-// --- 🎟️ COUPON MANAGEMENT ROUTES (ADMIN/BOSS) ---
-
-// Create Discount Coupon
-app.post('/api/boss/create-coupon', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required!' });
-    }
-
-    const { code, discountType, discountValue, expiryDate } = req.body;
-    if (!code || !discountType || !discountValue) {
-      return res.status(400).json({ message: 'Coupon code, type, and value are required!' });
-    }
-
-    const existingCoupon = await Coupon.findOne({ code: code.toUpperCase() });
-    if (existingCoupon) {
-      return res.status(400).json({ message: 'Coupon code already exists!' });
-    }
-
-    const newCoupon = new Coupon({
-      code: code.toUpperCase(),
-      discountType,
-      discountValue: Number(discountValue),
-      expiryDate: expiryDate ? new Date(expiryDate) : null,
-      createdBy: req.user.userId
-    });
-
-    await newCoupon.save();
-    res.status(201).json({ message: `Coupon ${code.toUpperCase()} created successfully!`, coupon: newCoupon });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to create coupon', error: err.message });
-  }
-});
-
-// Delete Discount Coupon (Admin/Boss)
-app.delete('/api/boss/coupons/:id', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required!' });
-    }
-
-    const coupon = await Coupon.findByIdAndDelete(req.params.id);
-    if (!coupon) {
-      return res.status(404).json({ message: 'Coupon not found!' });
-    }
-
-    res.json({ message: 'Coupon deleted successfully!' });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to delete coupon', error: err.message });
-  }
-});
-
-// Get All Active Coupons
-app.get('/api/boss/coupons', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Admin access required!' });
-    }
-
-    const coupons = await Coupon.find().sort({ createdAt: -1 });
-    res.json(coupons);
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch coupons', error: err.message });
   }
 });
 
@@ -814,17 +542,6 @@ app.post('/api/coupons/verify', verifyToken, async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: 'Server error verifying coupon', error: err.message });
   }
-});
-
-// =========================================================================
-// --- 🚨 GLOBAL ERROR HANDLING MIDDLEWARE ---
-// =========================================================================
-app.use((err, req, res, next) => {
-  console.error("🔥 [Global Server Error]:", err.stack);
-  res.status(500).json({ 
-    message: 'Something went wrong on the server!', 
-    error: process.env.NODE_ENV === 'production' ? null : err.message 
-  });
 });
 
 // =========================================================================

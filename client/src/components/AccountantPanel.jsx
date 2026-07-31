@@ -1,11 +1,13 @@
+/**
+ * =========================================================================
+ * 👤 ACCOUNTANT PANEL COMPONENT (`AccountantPanel.jsx`)
+ * =========================================================================
+ * Description: Allows accountant to view pending invoice requests, review payment proofs,
+ * edit billing/add-ons, approve invoices (triggering auto PDF & email), or reject them.
+ */
+
 import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import {
-  getPendingInvoices,
-  approveInvoice,
-  updateInvoice,
-  rejectInvoice,
-} from "../api/api";
 
 const AccountantPanel = ({ userId, onLogout }) => {
   // Tabs State ('pending' | 'history')
@@ -22,7 +24,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
     iosApp: 45000,
   };
 
-  // Base URL for serving static uploaded image files (Fixed for Vite)
+  // Base URL for API & static files (Fixed for Vite)
   const API_BASE = import.meta.env.PROD
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
@@ -41,18 +43,28 @@ const AccountantPanel = ({ userId, onLogout }) => {
   const [rejectModalId, setRejectModalId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  // Fetch Pending Invoices
+  // Fetch Pending Invoices with Token Authorization
   const fetchPendingInvoices = async () => {
     try {
-      const data = await getPendingInvoices();
-      setPendingList(Array.isArray(data) ? data : []);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/invoices/pending`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        // Handle both direct array or wrapped object format
+        const items = Array.isArray(data) ? data : (data.invoices || []);
+        setPendingList(items);
+      } else {
+        setPendingList([]);
+      }
     } catch (err) {
       console.error("Fetch pending error:", err);
       setPendingList([]);
     }
   };
 
-  // Fetch Approved / Processed Invoices History
+  // Fetch Approved / Processed Invoices History with Token Authorization
   const fetchInvoiceHistory = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -61,7 +73,10 @@ const AccountantPanel = ({ userId, onLogout }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        setHistoryList(Array.isArray(data) ? data : []);
+        const items = Array.isArray(data) ? data : (data.invoices || []);
+        setHistoryList(items);
+      } else {
+        setHistoryList([]);
       }
     } catch (err) {
       console.error("Fetch history error:", err);
@@ -108,7 +123,6 @@ const AccountantPanel = ({ userId, onLogout }) => {
     if (addonsObj.windowApp) totalAddonCost += ADDON_PRICES.windowApp;
     if (addonsObj.iosApp) totalAddonCost += ADDON_PRICES.iosApp;
 
-    // Dynamic discount handling
     let discount = 0;
     if (updatedData.couponCode?.trim().toUpperCase() === "CRINZA") {
       discount = 999;
@@ -136,13 +150,20 @@ const AccountantPanel = ({ userId, onLogout }) => {
       error: "",
     });
     try {
-      const data = await approveInvoice(id);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/invoices/approve/${id}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Approval failed");
+
       toast.success(data.message || "Invoice Approved & Emailed Successfully!");
       setActionMessage({ id, text: "", error: "" });
       fetchPendingInvoices();
       fetchInvoiceHistory();
     } catch (err) {
-      const errMsg = err.response?.data?.message || "Approval failed";
+      const errMsg = err.message || "Approval failed";
       toast.error(errMsg);
       setActionMessage({ id, text: "", error: errMsg });
     }
@@ -151,26 +172,48 @@ const AccountantPanel = ({ userId, onLogout }) => {
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     try {
-      await updateInvoice(editModalData._id, editModalData);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/invoices/update/${editModalData._id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(editModalData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update details");
+
       toast.success("Invoice details updated successfully!");
       setEditModalData(null);
       fetchPendingInvoices();
       fetchInvoiceHistory();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to update details");
+      toast.error(err.message || "Failed to update details");
     }
   };
 
   const handleRejectSubmit = async () => {
     try {
-      await rejectInvoice(rejectModalId, rejectReason);
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/invoices/reject/${rejectModalId}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ rejectionReason: rejectReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to reject invoice");
+
       toast.success("Invoice rejected.");
       setRejectModalId(null);
       setRejectReason("");
       fetchPendingInvoices();
       fetchInvoiceHistory();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to reject invoice");
+      toast.error(err.message || "Failed to reject invoice");
     }
   };
 
@@ -302,7 +345,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
               onClick={exportHistoryToCSV}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer flex items-center gap-2"
             >
-              📥 Export History to CSV
+              📥 Export History to CSV / Excel
             </button>
           )}
         </div>
