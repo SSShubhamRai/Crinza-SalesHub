@@ -110,14 +110,14 @@ const createInvoicePDF = async (data) => {
     const isLocal = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
 
     if (isLocal) {
-      // Localhost / Development Mode
+      // 💻 Localhost / Development Mode
       const puppeteer = require('puppeteer');
       browser = await puppeteer.launch({
-        headless: 'new',
+        headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
       });
     } else {
-      // Render / Production Cloud Mode
+      // ☁️ Render / Production Cloud Mode
       const chromium = require('@sparticuz/chromium');
       const puppeteerCore = require('puppeteer-core');
       const execPath = await chromium.executablePath();
@@ -125,7 +125,7 @@ const createInvoicePDF = async (data) => {
       browser = await puppeteerCore.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
-        executablePath: execPath, // 🌟 Fixed cloud executable path
+        executablePath: execPath,
         headless: true,
         ignoreHTTPSErrors: true,
       });
@@ -245,20 +245,18 @@ const createInvoicePDF = async (data) => {
 };
 
 // =========================================================================
-// --- 📧 EMAIL SENDER HELPER ---
+// --- 📧 EMAIL SENDER HELPER (Brevo SMTP) ---
 // =========================================================================
 const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
   try {
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      host: 'smtp-relay.brevo.com',
+      port: 587,
+      secure: false,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
-      tls: { rejectUnauthorized: false }
     });
 
     const mailOptions = {
