@@ -117,19 +117,14 @@ const createInvoicePDF = async (data) => {
         args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
       });
     } else {
-      // ☁️ Render / Production Cloud Mode (Fixed property access for chromium executablePath)
+      // ☁️ Render / Production Cloud Mode (Using stable v119 chromium setup)
       const chromium = require('@sparticuz/chromium');
       const puppeteerCore = require('puppeteer-core');
       
-      chromium.setHeadlessMode = true;
-      chromium.setGraphicsMode = false;
-
-      const execPath = await chromium.executablePath();
-
       browser = await puppeteerCore.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
-        executablePath: execPath,
+        executablePath: await chromium.executablePath(),
         headless: chromium.headless,
         ignoreHTTPSErrors: true,
       });
