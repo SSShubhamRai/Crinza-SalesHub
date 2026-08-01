@@ -112,7 +112,7 @@ const Login = ({ onLoginSuccess }) => {
         </form>
 
         {/* Demo Credentials Box */}
-        <div className="mt-8 p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] text-xs space-y-2 shadow-inner">
+        {/* <div className="mt-8 p-4 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] text-xs space-y-2 shadow-inner">
           <p className="font-semibold text-[var(--color-heading)] mb-1 uppercase tracking-wider text-[10px]">Demo Credentials:</p>
           <div className="flex items-center justify-between text-[var(--color-body)] py-1 border-b border-[var(--color-border)]/50">
             <span>👑 <strong className="text-purple-600">Admin:</strong> BOSS101</span>
@@ -126,7 +126,7 @@ const Login = ({ onLoginSuccess }) => {
             <span>📑 <strong className="text-[var(--color-success)]">Accountant:</strong> ACCT101</span>
             <code className="bg-[var(--color-background)] px-2 py-0.5 rounded border border-[var(--color-border)]">Acct@123</code>
           </div>
-        </div>
+        </div> */}
 
       </div>
     </div>

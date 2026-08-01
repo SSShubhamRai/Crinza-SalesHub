@@ -2,7 +2,7 @@
  * =========================================================================
  * 👑 ADMIN DASHBOARD COMPONENT (`AdminDashboard.jsx`)
  * =========================================================================
- * Description: Allows admin to track employee tasks (calls, demos, pending actions),
+ * Description: Allows admin to track live salesperson tasks (calls, demos, follow-ups),
  * search team members, view deal records, transfer leads, and manage coupons.
  */
 
@@ -14,16 +14,17 @@ const AdminDashboard = ({ userId, onLogout }) => {
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
 
-  const [activeTab, setActiveTab] = useState("tracker"); // Default to Task & Activity Tracker
+  const [activeTab, setActiveTab] = useState("tracker");
   const [employees, setEmployees] = useState([]);
   const [performanceStats, setPerformanceStats] = useState([]);
+  const [tasksList, setTasksList] = useState([]); // 🌟 State for salesperson tasks (calls/demos)
   const [loading, setLoading] = useState(true);
 
   // 🔍 Search & Tracker Filter States
   const [directorySearch, setDirectorySearch] = useState("");
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [selectedRoleFilter, setSelectedRoleFilter] = useState("all");
-  const [selectedSalespersonTaskFilter, setSelectedSalespersonTaskFilter] = useState("all"); // 🌟 For filtering tracker by specific employee
+  const [selectedSalespersonTaskFilter, setSelectedSalespersonTaskFilter] = useState("all");
 
   const [selectedEmpLogs, setSelectedEmpLogs] = useState(null);
   const [loadingLogs, setLoadingLoadingLogs] = useState(false);
@@ -68,15 +69,18 @@ const AdminDashboard = ({ userId, onLogout }) => {
       const empList = await empRes.json();
       setEmployees(empList);
 
-      const statsRes = await fetch(`${API_BASE}/api/boss/performance`, {
-        headers,
-      });
+      const statsRes = await fetch(`${API_BASE}/api/boss/performance`, { headers });
       const stats = await statsRes.json();
       setPerformanceStats(stats);
 
-      const couponRes = await fetch(`${API_BASE}/api/boss/coupons`, {
-        headers,
-      });
+      // 🌟 Fetch real-time tasks (calls, demos, follow-ups)
+      const tasksRes = await fetch(`${API_BASE}/api/boss/tasks`, { headers });
+      if (tasksRes.ok) {
+        const tasksData = await tasksRes.json();
+        setTasksList(tasksData);
+      }
+
+      const couponRes = await fetch(`${API_BASE}/api/boss/coupons`, { headers });
       if (couponRes.ok) {
         const couponList = await couponRes.json();
         setCoupons(couponList);
@@ -288,6 +292,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
     return matchesSearch && matchesRole;
   });
 
+  // 🌟 Filter tasks based on selected salesperson dropdown
+  const filteredTasksList = tasksList.filter((task) => {
+    if (selectedSalespersonTaskFilter === "all") return true;
+    return task.salespersonId === selectedSalespersonTaskFilter;
+  });
+
   return (
     <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -358,16 +368,16 @@ const AdminDashboard = ({ userId, onLogout }) => {
           </div>
         ) : (
           <>
-            {/* 🌟 TAB 1: TEAM TASK & ACTIVITY TRACKER (Calls, Demos & Pending Actions) */}
+            {/* 🌟 TAB 1: LIVE CALL, DEMO & FOLLOW-UP TASK TRACKER */}
             {activeTab === "tracker" && (
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-4 rounded-2xl border border-[var(--color-border)] shadow-sm gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">
-                      🎯 Live Task Tracking & Follow-ups
+                      📞 Salesperson Call, Demo & Follow-up Schedule
                     </h3>
                     <p className="text-xs text-[var(--color-body)]">
-                      Monitor what tasks, calls, and demos are pending for each salesperson.
+                      See exactly who each salesperson needs to call or give a demo to.
                     </p>
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -389,88 +399,51 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-2 border-l-4 border-l-amber-500">
-                    <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Pending Call / Review</span>
-                    <h4 className="text-2xl font-bold text-[var(--color-heading)]">
-                      {performanceStats.reduce((acc, curr) => acc + (curr.pendingDeals || 0), 0)} Deals
-                    </h4>
-                    <p className="text-xs text-[var(--color-body)]">Invoices waiting for accountant/admin approval.</p>
-                  </div>
-
-                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-2 border-l-4 border-l-blue-500">
-                    <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Active Pipeline Deals</span>
-                    <h4 className="text-2xl font-bold text-[var(--color-heading)]">
-                      {performanceStats.reduce((acc, curr) => acc + (curr.totalDeals || 0), 0)} Records
-                    </h4>
-                    <p className="text-xs text-[var(--color-body)]">Total institute submissions registered so far.</p>
-                  </div>
-
-                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-2 border-l-4 border-l-emerald-500">
-                    <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Approved & Converted</span>
-                    <h4 className="text-2xl font-bold text-[var(--color-heading)]">
-                      {performanceStats.reduce((acc, curr) => acc + (curr.approvedDeals || 0), 0)} Clients
-                    </h4>
-                    <p className="text-xs text-[var(--color-body)]">Successfully closed and active subscriptions.</p>
-                  </div>
-                </div>
-
-                <h3 className="text-lg font-bold text-[var(--color-heading)] mt-6">
-                  Detailed Salesperson Action Status
-                </h3>
-
                 <div className="space-y-4">
-                  {performanceStats
-                    .filter((stat) => selectedSalespersonTaskFilter === "all" || stat.salespersonId === selectedSalespersonTaskFilter)
-                    .map((stat) => {
-                      const empDetails = employees.find((e) => e.userId === stat.salespersonId);
-                      return (
-                        <div
-                          key={stat.salespersonId || "unassigned"}
-                          className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
-                        >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-[var(--color-primary)] text-md">
-                                {empDetails?.name ? empDetails.name : (stat.salespersonId || "Unassigned")}
-                              </h4>
-                              <span className="text-xs bg-[var(--color-surface)] px-2 py-0.5 rounded border border-[var(--color-border)] font-mono">
-                                ID: {stat.salespersonId || "N/A"}
+                  <h3 className="text-lg font-bold text-[var(--color-heading)]">
+                    Scheduled Calls & Demos ({filteredTasksList.length})
+                  </h3>
+
+                  {filteredTasksList.length === 0 ? (
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-12 text-center text-[var(--color-body)] shadow-sm">
+                      No active calls or demos scheduled by salespersons yet.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {filteredTasksList.map((task) => {
+                        const empObj = employees.find((e) => e.userId === task.salespersonId);
+                        return (
+                          <div
+                            key={task._id}
+                            className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-2.5"
+                          >
+                            <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2">
+                              <span className="text-xs font-bold bg-purple-500/10 text-purple-600 px-2.5 py-1 rounded-md border border-purple-200 uppercase">
+                                👤 {empObj?.name ? `${empObj.name} (${task.salespersonId})` : task.salespersonId}
+                              </span>
+                              <span className={`text-xs px-2.5 py-1 rounded-md font-semibold uppercase ${task.taskType === 'demo' ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-amber-500/10 text-amber-600 border border-amber-200'}`}>
+                                {task.taskType}
                               </span>
                             </div>
-                            <p className="text-xs text-[var(--color-body)]">
-                              📧 Email: {empDetails?.email || "N/A"}
-                            </p>
-                          </div>
 
-                          <div className="flex flex-wrap gap-6 text-xs text-[var(--color-heading)] bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-border)]">
-                            <div>
-                              <span>Total Submissions:</span>{" "}
-                              <strong className="text-[var(--color-heading)]">{stat.totalDeals}</strong>
-                            </div>
-                            <div>
-                              <span>Pending Review / Call:</span>{" "}
-                              <strong className="text-amber-600">{stat.pendingDeals}</strong>
-                            </div>
-                            <div>
-                              <span>Completed Demos/Deals:</span>{" "}
-                              <strong className="text-emerald-600">{stat.approvedDeals}</strong>
-                            </div>
-                            <div>
-                              <span>Rejected / Follow-up:</span>{" "}
-                              <strong className="text-red-500">{stat.rejectedDeals}</strong>
+                            <div className="text-xs space-y-1.5 text-[var(--color-heading)]">
+                              <p>🏛️ Institute: <strong>{task.instituteName}</strong></p>
+                              {task.dueDate && (
+                                <p className="text-emerald-600 font-semibold">
+                                  📅 Scheduled Date: {new Date(task.dueDate).toLocaleDateString('en-IN')}
+                                </p>
+                              )}
+                              {task.notes && (
+                                <p className="text-[var(--color-body)] bg-[var(--color-surface)] p-2.5 rounded-xl border border-[var(--color-border)]">
+                                  📝 Notes: {task.notes}
+                                </p>
+                              )}
                             </div>
                           </div>
-
-                          <button
-                            onClick={() => handleViewEmployeeDetails(stat.salespersonId || "null")}
-                            className="bg-purple-600/10 hover:bg-purple-600/20 text-purple-700 border border-purple-200 text-xs py-2 px-4 rounded-xl font-semibold transition cursor-pointer whitespace-nowrap"
-                          >
-                            🔍 Track Full Activity Logs
-                          </button>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
