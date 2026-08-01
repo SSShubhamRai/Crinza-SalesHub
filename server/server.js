@@ -275,6 +275,9 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/invoice_db'
         password: await bcrypt.hash('Sales@123', 10),
         role: 'salesperson'
       });
+    } else if (!sales.role) {
+      sales.role = 'salesperson';
+      await sales.save();
     }
 
     const acct = await User.findOne({ userId: 'ACCT101' });
@@ -286,6 +289,9 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/invoice_db'
         password: await bcrypt.hash('Acct@123', 10),
         role: 'accountant'
       });
+    } else if (!acct.role) {
+      acct.role = 'accountant';
+      await acct.save();
     }
 
     const boss = await User.findOne({ $or: [{ userId: 'BOSS101' }, { userId: 'ADMIN101' }] });
@@ -297,6 +303,9 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/invoice_db'
         password: await bcrypt.hash('Admin@123', 10),
         role: 'admin'
       });
+    } else if (!boss.role) {
+      boss.role = 'admin';
+      await boss.save();
     }
   });
 
@@ -324,6 +333,192 @@ app.post('/api/auth/login', loginLimiter, [
     res.json({ token, userId: user.userId, role: user.role });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// =========================================================================
+// --- 👑 BOSS / ADMIN OPERATIONS API ROUTES ---
+// =========================================================================
+
+app.get('/api/boss/employees', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    const employees = await User.find({ role: { $in: ['salesperson', 'accountant'] } }).select('-password');
+    res.json(employees);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch employees', error: err.message });
+  }
+});
+
+app.get('/api/boss/performance', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+
+    const stats = await Invoice.aggregate([
+      // 🛠️ Filter out null, undefined, or empty salesperson IDs to prevent ghost entries
+      {
+        $match: {
+          salespersonId: { $exists: true, $ne: null, $ne: "" }
+        }
+      },
+      {
+        $group: {
+          _id: '$salespersonId',
+          salespersonId: { $first: '$salespersonId' },
+          totalDeals: { $sum: 1 },
+          approvedDeals: {
+            $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
+          },
+          pendingDeals: {
+            $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+          },
+          rejectedDeals: {
+            $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] }
+          },
+          totalBusiness: {
+            $sum: { $cond: [{ $eq: ['$status', 'approved'] }, '$totalAmount', 0] }
+          },
+          totalPaid: {
+            $sum: { $cond: [{ $eq: ['$status', 'approved'] }, '$paidAmount', 0] }
+          }
+        }
+      }
+    ]);
+
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch performance stats', error: err.message });
+  }
+});
+
+app.get('/api/boss/employee-details/:salespersonId', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    const deals = await Invoice.find({ salespersonId: req.params.salespersonId }).sort({ createdAt: -1 });
+    res.json(deals);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch employee details', error: err.message });
+  }
+});
+
+app.get('/api/boss/coupons', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    const coupons = await Coupon.find().sort({ createdAt: -1 });
+    res.json(coupons);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch coupons', error: err.message });
+  }
+});
+
+app.post('/api/boss/create-coupon', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    const { code, discountType, discountValue, expiryDate } = req.body;
+    if (!code || !discountValue) {
+      return res.status(400).json({ message: 'Coupon code and value are required!' });
+    }
+
+    const existing = await Coupon.findOne({ code: code.toUpperCase() });
+    if (existing) {
+      return res.status(400).json({ message: 'Coupon code already exists!' });
+    }
+
+    const newCoupon = new Coupon({
+      code: code.toUpperCase(),
+      discountType,
+      discountValue: Number(discountValue),
+      expiryDate: expiryDate || null
+    });
+
+    await newCoupon.save();
+    res.status(201).json({ message: 'Coupon created successfully!', coupon: newCoupon });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to create coupon', error: err.message });
+  }
+});
+
+app.delete('/api/boss/coupons/:id', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    await Coupon.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Coupon deleted successfully!' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to delete coupon', error: err.message });
+  }
+});
+
+app.post('/api/auth/create-employee', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    const { userId, name, email, password, role } = req.body;
+    if (!userId || !name || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    const existingUser = await User.findOne({ userId });
+    if (existingUser) {
+      return res.status(400).json({ message: 'User ID already exists!' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newEmp = new User({
+      userId,
+      name,
+      email,
+      password: hashedPassword,
+      role: role || 'salesperson'
+    });
+
+    await newEmp.save();
+    res.status(201).json({ message: 'Employee created successfully!' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to create employee', error: err.message });
+  }
+});
+
+app.delete('/api/boss/delete-employee/:id', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Employee deleted successfully!' });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to delete employee', error: err.message });
+  }
+});
+
+app.post('/api/boss/transfer-leads', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    const { fromSalesperson, toSalesperson } = req.body;
+    if (!fromSalesperson || !toSalesperson) {
+      return res.status(400).json({ message: 'Source and Target salespersons are required!' });
+    }
+
+    await Invoice.updateMany({ salespersonId: fromSalesperson }, { $set: { salespersonId: toSalesperson } });
+    await Lead.updateMany({ salespersonId: fromSalesperson }, { $set: { salespersonId: toSalesperson } });
+
+    res.json({ message: `Successfully transferred leads & invoices from ${fromSalesperson} to ${toSalesperson}!` });
+  } catch (err) {
+    res.status(500).json({ message: 'Transfer failed', error: err.message });
   }
 });
 

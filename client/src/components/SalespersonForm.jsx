@@ -4,7 +4,7 @@
  * =========================================================================
  * Description: Allows salesperson to manage performance, track deals, create/update 
  * leads with live GPS coordinates, schedule follow-ups, and submit invoices with 
- * database-verified coupon discounts and payment proofs.
+ * database-verified coupon discounts, 18% GST calculation, and payment proofs.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -39,7 +39,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
   };
 
   // --- API Base URL Configuration ---
-// Vite ke liye import.meta.env use hota hai
   const API_BASE = import.meta.env.PROD
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
@@ -57,7 +56,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
     gstNo: '',
     packageValidity: '1 Year',
     baseAmount: 15000,
-    totalAmount: 15000,
+    subtotalAmount: 15000, // Subtotal before GST
+    gstAmount: 2700,       // 18% GST amount
+    totalAmount: 17700,    // Grand Total (Subtotal + GST)
     paidAmount: 0,
     couponCode: '',
     discountAmount: 0,
@@ -153,29 +154,37 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const citiesOfSelectedState = selectedStateCode ? City.getCitiesOfState('IN', selectedStateCode) : [];
   const citiesOfLeadState = leadStateCode ? City.getCitiesOfState('IN', leadStateCode) : [];
 
-  // --- Dynamic Invoice Total Calculation (Base + Addons - Discount) ---
+  // --- Dynamic Subtotal, 18% GST, & Grand Total Calculation ---
   useEffect(() => {
     let totalAddonCost = 0;
     if (addons.testModule) totalAddonCost += ADDON_PRICES.testModule;
     if (addons.windowApp) totalAddonCost += ADDON_PRICES.windowApp;
     if (addons.iosApp) totalAddonCost += ADDON_PRICES.iosApp;
 
-    const subtotal = formData.baseAmount + totalAddonCost;
+    const baseSubtotal = formData.baseAmount + totalAddonCost;
     let discount = 0;
 
     if (isCouponApplied && couponDetails) {
       if (couponDetails.discountType === 'percentage') {
-        discount = (subtotal * couponDetails.discountValue) / 100;
+        discount = (baseSubtotal * couponDetails.discountValue) / 100;
       } else {
         discount = couponDetails.discountValue;
       }
     }
 
-    const calculatedTotal = Math.max(0, subtotal - discount);
+    const discountedSubtotal = Math.max(0, baseSubtotal - discount);
+    
+    // Calculate 18% GST on the discounted subtotal
+    const gst = discountedSubtotal * 0.18;
+    
+    // Final Grand Total (Subtotal + GST)
+    const calculatedTotal = discountedSubtotal + gst;
 
     setFormData((prev) => ({
       ...prev,
-      totalAmount: calculatedTotal,
+      subtotalAmount: discountedSubtotal,
+      gstAmount: Math.round(gst * 100) / 100,
+      totalAmount: Math.round(calculatedTotal * 100) / 100,
       discountAmount: discount
     }));
   }, [addons, formData.baseAmount, isCouponApplied, couponDetails]);
@@ -1275,7 +1284,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
               <div>
                 <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider mb-4">2. Billing & Add-on Packages</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div>
                     <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Validity</label>
                     <select name="packageValidity" value={formData.packageValidity} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
@@ -1287,10 +1296,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   <div>
                     <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Base Price (₹)</label>
                     <input type="number" name="baseAmount" value={formData.baseAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Total Price (₹)</label>
-                    <input type="number" readOnly name="totalAmount" value={formData.totalAmount} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-bold" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Payment Paid (₹)</label>
@@ -1309,14 +1314,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
                       <input type="checkbox" name="windowApp" checked={addons.windowApp} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
                       <span>Windows App (+₹5,000)</span>
                     </label>
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] border border-[var(--color-border)]">
+                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
                       <input type="checkbox" name="iosApp" checked={addons.iosApp} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
                       <span>iOS Mobile App (+₹45,000)</span>
                     </label>
                   </div>
                 </div>
 
-                <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl">
+                <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-4">
                   <label className="block text-xs font-semibold mb-2 text-[var(--color-primary)] uppercase tracking-wider">🏷️ Apply Coupon Code</label>
                   <div className="flex gap-2">
                     <input type="text" value={couponInput} disabled={isCouponApplied} onChange={(e) => setCouponInput(e.target.value)} placeholder="FLAT50" className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm" />
@@ -1334,9 +1339,35 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   )}
                 </div>
 
-                <div className="mt-5 p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary-light)] rounded-xl">
+                {/* Price Breakdown Banner with 18% GST */}
+                <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] space-y-2 text-sm text-[var(--color-heading)]">
+                  <div className="flex justify-between">
+                    <span className="text-[var(--color-body)]">Subtotal (Base + Add-ons {isCouponApplied ? '- Discount' : ''}):</span>
+                    <span className="font-medium">₹{formData.subtotalAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-[var(--color-border)] pb-2">
+                    <span className="text-[var(--color-body)]">GST (18%):</span>
+                    <span className="font-medium">₹{formData.gstAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="font-semibold text-[var(--color-heading)]">Grand Total (Incl. GST):</span>
+                    <span className="text-lg font-bold text-[var(--color-primary)]">
+                      ₹{formData.totalAmount.toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary-light)] rounded-xl">
                   <label className="block text-sm font-medium mb-2 text-[var(--color-primary-dark)]">📸 Upload Payment Screenshot / Receipt Proof *</label>
                   <input type="file" accept="image/*" required onChange={handleFileChange} className="block w-full text-sm text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" />
+                </div>
+
+                {/* Auto Calculated Due Amount Banner */}
+                <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] flex justify-between items-center">
+                  <span className="text-[var(--color-body)] text-sm">Calculated Due Amount:</span>
+                  <span className={`text-xl font-bold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    ₹{dueAmount.toLocaleString('en-IN')}
+                  </span>
                 </div>
               </div>
 

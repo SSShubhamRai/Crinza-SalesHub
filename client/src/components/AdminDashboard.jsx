@@ -252,7 +252,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  // Calculate maximum business value for visual chart scaling
+  // Calculate maximum business value for visual chart scaling (filtering out valid ids if needed, or keeping stats safe)
   const maxBusiness =
     performanceStats.length > 0
       ? Math.max(...performanceStats.map((s) => s.totalBusiness || 1), 1000)
@@ -357,10 +357,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
                           ),
                         );
                         return (
-                          <div key={stat.salespersonId} className="space-y-1.5">
+                          <div key={stat.salespersonId || "unassigned"} className="space-y-1.5">
                             <div className="flex justify-between text-xs font-semibold text-[var(--color-heading)]">
                               <span>
-                                👤 {stat.salespersonId} ({stat.approvedDeals}{" "}
+                                👤 {stat.salespersonId || "Unassigned"} ({stat.approvedDeals}{" "}
                                 Approved Deals)
                               </span>
                               <span className="text-[var(--color-primary)]">
@@ -389,12 +389,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {performanceStats.map((stat) => (
                     <div
-                      key={stat.salespersonId}
+                      key={stat.salespersonId || "unassigned"}
                       className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-3"
                     >
                       <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2">
                         <h4 className="font-bold text-[var(--color-primary)] text-lg">
-                          {stat.salespersonId}
+                          {stat.salespersonId || "Unassigned"}
                         </h4>
                         <span className="text-xs bg-[var(--color-surface)] px-2.5 py-1 rounded-md border border-[var(--color-border)] font-medium">
                           {stat.totalDeals} Deals Created
@@ -436,7 +436,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       </div>
                       <button
                         onClick={() =>
-                          handleViewEmployeeDetails(stat.salespersonId)
+                          handleViewEmployeeDetails(stat.salespersonId || "null")
                         }
                         className="w-full bg-purple-600/10 hover:bg-purple-600/20 text-purple-700 border border-purple-200 text-xs py-2 rounded-xl font-semibold transition cursor-pointer"
                       >
@@ -618,7 +618,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   </h3>
                   <p className="text-xs text-[var(--color-body)] mt-1">
                     Reassign all deal records created by one salesperson to
-                    another salesperson.
+                    another salesperson (or unassigned/deleted accounts).
                   </p>
                 </div>
                 {transferStatus.success && (
@@ -650,6 +650,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       <option value="">
                         Select Salesperson to take leads from
                       </option>
+                      <option value="null">Unassigned / Deleted (null)</option>
                       {employees
                         .filter((emp) => emp.role === "salesperson")
                         .map((emp) => (
@@ -870,7 +871,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     Salesperson Activity & Location Report
                   </h3>
                   <p className="text-xs text-[var(--color-body)]">
-                    Salesperson ID: <strong>{selectedEmpLogs.userId}</strong>
+                    Salesperson ID: <strong>{selectedEmpLogs.userId === "null" ? "Unassigned" : selectedEmpLogs.userId}</strong>
                   </p>
                 </div>
                 <button

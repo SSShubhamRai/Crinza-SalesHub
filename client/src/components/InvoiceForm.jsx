@@ -22,7 +22,9 @@ const InvoiceForm = ({ onLogout }) => {
     gstNo: '',
     packageValidity: '1 Year',
     baseAmount: 15000,
-    totalAmount: 15000,
+    subtotalAmount: 15000, // Added to keep track before GST
+    gstAmount: 2700,       // 18% GST on subtotal
+    totalAmount: 17700,    // Subtotal + GST
     paidAmount: 0,
     couponCode: '',
     discountAmount: 0,
@@ -59,29 +61,37 @@ const InvoiceForm = ({ onLogout }) => {
     ? City.getCitiesOfState('IN', selectedStateCode) 
     : [];
 
-  // Recalculate Total whenever baseAmount, addons, or coupon changes
+  // Recalculate Subtotal, Discount, GST (18%), and Total whenever baseAmount, addons, or coupon changes
   useEffect(() => {
     let totalAddonCost = 0;
     if (addons.testModule) totalAddonCost += ADDON_PRICES.testModule;
     if (addons.windowApp) totalAddonCost += ADDON_PRICES.windowApp;
     if (addons.iosApp) totalAddonCost += ADDON_PRICES.iosApp;
 
-    const subtotal = formData.baseAmount + totalAddonCost;
+    const baseSubtotal = formData.baseAmount + totalAddonCost;
     let discount = 0;
 
     if (isCouponApplied && couponDetails) {
       if (couponDetails.discountType === 'percentage') {
-        discount = (subtotal * couponDetails.discountValue) / 100;
+        discount = (baseSubtotal * couponDetails.discountValue) / 100;
       } else {
         discount = couponDetails.discountValue;
       }
     }
 
-    const calculatedTotal = Math.max(0, subtotal - discount);
+    const discountedSubtotal = Math.max(0, baseSubtotal - discount);
+    
+    // Calculate 18% GST on the discounted subtotal
+    const gst = discountedSubtotal * 0.18;
+    
+    // Final Grand Total
+    const calculatedTotal = discountedSubtotal + gst;
 
     setFormData((prev) => ({
       ...prev,
-      totalAmount: calculatedTotal,
+      subtotalAmount: discountedSubtotal,
+      gstAmount: Math.round(gst * 100) / 100, // rounded to 2 decimal places
+      totalAmount: Math.round(calculatedTotal * 100) / 100,
       discountAmount: discount
     }));
   }, [addons, formData.baseAmount, isCouponApplied, couponDetails]);
@@ -99,7 +109,6 @@ const InvoiceForm = ({ onLogout }) => {
     setCouponError('');
     try {
       const token = localStorage.getItem('token');
-      // Vite ke liye import.meta.env use hota hai
       const API_BASE = import.meta.env.PROD
         ? "https://crinza-saleshub.onrender.com"
         : "http://localhost:5000";
@@ -468,7 +477,7 @@ const InvoiceForm = ({ onLogout }) => {
           <div>
             <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider mb-4">2. Billing & Package</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Validity Package</label>
                 <select
@@ -492,17 +501,6 @@ const InvoiceForm = ({ onLogout }) => {
                   value={formData.baseAmount}
                   onChange={handleChange}
                   className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Total Price (₹)</label>
-                <input
-                  type="number"
-                  readOnly
-                  name="totalAmount"
-                  value={formData.totalAmount}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] font-bold focus:outline-none"
                 />
               </div>
 
@@ -599,8 +597,26 @@ const InvoiceForm = ({ onLogout }) => {
               )}
             </div>
 
+            {/* Price Breakdown Banner */}
+            <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] space-y-2 text-sm text-[var(--color-heading)]">
+              <div className="flex justify-between">
+                <span className="text-[var(--color-body)]">Subtotal (Base + Add-ons {isCouponApplied ? '- Discount' : ''}):</span>
+                <span className="font-medium">₹{formData.subtotalAmount.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between border-b border-[var(--color-border)] pb-2">
+                <span className="text-[var(--color-body)]">GST (18%):</span>
+                <span className="font-medium">₹{formData.gstAmount.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between items-center pt-1">
+                <span className="font-semibold text-[var(--color-heading)]">Grand Total (Incl. GST):</span>
+                <span className="text-lg font-bold text-[var(--color-primary)]">
+                  ₹{formData.totalAmount.toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
             {/* Payment Proof File Upload */}
-            <div className="p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary)]/40 rounded-xl">
+            <div className="mt-4 p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary)]/40 rounded-xl">
               <label className="block text-sm font-medium mb-2 text-[var(--color-heading)]">
                 📸 Payment Proof / Screenshot *
               </label>
