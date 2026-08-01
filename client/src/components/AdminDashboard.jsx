@@ -1,16 +1,29 @@
+/**
+ * =========================================================================
+ * 👑 ADMIN DASHBOARD COMPONENT (`AdminDashboard.jsx`)
+ * =========================================================================
+ * Description: Allows admin to track employee tasks (calls, demos, pending actions),
+ * search team members, view deal records, transfer leads, and manage coupons.
+ */
+
 import React, { useState, useEffect } from "react";
 import toast from "react-hot-toast";
 
 const AdminDashboard = ({ userId, onLogout }) => {
-  // Vite ke liye import.meta.env use hota hai
   const API_BASE = import.meta.env.PROD
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
 
-  const [activeTab, setActiveTab] = useState("performance");
+  const [activeTab, setActiveTab] = useState("tracker"); // Default to Task & Activity Tracker
   const [employees, setEmployees] = useState([]);
   const [performanceStats, setPerformanceStats] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // 🔍 Search & Tracker Filter States
+  const [directorySearch, setDirectorySearch] = useState("");
+  const [employeeSearch, setEmployeeSearch] = useState("");
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState("all");
+  const [selectedSalespersonTaskFilter, setSelectedSalespersonTaskFilter] = useState("all"); // 🌟 For filtering tracker by specific employee
 
   const [selectedEmpLogs, setSelectedEmpLogs] = useState(null);
   const [loadingLogs, setLoadingLoadingLogs] = useState(false);
@@ -34,11 +47,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
     error: "",
   });
 
-  // 🎫 New Coupon Generator State
+  // 🎫 Coupon Generator State
   const [coupons, setCoupons] = useState([]);
   const [newCoupon, setNewCoupon] = useState({
     code: "",
-    discountType: "percentage", // 'percentage' or 'flat'
+    discountType: "percentage",
     discountValue: "",
     expiryDate: "",
     usageLimit: "",
@@ -61,7 +74,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
       const stats = await statsRes.json();
       setPerformanceStats(stats);
 
-      // Fetch existing coupons
       const couponRes = await fetch(`${API_BASE}/api/boss/coupons`, {
         headers,
       });
@@ -102,7 +114,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  // Handle Add Salesperson / Accountant
   const handleAddEmployee = async (e) => {
     e.preventDefault();
     setEmpStatus({ success: "", error: "" });
@@ -142,12 +153,18 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  const handleDeleteEmployee = async (empId, empUserId) => {
+  const handleDeleteEmployee = async (empUserId) => {
+    const targetEmp = employees.find((e) => e.userId === empUserId);
+    if (!targetEmp) {
+      toast.error("Employee database record not found for deletion!");
+      return;
+    }
+
     if (!window.confirm(`Are you sure you want to remove user "${empUserId}"?`))
       return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/api/boss/delete-employee/${empId}`, {
+      const res = await fetch(`${API_BASE}/api/boss/delete-employee/${targetEmp._id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -195,7 +212,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  // 🎫 Handle Create Coupon
   const handleCreateCoupon = async (e) => {
     e.preventDefault();
     setCouponStatus({ success: "", error: "" });
@@ -230,7 +246,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  // 🗑️ Handle Delete Coupon
   const handleDeleteCoupon = async (couponId, couponCode) => {
     if (
       !window.confirm(`Are you sure you want to delete coupon "${couponCode}"?`)
@@ -252,11 +267,26 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  // Calculate maximum business value for visual chart scaling (filtering out valid ids if needed, or keeping stats safe)
-  const maxBusiness =
-    performanceStats.length > 0
-      ? Math.max(...performanceStats.map((s) => s.totalBusiness || 1), 1000)
-      : 1000;
+  const filteredDirectoryStats = performanceStats.filter((stat) => {
+    const query = directorySearch.toLowerCase();
+    const id = stat.salespersonId ? stat.salespersonId.toLowerCase() : "unassigned";
+    const matchingEmp = employees.find((e) => e.userId?.toLowerCase() === id);
+    const name = matchingEmp && matchingEmp.name ? matchingEmp.name.toLowerCase() : "";
+
+    return id.includes(query) || name.includes(query);
+  });
+
+  const filteredEmployees = employees.filter((emp) => {
+    const query = employeeSearch.toLowerCase();
+    const nameMatch = emp.name && emp.name.toLowerCase().includes(query);
+    const idMatch = emp.userId && emp.userId.toLowerCase().includes(query);
+    const emailMatch = emp.email && emp.email.toLowerCase().includes(query);
+    
+    const matchesSearch = nameMatch || idMatch || emailMatch;
+    const matchesRole = selectedRoleFilter === "all" || emp.role === selectedRoleFilter;
+
+    return matchesSearch && matchesRole;
+  });
 
   return (
     <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
@@ -286,16 +316,22 @@ const AdminDashboard = ({ userId, onLogout }) => {
         {/* Navigation Tabs */}
         <div className="flex gap-2 border-b border-[var(--color-border)] pb-2 overflow-x-auto">
           <button
-            onClick={() => setActiveTab("performance")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "performance" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+            onClick={() => setActiveTab("tracker")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "tracker" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
           >
-            📊 Salesperson Performance & Charts
+            📋 Team Task & Activity Tracker
+          </button>
+          <button
+            onClick={() => setActiveTab("directory")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "directory" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+          >
+            👥 Team Directory & Deal Records
           </button>
           <button
             onClick={() => setActiveTab("employees")}
             className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "employees" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
           >
-            👥 Manage Team (Add/Remove)
+            ➕ Manage Team (Add/Remove)
           </button>
           <button
             onClick={() => setActiveTab("transfer")}
@@ -313,7 +349,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
         {loading ? (
           <div className="space-y-4 animate-pulse">
-            <div className="h-48 bg-[var(--color-card)] rounded-2xl border border-[var(--color-border)]"></div>
+            <div className="h-20 bg-[var(--color-card)] rounded-2xl border border-[var(--color-border)]"></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="h-40 bg-[var(--color-card)] rounded-2xl border border-[var(--color-border)]"></div>
               <div className="h-40 bg-[var(--color-card)] rounded-2xl border border-[var(--color-border)]"></div>
@@ -322,133 +358,233 @@ const AdminDashboard = ({ userId, onLogout }) => {
           </div>
         ) : (
           <>
-            {/* TAB 1: PERFORMANCE & VISUAL ANALYTICS */}
-            {activeTab === "performance" && (
+            {/* 🌟 TAB 1: TEAM TASK & ACTIVITY TRACKER (Calls, Demos & Pending Actions) */}
+            {activeTab === "tracker" && (
               <div className="space-y-6">
-                {/* 📈 Visual Analytics Revenue Chart Section */}
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-                  <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                    <div>
-                      <h3 className="text-lg font-bold text-[var(--color-heading)]">
-                        📈 Revenue & Sales Analytics
-                      </h3>
-                      <p className="text-xs text-[var(--color-body)]">
-                        Visual comparison of total generated business across
-                        salespersons
-                      </p>
-                    </div>
-                    <span className="text-xs bg-emerald-500/10 text-emerald-600 px-3 py-1 rounded-full font-semibold border border-emerald-200">
-                      Live Stats
-                    </span>
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-4 rounded-2xl border border-[var(--color-border)] shadow-sm gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">
+                      🎯 Live Task Tracking & Follow-ups
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)]">
+                      Monitor what tasks, calls, and demos are pending for each salesperson.
+                    </p>
                   </div>
-
-                  {performanceStats.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-[var(--color-body)]">
-                      No sales analytics data available.
-                    </div>
-                  ) : (
-                    <div className="space-y-4 pt-2">
-                      {performanceStats.map((stat) => {
-                        const percentage = Math.min(
-                          100,
-                          Math.max(
-                            8,
-                            ((stat.totalBusiness || 0) / maxBusiness) * 100,
-                          ),
-                        );
-                        return (
-                          <div key={stat.salespersonId || "unassigned"} className="space-y-1.5">
-                            <div className="flex justify-between text-xs font-semibold text-[var(--color-heading)]">
-                              <span>
-                                👤 {stat.salespersonId || "Unassigned"} ({stat.approvedDeals}{" "}
-                                Approved Deals)
-                              </span>
-                              <span className="text-[var(--color-primary)]">
-                                ₹
-                                {(stat.totalBusiness || 0).toLocaleString(
-                                  "en-IN",
-                                )}
-                              </span>
-                            </div>
-                            <div className="w-full bg-[var(--color-surface)] h-4 rounded-full overflow-hidden border border-[var(--color-border)] p-0.5">
-                              <div
-                                className="bg-gradient-to-r from-[var(--color-primary)] to-purple-600 h-full rounded-full transition-all duration-500"
-                                style={{ width: `${percentage}%` }}
-                              ></div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <span className="text-xs text-[var(--color-body)]">Filter Salesperson:</span>
+                    <select
+                      value={selectedSalespersonTaskFilter}
+                      onChange={(e) => setSelectedSalespersonTaskFilter(e.target.value)}
+                      className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-heading)] focus:outline-none"
+                    >
+                      <option value="all">All Salespersons</option>
+                      {employees
+                        .filter((emp) => emp.role === "salesperson")
+                        .map((emp) => (
+                          <option key={emp.userId} value={emp.userId}>
+                            {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
                 </div>
 
-                <h3 className="text-lg font-bold text-[var(--color-heading)]">
-                  Salesperson Detailed Cards
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-2 border-l-4 border-l-amber-500">
+                    <span className="text-xs font-semibold text-amber-600 uppercase tracking-wide">Pending Call / Review</span>
+                    <h4 className="text-2xl font-bold text-[var(--color-heading)]">
+                      {performanceStats.reduce((acc, curr) => acc + (curr.pendingDeals || 0), 0)} Deals
+                    </h4>
+                    <p className="text-xs text-[var(--color-body)]">Invoices waiting for accountant/admin approval.</p>
+                  </div>
+
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-2 border-l-4 border-l-blue-500">
+                    <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Active Pipeline Deals</span>
+                    <h4 className="text-2xl font-bold text-[var(--color-heading)]">
+                      {performanceStats.reduce((acc, curr) => acc + (curr.totalDeals || 0), 0)} Records
+                    </h4>
+                    <p className="text-xs text-[var(--color-body)]">Total institute submissions registered so far.</p>
+                  </div>
+
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-2 border-l-4 border-l-emerald-500">
+                    <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wide">Approved & Converted</span>
+                    <h4 className="text-2xl font-bold text-[var(--color-heading)]">
+                      {performanceStats.reduce((acc, curr) => acc + (curr.approvedDeals || 0), 0)} Clients
+                    </h4>
+                    <p className="text-xs text-[var(--color-body)]">Successfully closed and active subscriptions.</p>
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-bold text-[var(--color-heading)] mt-6">
+                  Detailed Salesperson Action Status
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {performanceStats.map((stat) => (
-                    <div
-                      key={stat.salespersonId || "unassigned"}
-                      className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-3"
-                    >
-                      <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2">
-                        <h4 className="font-bold text-[var(--color-primary)] text-lg">
-                          {stat.salespersonId || "Unassigned"}
-                        </h4>
-                        <span className="text-xs bg-[var(--color-surface)] px-2.5 py-1 rounded-md border border-[var(--color-border)] font-medium">
-                          {stat.totalDeals} Deals Created
-                        </span>
-                      </div>
-                      <div className="text-xs space-y-1.5 text-[var(--color-heading)]">
-                        <div className="flex justify-between">
-                          <span>Approved Deals:</span>{" "}
-                          <strong className="text-emerald-600">
-                            {stat.approvedDeals}
-                          </strong>
+
+                <div className="space-y-4">
+                  {performanceStats
+                    .filter((stat) => selectedSalespersonTaskFilter === "all" || stat.salespersonId === selectedSalespersonTaskFilter)
+                    .map((stat) => {
+                      const empDetails = employees.find((e) => e.userId === stat.salespersonId);
+                      return (
+                        <div
+                          key={stat.salespersonId || "unassigned"}
+                          className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-[var(--color-primary)] text-md">
+                                {empDetails?.name ? empDetails.name : (stat.salespersonId || "Unassigned")}
+                              </h4>
+                              <span className="text-xs bg-[var(--color-surface)] px-2 py-0.5 rounded border border-[var(--color-border)] font-mono">
+                                ID: {stat.salespersonId || "N/A"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[var(--color-body)]">
+                              📧 Email: {empDetails?.email || "N/A"}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap gap-6 text-xs text-[var(--color-heading)] bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-border)]">
+                            <div>
+                              <span>Total Submissions:</span>{" "}
+                              <strong className="text-[var(--color-heading)]">{stat.totalDeals}</strong>
+                            </div>
+                            <div>
+                              <span>Pending Review / Call:</span>{" "}
+                              <strong className="text-amber-600">{stat.pendingDeals}</strong>
+                            </div>
+                            <div>
+                              <span>Completed Demos/Deals:</span>{" "}
+                              <strong className="text-emerald-600">{stat.approvedDeals}</strong>
+                            </div>
+                            <div>
+                              <span>Rejected / Follow-up:</span>{" "}
+                              <strong className="text-red-500">{stat.rejectedDeals}</strong>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleViewEmployeeDetails(stat.salespersonId || "null")}
+                            className="bg-purple-600/10 hover:bg-purple-600/20 text-purple-700 border border-purple-200 text-xs py-2 px-4 rounded-xl font-semibold transition cursor-pointer whitespace-nowrap"
+                          >
+                            🔍 Track Full Activity Logs
+                          </button>
                         </div>
-                        <div className="flex justify-between">
-                          <span>Pending Approval:</span>{" "}
-                          <strong className="text-amber-600">
-                            {stat.pendingDeals}
-                          </strong>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Rejected Deals:</span>{" "}
-                          <strong className="text-red-500">
-                            {stat.rejectedDeals}
-                          </strong>
-                        </div>
-                      </div>
-                      <div className="bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-border)] text-xs space-y-1">
-                        <div className="flex justify-between">
-                          <span>Total Revenue:</span>{" "}
-                          <strong>
-                            ₹{stat.totalBusiness?.toLocaleString("en-IN") || 0}
-                          </strong>
-                        </div>
-                        <div className="flex justify-between text-emerald-600">
-                          <span>Collected:</span>{" "}
-                          <strong>
-                            ₹{stat.totalPaid?.toLocaleString("en-IN") || 0}
-                          </strong>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() =>
-                          handleViewEmployeeDetails(stat.salespersonId || "null")
-                        }
-                        className="w-full bg-purple-600/10 hover:bg-purple-600/20 text-purple-700 border border-purple-200 text-xs py-2 rounded-xl font-semibold transition cursor-pointer"
-                      >
-                        🔍 View Full Activity & Location Logs
-                      </button>
-                    </div>
-                  ))}
+                      );
+                    })}
                 </div>
               </div>
             )}
 
-            {/* TAB 2: MANAGE TEAM */}
+            {/* TAB 2: TEAM DIRECTORY & DEAL RECORDS SEARCH */}
+            {activeTab === "directory" && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-4 rounded-2xl border border-[var(--color-border)] shadow-sm gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">
+                      Search Salesperson & Deal Records
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)]">
+                      Type name or ID to view individual deal history and manage records.
+                    </p>
+                  </div>
+                  <div className="w-full sm:w-80">
+                    <input
+                      type="text"
+                      placeholder="🔍 Search by Salesperson Name or ID..."
+                      value={directorySearch}
+                      onChange={(e) => setDirectorySearch(e.target.value)}
+                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                    />
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-bold text-[var(--color-heading)]">
+                  Salesperson Cards & Deal Summaries ({filteredDirectoryStats.length})
+                </h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredDirectoryStats.map((stat) => {
+                    const matchedEmp = employees.find((e) => e.userId === stat.salespersonId);
+                    return (
+                      <div
+                        key={stat.salespersonId || "unassigned"}
+                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-3"
+                      >
+                        <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2">
+                          <div>
+                            <h4 className="font-bold text-[var(--color-primary)] text-lg">
+                              {matchedEmp?.name ? `${matchedEmp.name}` : (stat.salespersonId || "Unassigned")}
+                            </h4>
+                            <span className="text-[11px] text-[var(--color-body)] font-mono">
+                              ID: {stat.salespersonId || "N/A"}
+                            </span>
+                          </div>
+                          <span className="text-xs bg-[var(--color-surface)] px-2.5 py-1 rounded-md border border-[var(--color-border)] font-medium">
+                            {stat.totalDeals} Total Deals
+                          </span>
+                        </div>
+                        <div className="text-xs space-y-1.5 text-[var(--color-heading)]">
+                          <div className="flex justify-between">
+                            <span>Approved Deals:</span>{" "}
+                            <strong className="text-emerald-600">
+                              {stat.approvedDeals}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Pending Approval:</span>{" "}
+                            <strong className="text-amber-600">
+                              {stat.pendingDeals}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Rejected Deals:</span>{" "}
+                            <strong className="text-red-500">
+                              {stat.rejectedDeals}
+                            </strong>
+                          </div>
+                        </div>
+                        <div className="bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-border)] text-xs space-y-1">
+                          <div className="flex justify-between">
+                            <span>Total Revenue:</span>{" "}
+                            <strong>
+                              ₹{stat.totalBusiness?.toLocaleString("en-IN") || 0}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between text-emerald-600">
+                            <span>Collected:</span>{" "}
+                            <strong>
+                              ₹{stat.totalPaid?.toLocaleString("en-IN") || 0}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            onClick={() =>
+                              handleViewEmployeeDetails(stat.salespersonId || "null")
+                            }
+                            className="flex-1 bg-purple-600/10 hover:bg-purple-600/20 text-purple-700 border border-purple-200 text-xs py-2 rounded-xl font-semibold transition cursor-pointer text-center"
+                          >
+                            👁️ View Deals History
+                          </button>
+
+                          {stat.salespersonId && stat.salespersonId !== "Unassigned" && stat.salespersonId !== userId && (
+                            <button
+                              onClick={() => handleDeleteEmployee(stat.salespersonId)}
+                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 text-xs px-3 py-2 rounded-xl font-medium transition cursor-pointer"
+                            >
+                              ❌ Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* TAB 3: MANAGE TEAM */}
             {activeTab === "employees" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
@@ -551,65 +687,96 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 </div>
 
                 <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-                  <h3 className="text-md font-bold text-[var(--color-heading)]">
-                    Active Team Members ({employees.length})
-                  </h3>
-                  <div className="divide-y divide-[var(--color-border)]">
-                    {employees.map((emp) => (
-                      <div
-                        key={emp._id}
-                        className="py-3 flex justify-between items-center"
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                    <h3 className="text-md font-bold text-[var(--color-heading)]">
+                      Active Team Members ({filteredEmployees.length} / {employees.length})
+                    </h3>
+
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                      <select
+                        value={selectedRoleFilter}
+                        onChange={(e) => setSelectedRoleFilter(e.target.value)}
+                        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-heading)] focus:outline-none"
                       >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <strong className="text-[var(--color-heading)] text-sm">
-                              {emp.name || emp.userId}
-                            </strong>
-                            <span className="text-xs text-[var(--color-body)]">
-                              ({emp.userId})
-                            </span>
-                            <span
-                              className={`text-xs px-2 py-0.5 rounded-md uppercase font-semibold ${emp.role === "accountant" ? "bg-amber-500/10 text-amber-600 border border-amber-200" : "bg-blue-500/10 text-blue-600 border border-blue-200"}`}
-                            >
-                              {emp.role}
-                            </span>
-                          </div>
-                          {emp.email && (
-                            <p className="text-xs text-[var(--color-body)] mt-0.5">
-                              {emp.email}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          {emp.role === "salesperson" && (
-                            <button
-                              onClick={() =>
-                                handleViewEmployeeDetails(emp.userId)
-                              }
-                              className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 text-xs px-3 py-1.5 rounded-lg border border-purple-200 transition cursor-pointer font-medium"
-                            >
-                              👁️ History
-                            </button>
-                          )}
-                          {emp.userId !== userId && (
-                            <button
-                              onClick={() =>
-                                handleDeleteEmployee(emp._id, emp.userId)
-                              }
-                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 text-xs px-3 py-1.5 rounded-lg transition cursor-pointer font-medium"
-                            >
-                              ❌ Delete
-                            </button>
-                          )}
-                        </div>
+                        <option value="all">All Roles</option>
+                        <option value="salesperson">Salesperson Only</option>
+                        <option value="accountant">Accountant Only</option>
+                      </select>
+
+                      <div className="relative w-full sm:w-56">
+                        <input
+                          type="text"
+                          placeholder="🔍 Search name/ID..."
+                          value={employeeSearch}
+                          onChange={(e) => setEmployeeSearch(e.target.value)}
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        />
                       </div>
-                    ))}
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-[var(--color-border)] max-h-[400px] overflow-y-auto">
+                    {filteredEmployees.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-[var(--color-body)]">
+                        No team members found matching your search.
+                      </div>
+                    ) : (
+                      filteredEmployees.map((emp) => (
+                        <div
+                          key={emp._id}
+                          className="py-3 flex justify-between items-center"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <strong className="text-[var(--color-heading)] text-sm">
+                                {emp.name || emp.userId}
+                              </strong>
+                              <span className="text-xs text-[var(--color-body)]">
+                                ({emp.userId})
+                              </span>
+                              <span
+                                className={`text-xs px-2 py-0.5 rounded-md uppercase font-semibold ${emp.role === "accountant" ? "bg-amber-500/10 text-amber-600 border border-amber-200" : "bg-blue-500/10 text-blue-600 border border-blue-200"}`}
+                              >
+                                {emp.role}
+                              </span>
+                            </div>
+                            {emp.email && (
+                              <p className="text-xs text-[var(--color-body)] mt-0.5">
+                                {emp.email}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            {emp.role === "salesperson" && (
+                              <button
+                                onClick={() =>
+                                  handleViewEmployeeDetails(emp.userId)
+                                }
+                                className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 text-xs px-3 py-1.5 rounded-lg border border-purple-200 transition cursor-pointer font-medium"
+                              >
+                                👁️ History
+                              </button>
+                            )}
+                            {emp.userId !== userId && (
+                              <button
+                                onClick={() =>
+                                  handleDeleteEmployee(emp.userId)
+                                }
+                                className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 text-xs px-3 py-1.5 rounded-lg transition cursor-pointer font-medium"
+                              >
+                                ❌ Delete
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* TAB 3: TRANSFER LEADS */}
+            {/* TAB 4: TRANSFER LEADS */}
             {activeTab === "transfer" && (
               <div className="max-w-2xl mx-auto bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-5">
                 <div>
@@ -701,7 +868,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 4: COUPON MANAGEMENT */}
+            {/* TAB 5: COUPONS */}
             {activeTab === "coupons" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
@@ -861,7 +1028,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
           </>
         )}
 
-        {/* MODAL VIEW WITH LIVE GPS VERIFICATION */}
+        {/* MODAL VIEW FOR EMPLOYEE DEALS & LOCATION LOGS */}
         {selectedEmpLogs && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl max-w-3xl w-full p-6 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
@@ -932,7 +1099,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
                           </div>
                         </div>
 
-                        {/* GPS Location Google Maps Direct Link */}
                         {deal.latitude && deal.longitude ? (
                           <div className="bg-emerald-500/10 border border-emerald-300 p-3 rounded-xl flex items-center justify-between text-xs mt-2">
                             <span className="text-emerald-800 font-medium">

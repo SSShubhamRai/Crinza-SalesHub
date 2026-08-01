@@ -16,6 +16,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [salespersonFilter, setSalespersonFilter] = useState("all"); // 🌟 Added Salesperson Filter State
 
   // Individual Add-on Prices
   const ADDON_PRICES = {
@@ -52,7 +53,6 @@ const AccountantPanel = ({ userId, onLogout }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        // Handle both direct array or wrapped object format
         const items = Array.isArray(data) ? data : (data.invoices || []);
         setPendingList(items);
       } else {
@@ -94,13 +94,25 @@ const AccountantPanel = ({ userId, onLogout }) => {
     loadAllData();
   }, []);
 
-  // Filtered lists logic with safety Array checks
+  // 🌟 Extract unique list of salespersons from both lists for the dropdown filter options
+  const allSalespersons = Array.from(
+    new Set([
+      ...pendingList.map((item) => item.salespersonId),
+      ...historyList.map((item) => item.salespersonId),
+    ])
+  ).filter(Boolean);
+
+  // Filtered lists logic with safety Array checks & Salesperson Filtering
   const filteredPendingList = (Array.isArray(pendingList) ? pendingList : []).filter((item) => {
-    return (
+    const matchesSearch =
       item.instituteName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.invoiceId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+      item.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesSalesperson =
+      salespersonFilter === "all" || item.salespersonId === salespersonFilter;
+
+    return matchesSearch && matchesSalesperson;
   });
 
   const filteredHistoryList = (Array.isArray(historyList) ? historyList : []).filter((item) => {
@@ -108,9 +120,14 @@ const AccountantPanel = ({ userId, onLogout }) => {
       item.instituteName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.invoiceId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
     const matchesStatus =
       statusFilter === "all" || item.status === statusFilter;
-    return matchesSearch && matchesStatus;
+
+    const matchesSalesperson =
+      salespersonFilter === "all" || item.salespersonId === salespersonFilter;
+
+    return matchesSearch && matchesStatus && matchesSalesperson;
   });
 
   // Calculate total automatically when editing baseAmount, coupon or addons in Edit Modal
@@ -350,9 +367,9 @@ const AccountantPanel = ({ userId, onLogout }) => {
           )}
         </div>
 
-        {/* Search and Filter Bar */}
+        {/* Search and Filters Bar */}
         <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-[var(--color-card)] p-4 rounded-2xl border border-[var(--color-border)] shadow-sm">
-          <div className="w-full sm:w-80">
+          <div className="w-full sm:w-72">
             <input
               type="text"
               placeholder="🔍 Search by Institute, ID, or Email..."
@@ -362,22 +379,44 @@ const AccountantPanel = ({ userId, onLogout }) => {
             />
           </div>
 
-          {activeTab === "history" && (
+          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+            {/* 🌟 Salesperson / Employee Filter Dropdown */}
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <span className="text-xs text-[var(--color-body)]">
-                Filter Status:
+                Employee:
               </span>
               <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                value={salespersonFilter}
+                onChange={(e) => setSalespersonFilter(e.target.value)}
                 className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2.5 text-xs text-[var(--color-heading)] focus:outline-none"
               >
-                <option value="all">All Status</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
+                <option value="all">All Employees</option>
+                {allSalespersons.map((emp) => (
+                  <option key={emp} value={emp}>
+                    {emp}
+                  </option>
+                ))}
               </select>
             </div>
-          )}
+
+            {/* Status Filter (History tab only) */}
+            {activeTab === "history" && (
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <span className="text-xs text-[var(--color-body)]">
+                  Status:
+                </span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2.5 text-xs text-[var(--color-heading)] focus:outline-none"
+                >
+                  <option value="all">All Status</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -924,7 +963,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
                           recalculateEditTotal({
                             ...editModalData,
                             addons: updatedAddons,
-                          }),
+                          })
                         );
                       }}
                       className="accent-[var(--color-primary)]"
@@ -945,7 +984,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
                           recalculateEditTotal({
                             ...editModalData,
                             addons: updatedAddons,
-                          }),
+                          })
                         );
                       }}
                       className="accent-[var(--color-primary)]"
@@ -966,7 +1005,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
                           recalculateEditTotal({
                             ...editModalData,
                             addons: updatedAddons,
-                          }),
+                          })
                         );
                       }}
                       className="accent-[var(--color-primary)]"

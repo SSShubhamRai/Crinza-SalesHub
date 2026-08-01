@@ -30,7 +30,8 @@ const verifyToken = require('./middleware/authMiddleware');
 
 const app = express();
 
-// --- Security Middlewares ---
+// --- Security & Proxy Setup ---
+app.set('trust proxy', 1); // 🌟 Fixes Render proxy rate limit error
 app.use(helmet()); 
 app.use(cors());
 app.use(express.json());
@@ -75,6 +76,20 @@ const loginLimiter = rateLimit({
 });
 
 // =========================================================================
+// --- 📋 TASK / CALL / DEMO TRACKING SCHEMA ---
+// =========================================================================
+const taskSchema = new mongoose.Schema({
+  salespersonId: { type: String, required: true },
+  instituteName: { type: String, required: true },
+  taskType: { type: String, enum: ['call', 'demo', 'followup', 'pending'], required: true },
+  notes: { type: String },
+  dueDate: { type: String },
+  status: { type: String, default: 'pending' }, // 'pending' or 'completed'
+  createdAt: { type: Date, default: Date.now }
+});
+const Task = mongoose.model('Task', taskSchema);
+
+// =========================================================================
 // --- 📄 PDF GENERATOR HELPER (Smart Dual Mode: Local & Cloud) ---
 // =========================================================================
 const createInvoicePDF = async (data) => {
@@ -105,10 +120,12 @@ const createInvoicePDF = async (data) => {
       // Render / Production Cloud Mode
       const chromium = require('@sparticuz/chromium');
       const puppeteerCore = require('puppeteer-core');
+      const execPath = await chromium.executablePath();
+
       browser = await puppeteerCore.launch({
         args: chromium.args,
         defaultViewport: chromium.defaultViewport,
-        executablePath: chromium.executablePath,
+        executablePath: execPath, // 🌟 Fixed cloud executable path
         headless: true,
         ignoreHTTPSErrors: true,
       });
@@ -359,7 +376,6 @@ app.get('/api/boss/performance', verifyToken, async (req, res) => {
     }
 
     const stats = await Invoice.aggregate([
-      // 🛠️ Filter out null, undefined, or empty salesperson IDs to prevent ghost entries
       {
         $match: {
           salespersonId: { $exists: true, $ne: null, $ne: "" }
@@ -404,6 +420,19 @@ app.get('/api/boss/employee-details/:salespersonId', verifyToken, async (req, re
     res.json(deals);
   } catch (err) {
     res.status(500).json({ message: 'Failed to fetch employee details', error: err.message });
+  }
+});
+
+// 🌟 Admin Endpoint to view all Tasks / Calls / Demos assigned or created by Salespersons
+app.get('/api/boss/tasks', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    const tasks = await Task.find().sort({ createdAt: -1 });
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch tasks', error: err.message });
   }
 });
 
@@ -515,6 +544,7 @@ app.post('/api/boss/transfer-leads', verifyToken, async (req, res) => {
 
     await Invoice.updateMany({ salespersonId: fromSalesperson }, { $set: { salespersonId: toSalesperson } });
     await Lead.updateMany({ salespersonId: fromSalesperson }, { $set: { salespersonId: toSalesperson } });
+    await Task.updateMany({ salespersonId: fromSalesperson }, { $set: { salespersonId: toSalesperson } });
 
     res.json({ message: `Successfully transferred leads & invoices from ${fromSalesperson} to ${toSalesperson}!` });
   } catch (err) {
@@ -700,6 +730,18 @@ app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), a
     });
 
     await newLead.save();
+
+    // Automatically create a tracking task when a lead follow-up is scheduled
+    if (followUpDate) {
+      await Task.create({
+        salespersonId: req.user.userId,
+        instituteName,
+        taskType: followUpAction?.toLowerCase().includes('demo') ? 'demo' : 'call',
+        notes: notes || `Follow-up scheduled: ${followUpAction}`,
+        dueDate: followUpDate
+      });
+    }
+
     res.status(201).json({ message: 'Lead & Follow-up saved successfully!', lead: newLead });
   } catch (err) {
     res.status(500).json({ message: 'Failed to save lead', error: err.message });
@@ -720,6 +762,38 @@ app.put('/api/salesperson/leads/:id', verifyToken, async (req, res) => {
     res.json({ message: 'Lead updated successfully!', lead: updatedLead });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update lead', error: err.message });
+  }
+});
+
+// 🌟 Salesperson Tasks API (Create/View tasks like calls & demos)
+app.get('/api/salesperson/tasks', verifyToken, async (req, res) => {
+  try {
+    const tasks = await Task.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 });
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch tasks', error: err.message });
+  }
+});
+
+app.post('/api/salesperson/tasks', verifyToken, async (req, res) => {
+  try {
+    const { instituteName, taskType, notes, dueDate } = req.body;
+    if (!instituteName || !taskType) {
+      return res.status(400).json({ message: 'Institute name and task type are required!' });
+    }
+
+    const newTask = new Task({
+      salespersonId: req.user.userId,
+      instituteName,
+      taskType,
+      notes: notes || '',
+      dueDate: dueDate || ''
+    });
+
+    await newTask.save();
+    res.status(201).json({ message: 'Task created successfully!', task: newTask });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to create task', error: err.message });
   }
 });
 
