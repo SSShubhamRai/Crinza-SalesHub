@@ -22,9 +22,9 @@ const InvoiceForm = ({ onLogout }) => {
     gstNo: '',
     packageValidity: '1 Year',
     baseAmount: 15000,
-    subtotalAmount: 15000, // Added to keep track before GST
-    gstAmount: 2700,       // 18% GST on subtotal
-    totalAmount: 17700,    // Subtotal + GST
+    subtotalAmount: 15000, 
+    gstAmount: 2700,      
+    totalAmount: 17700,    
     paidAmount: 0,
     couponCode: '',
     discountAmount: 0,
@@ -90,7 +90,7 @@ const InvoiceForm = ({ onLogout }) => {
     setFormData((prev) => ({
       ...prev,
       subtotalAmount: discountedSubtotal,
-      gstAmount: Math.round(gst * 100) / 100, // rounded to 2 decimal places
+      gstAmount: Math.round(gst * 100) / 100,
       totalAmount: Math.round(calculatedTotal * 100) / 100,
       discountAmount: discount
     }));
@@ -286,16 +286,20 @@ const InvoiceForm = ({ onLogout }) => {
 
   return (
     <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto space-y-6">
+        
         {/* Top Header */}
-        <div className="flex justify-between items-center mb-8 border-b border-[var(--color-border)] pb-5">
+        <div className="flex justify-between items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm">
           <div>
-            <h1 className="text-2xl font-bold text-[var(--color-heading)]">Invoice Generator</h1>
-            <p className="text-[var(--color-body)] text-sm">Create and dispatch automated PDF invoice via email</p>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 mb-1">
+              INVOICE GENERATOR
+            </span>
+            <h1 className="text-2xl font-extrabold text-[var(--color-heading)] tracking-tight">Create Invoice</h1>
+            <p className="text-[var(--color-body)] text-xs mt-0.5">Create and dispatch automated PDF invoice via email</p>
           </div>
           <button
             onClick={onLogout}
-            className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 px-4 py-2 rounded-xl text-sm font-medium transition cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition cursor-pointer"
           >
             Logout
           </button>
@@ -303,98 +307,96 @@ const InvoiceForm = ({ onLogout }) => {
 
         {/* Status Alerts */}
         {status.success && (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-xl mb-6 flex justify-between items-center">
-            <span>{status.success}</span>
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl text-xs font-semibold">
+            {status.success}
           </div>
         )}
         {status.error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-xl mb-6">
+          <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-2xl text-xs font-semibold">
             {status.error}
           </div>
         )}
 
         {/* Invoice Form */}
-        <form onSubmit={handleSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+        <form onSubmit={handleSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-10 space-y-8 shadow-sm">
           
           {/* Section 1: Client Information */}
-          <div>
-            <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider mb-4">1. Client Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">1. Client Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Institute Name *</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Institute Name *</label>
                 <input
                   type="text"
                   name="instituteName"
                   required
                   value={formData.instituteName}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
                   placeholder="Apex Academy"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">App Name *</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">App Name *</label>
                 <input
                   type="text"
                   name="appName"
                   required
                   value={formData.appName}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
                   placeholder="Apex Learning App"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Mobile Number *</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Mobile Number *</label>
                 <input
                   type="tel"
                   name="mobileNo"
                   required
                   value={formData.mobileNo}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
                   placeholder="9876543210"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Client Email (Invoice Recipient) *</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Client Email (Invoice Recipient) *</label>
                 <input
                   type="email"
                   name="email"
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
                   placeholder="client@gmail.com"
                 />
               </div>
 
-              {/* Full Street Address */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Street Address / Landmark *</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Street Address / Landmark *</label>
                 <textarea 
                   name="address" 
                   rows="2" 
                   required 
                   value={formData.address} 
                   onChange={handleChange} 
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" 
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" 
                   placeholder="Office No. 101, ABC Commercial Complex, Main Road"
                 />
               </div>
 
-              {/* State Select Dropdown */}
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">State *</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">State *</label>
                 <select 
                   name="state" 
                   required 
                   value={selectedStateCode} 
                   onChange={handleStateChange} 
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
                 >
                   <option value="">Select State</option>
                   {indianStates.map((st) => (
@@ -405,16 +407,15 @@ const InvoiceForm = ({ onLogout }) => {
                 </select>
               </div>
 
-              {/* City Select Dropdown */}
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">City / District *</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City / District *</label>
                 <select 
                   name="city" 
                   required 
                   disabled={!selectedStateCode}
                   value={formData.city} 
                   onChange={handleCityChange} 
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-50 font-medium"
                 >
                   <option value="">Select City</option>
                   {citiesOfSelectedState.map((ct) => (
@@ -425,10 +426,9 @@ const InvoiceForm = ({ onLogout }) => {
                 </select>
               </div>
 
-              {/* Pincode Input / Dropdown */}
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">
-                  Pincode * {fetchingDetails && <span className="text-xs text-amber-500 ml-1">(Fetching details...)</span>}
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
+                  Pincode * {fetchingDetails && <span className="text-amber-500 ml-1">(Fetching details...)</span>}
                 </label>
                 {availablePincodes.length > 0 ? (
                   <select
@@ -436,7 +436,7 @@ const InvoiceForm = ({ onLogout }) => {
                     required
                     value={formData.pincode}
                     onChange={handleChange}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
                   >
                     <option value="">Select Area Pincode</option>
                     {availablePincodes.map((pin) => (
@@ -451,20 +451,20 @@ const InvoiceForm = ({ onLogout }) => {
                     required 
                     value={formData.pincode} 
                     onChange={handleChange} 
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]" 
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]" 
                     placeholder="Enter 6-digit Pincode" 
                   />
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">GST Number</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">GST Number</label>
                 <input
                   type="text"
                   name="gstNo"
                   value={formData.gstNo}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)] font-mono"
                   placeholder="27AAAAA0000A1Z5 (Optional)"
                 />
               </div>
@@ -474,17 +474,17 @@ const InvoiceForm = ({ onLogout }) => {
           <hr className="border-[var(--color-border)]" />
 
           {/* Section 2: Package & Pricing */}
-          <div>
-            <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider mb-4">2. Billing & Package</h3>
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">2. Billing & Package</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Validity Package</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Validity Package</label>
                 <select
                   name="packageValidity"
                   value={formData.packageValidity}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)] cursor-pointer"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)] cursor-pointer font-medium"
                 >
                   <option value="6 Months">6 Months</option>
                   <option value="1 Year">1 Year</option>
@@ -494,35 +494,35 @@ const InvoiceForm = ({ onLogout }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Base Price (₹)</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Base Price (₹)</label>
                 <input
                   type="number"
                   name="baseAmount"
                   value={formData.baseAmount}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Paid Amount (₹)</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Paid Amount (₹)</label>
                 <input
                   type="number"
                   name="paidAmount"
                   value={formData.paidAmount}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
                 />
               </div>
             </div>
 
             {/* Addon Checkboxes */}
-            <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-4">
-              <label className="block text-xs font-semibold mb-3 text-[var(--color-primary)] uppercase tracking-wider">
+            <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">
+              <label className="block text-[11px] font-semibold text-[var(--color-primary)] uppercase tracking-wider">
                 🎁 Select Add-on Packages
               </label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-[var(--color-heading)]">
-                <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary-light)] transition">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-[var(--color-heading)]">
+                <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition">
                   <input
                     type="checkbox"
                     name="testModule"
@@ -533,7 +533,7 @@ const InvoiceForm = ({ onLogout }) => {
                   <span>Test Series Module <strong className="text-[var(--color-primary)] font-semibold">(+₹5,000)</strong></span>
                 </label>
 
-                <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary-light)] transition">
+                <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition">
                   <input
                     type="checkbox"
                     name="windowApp"
@@ -544,7 +544,7 @@ const InvoiceForm = ({ onLogout }) => {
                   <span>Windows Desktop App <strong className="text-[var(--color-primary)] font-semibold">(+₹5,000)</strong></span>
                 </label>
 
-                <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary-light)] transition">
+                <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition">
                   <input
                     type="checkbox"
                     name="iosApp"
@@ -558,8 +558,8 @@ const InvoiceForm = ({ onLogout }) => {
             </div>
 
             {/* Coupon Code Section */}
-            <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-4">
-              <label className="block text-xs font-semibold mb-2 text-[var(--color-primary)] uppercase tracking-wider">
+            <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-2">
+              <label className="block text-[11px] font-semibold text-[var(--color-primary)] uppercase tracking-wider">
                 🏷️ Apply Promo / Coupon Code
               </label>
               <div className="flex gap-2">
@@ -569,13 +569,13 @@ const InvoiceForm = ({ onLogout }) => {
                   disabled={isCouponApplied}
                   onChange={(e) => setCouponInput(e.target.value)}
                   placeholder="Enter Coupon (e.g. FLAT50)" 
-                  className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-60"
+                  className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-60 font-mono font-bold"
                 />
                 {!isCouponApplied ? (
                   <button 
                     type="button" 
                     onClick={handleApplyCoupon}
-                    className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white text-sm px-4 py-2.5 rounded-xl transition font-medium cursor-pointer"
+                    className="bg-[var(--color-primary)] hover:opacity-90 text-white text-xs px-5 py-2.5 rounded-xl transition font-semibold cursor-pointer shadow-sm"
                   >
                     Apply
                   </button>
@@ -583,22 +583,22 @@ const InvoiceForm = ({ onLogout }) => {
                   <button 
                     type="button" 
                     onClick={handleRemoveCoupon}
-                    className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 text-sm px-4 py-2.5 rounded-xl transition font-medium cursor-pointer"
+                    className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-5 py-2.5 rounded-xl transition font-semibold cursor-pointer"
                   >
                     Remove
                   </button>
                 )}
               </div>
-              {couponError && <p className="text-xs text-red-500 mt-1.5">{couponError}</p>}
+              {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
               {isCouponApplied && couponDetails && (
-                <p className="text-xs text-emerald-600 font-medium mt-1.5">
+                <p className="text-xs text-emerald-600 font-medium mt-1">
                   🎉 Coupon "{couponDetails.code}" applied! {couponDetails.discountType === 'percentage' ? `${couponDetails.discountValue}%` : `₹${couponDetails.discountValue}`} discount added.
                 </p>
               )}
             </div>
 
             {/* Price Breakdown Banner */}
-            <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] space-y-2 text-sm text-[var(--color-heading)]">
+            <div className="bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] space-y-2 text-xs text-[var(--color-heading)]">
               <div className="flex justify-between">
                 <span className="text-[var(--color-body)]">Subtotal (Base + Add-ons {isCouponApplied ? '- Discount' : ''}):</span>
                 <span className="font-medium">₹{formData.subtotalAmount.toLocaleString('en-IN')}</span>
@@ -607,17 +607,17 @@ const InvoiceForm = ({ onLogout }) => {
                 <span className="text-[var(--color-body)]">GST (18%):</span>
                 <span className="font-medium">₹{formData.gstAmount.toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex justify-between items-center pt-1">
-                <span className="font-semibold text-[var(--color-heading)]">Grand Total (Incl. GST):</span>
-                <span className="text-lg font-bold text-[var(--color-primary)]">
+              <div className="flex justify-between items-center pt-1 text-sm">
+                <span className="font-bold text-[var(--color-heading)]">Grand Total (Incl. GST):</span>
+                <span className="text-base font-extrabold text-[var(--color-primary)]">
                   ₹{formData.totalAmount.toLocaleString('en-IN')}
                 </span>
               </div>
             </div>
 
             {/* Payment Proof File Upload */}
-            <div className="mt-4 p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary)]/40 rounded-xl">
-              <label className="block text-sm font-medium mb-2 text-[var(--color-heading)]">
+            <div className="p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary)]/40 rounded-2xl space-y-2">
+              <label className="block text-xs font-semibold text-[var(--color-heading)]">
                 📸 Payment Proof / Screenshot *
               </label>
               <input
@@ -625,14 +625,14 @@ const InvoiceForm = ({ onLogout }) => {
                 accept="image/*"
                 required
                 onChange={handleFileChange}
-                className="block w-full text-sm text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
+                className="block w-full text-xs text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
               />
             </div>
 
             {/* Auto Calculated Balance Banner */}
-            <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] flex justify-between items-center">
-              <span className="text-[var(--color-body)] text-sm">Calculated Due Amount:</span>
-              <span className={`text-xl font-bold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+            <div className="bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] flex justify-between items-center text-xs">
+              <span className="text-[var(--color-body)] font-medium">Calculated Due Amount:</span>
+              <span className={`text-sm font-bold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                 ₹{dueAmount.toLocaleString('en-IN')}
               </span>
             </div>
@@ -641,21 +641,21 @@ const InvoiceForm = ({ onLogout }) => {
           <hr className="border-[var(--color-border)]" />
 
           {/* Section 3: T&C */}
-          <div>
-            <label className="block text-sm font-medium mb-1.5 text-[var(--color-heading)]">Terms and Conditions</label>
+          <div className="space-y-2 text-xs">
+            <label className="block font-medium text-[var(--color-heading)]">Terms and Conditions</label>
             <textarea
               name="termsAndConditions"
               rows="3"
               value={formData.termsAndConditions}
               onChange={handleChange}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)] text-sm"
+              className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)] text-xs"
             />
           </div>
 
           <button
             type="submit"
             disabled={status.loading}
-            className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-semibold py-3.5 rounded-xl transition duration-200 cursor-pointer disabled:opacity-50 shadow-md shadow-[var(--color-primary)]/20"
+            className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition duration-200 cursor-pointer disabled:opacity-50 shadow-sm text-xs"
           >
             {status.loading ? 'Submitting Request...' : 'Generate & Send Invoice Request'}
           </button>

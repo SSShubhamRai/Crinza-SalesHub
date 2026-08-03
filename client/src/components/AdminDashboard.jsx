@@ -17,7 +17,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [activeTab, setActiveTab] = useState("tracker");
   const [employees, setEmployees] = useState([]);
   const [performanceStats, setPerformanceStats] = useState([]);
-  const [tasksList, setTasksList] = useState([]); // 🌟 State for salesperson tasks (calls/demos)
+  const [tasksList, setTasksList] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // 🔍 Search & Tracker Filter States
@@ -82,7 +82,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
       const stats = await statsRes.json();
       setPerformanceStats(stats);
 
-      // 🌟 Fetch real-time tasks (calls, demos, follow-ups)
       const tasksRes = await fetch(`${API_BASE}/api/boss/tasks`, { headers });
       if (tasksRes.ok) {
         const tasksData = await tasksRes.json();
@@ -127,7 +126,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  // 🔄 Handler for executing single deal transfer
   const handleExecuteSingleDealTransfer = async () => {
     if (!targetSalesperson) {
       toast.error("Please select a salesperson!");
@@ -228,7 +226,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  // 🔄 Fetch leads for granular transfer when source changes
   const fetchSalespersonLeadsForTransfer = async (empId) => {
     setLoadingSourceLeads(true);
     setSelectedLeadIds([]);
@@ -386,7 +383,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
     return matchesSearch && matchesRole;
   });
 
-  // 🌟 Filter tasks based on selected salesperson dropdown
   const filteredTasksList = tasksList.filter((task) => {
     if (selectedSalespersonTaskFilter === "all") return true;
     return task.salespersonId === selectedSalespersonTaskFilter;
@@ -395,57 +391,68 @@ const AdminDashboard = ({ userId, onLogout }) => {
   return (
     <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
+        
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-5 gap-4">
-          <div>
-            <span className="text-xs bg-purple-500/10 text-purple-600 px-3 py-1 rounded-full font-semibold border border-purple-200">
-              👑 ADMIN PORTAL
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm gap-4">
+          <div className="space-y-1">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-600 border border-purple-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+              ADMIN PORTAL
             </span>
-            <h1 className="text-2xl font-bold text-[var(--color-heading)] mt-1">
+            <h1 className="text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1">
               Company Operations Dashboard
             </h1>
             <p className="text-[var(--color-body)] text-xs">
-              Logged in as Admin:{" "}
-              <strong className="text-[var(--color-primary)]">{userId}</strong>
+              Logged in as Admin: <strong className="text-[var(--color-primary)]">{userId}</strong>
             </p>
           </div>
           <button
             onClick={onLogout}
-            className="bg-red-500/15 hover:bg-red-500/20 text-red-600 border border-red-200 px-4 py-2 rounded-xl text-sm font-medium transition cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2"
           >
             Logout
           </button>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex gap-2 border-b border-[var(--color-border)] pb-2 overflow-x-auto">
+        {/* Navigation Tabs Bar */}
+        <div className="flex gap-2 p-1.5 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm overflow-x-auto">
           <button
             onClick={() => setActiveTab("tracker")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "tracker" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
+              activeTab === "tracker" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
           >
-            📋 Team Task & Activity Tracker
+            📋 Task Tracker
           </button>
           <button
             onClick={() => setActiveTab("directory")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "directory" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
+              activeTab === "directory" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
           >
-            👥 Team Directory & Deal Records
+            👥 Team Directory & Deals
           </button>
           <button
             onClick={() => setActiveTab("employees")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "employees" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
+              activeTab === "employees" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
           >
-            ➕ Manage Team (Add/Remove)
+            ➕ Manage Team
           </button>
           <button
             onClick={() => setActiveTab("transfer")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "transfer" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
+              activeTab === "transfer" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
           >
             🔄 Transfer Leads
           </button>
           <button
             onClick={() => setActiveTab("coupons")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "coupons" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
+              activeTab === "coupons" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
           >
             🎟️ Discount Coupons
           </button>
@@ -453,11 +460,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
         {loading ? (
           <div className="space-y-4 animate-pulse">
-            <div className="h-20 bg-[var(--color-card)] rounded-2xl border border-[var(--color-border)]"></div>
+            <div className="h-20 bg-[var(--color-card)] rounded-3xl border border-[var(--color-border)]"></div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="h-40 bg-[var(--color-card)] rounded-2xl border border-[var(--color-border)]"></div>
-              <div className="h-40 bg-[var(--color-card)] rounded-2xl border border-[var(--color-border)]"></div>
-              <div className="h-40 bg-[var(--color-card)] rounded-2xl border border-[var(--color-border)]"></div>
+              <div className="h-40 bg-[var(--color-card)] rounded-3xl border border-[var(--color-border)]"></div>
+              <div className="h-40 bg-[var(--color-card)] rounded-3xl border border-[var(--color-border)]"></div>
+              <div className="h-40 bg-[var(--color-card)] rounded-3xl border border-[var(--color-border)]"></div>
             </div>
           </div>
         ) : (
@@ -465,21 +472,21 @@ const AdminDashboard = ({ userId, onLogout }) => {
             {/* 🌟 TAB 1: LIVE CALL, DEMO & FOLLOW-UP TASK TRACKER */}
             {activeTab === "tracker" && (
               <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-4 rounded-2xl border border-[var(--color-border)] shadow-sm gap-3">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">
                       📞 Salesperson Call, Demo & Follow-up Schedule
                     </h3> 
-                    <p className="text-xs text-[var(--color-body)]">
-                      See exactly who each salesperson needs to call or give a demo to.
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">
+                      Monitor scheduled calls and client software demos across your team.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <span className="text-xs text-[var(--color-body)]">Filter Salesperson:</span>
+                  <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-2xl border border-[var(--color-border)] w-full sm:w-auto">
+                    <span className="text-[11px] text-[var(--color-body)] font-medium">Employee:</span>
                     <select
                       value={selectedSalespersonTaskFilter}
                       onChange={(e) => setSelectedSalespersonTaskFilter(e.target.value)}
-                      className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-heading)] focus:outline-none"
+                      className="bg-transparent text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer"
                     >
                       <option value="all">All Salespersons</option>
                       {employees
@@ -494,13 +501,15 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="text-lg font-bold text-[var(--color-heading)]">
+                  <h3 className="text-base font-bold text-[var(--color-heading)]">
                     Scheduled Calls & Demos ({filteredTasksList.length})
                   </h3>
 
                   {filteredTasksList.length === 0 ? (
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-12 text-center text-[var(--color-body)] shadow-sm">
-                      No active calls or demos scheduled by salespersons yet.
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
+                      <div className="w-12 h-12 bg-[var(--color-surface)] rounded-full flex items-center justify-center mx-auto text-xl">📭</div>
+                      <h3 className="text-sm font-bold text-[var(--color-heading)]">No Tasks Scheduled</h3>
+                      <p className="text-xs text-[var(--color-body)]">There are no active calls or demos scheduled by salespersons yet.</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -509,26 +518,28 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         return (
                           <div
                             key={task._id}
-                            className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-2.5"
+                            className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-3 hover:border-[var(--color-primary)]/40 transition"
                           >
-                            <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2">
-                              <span className="text-xs font-bold bg-purple-500/10 text-purple-600 px-2.5 py-1 rounded-md border border-purple-200 uppercase">
+                            <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
+                              <span className="text-[10px] font-bold bg-purple-500/10 text-purple-600 px-3 py-1 rounded-xl border border-purple-500/20 uppercase tracking-wider">
                                 👤 {empObj?.name ? `${empObj.name} (${task.salespersonId})` : task.salespersonId}
                               </span>
-                              <span className={`text-xs px-2.5 py-1 rounded-md font-semibold uppercase ${task.taskType === 'demo' ? 'bg-blue-500/10 text-blue-600 border border-blue-200' : 'bg-amber-500/10 text-amber-600 border border-amber-200'}`}>
+                              <span className={`text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wider ${
+                                task.taskType === 'demo' ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                              }`}>
                                 {task.taskType}
                               </span>
                             </div>
 
-                            <div className="text-xs space-y-1.5 text-[var(--color-heading)]">
-                              <p>🏛️ Institute: <strong>{task.instituteName}</strong></p>
+                            <div className="text-xs space-y-2 text-[var(--color-heading)]">
+                              <p>🏛️ Institute: <strong className="text-sm">{task.instituteName}</strong></p>
                               {task.dueDate && (
                                 <p className="text-emerald-600 font-semibold">
                                   📅 Scheduled Date: {new Date(task.dueDate).toLocaleDateString('en-IN')}
                                 </p>
                               )}
                               {task.notes && (
-                                <p className="text-[var(--color-body)] bg-[var(--color-surface)] p-2.5 rounded-xl border border-[var(--color-border)]">
+                                <p className="text-[var(--color-body)] bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-border)]">
                                   📝 Notes: {task.notes}
                                 </p>
                               )}
@@ -545,27 +556,28 @@ const AdminDashboard = ({ userId, onLogout }) => {
             {/* TAB 2: TEAM DIRECTORY & DEAL RECORDS SEARCH */}
             {activeTab === "directory" && (
               <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-4 rounded-2xl border border-[var(--color-border)] shadow-sm gap-3">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3">
                   <div>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">
                       Search Salesperson & Deal Records
                     </h3>
-                    <p className="text-xs text-[var(--color-body)]">
-                      Type name or ID to view individual deal history and manage records.
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">
+                      Look up salesperson performance, revenue history, and deal pipelines.
                     </p>
                   </div>
-                  <div className="w-full sm:w-80">
+                  <div className="w-full sm:w-80 relative">
                     <input
                       type="text"
-                      placeholder="🔍 Search by Salesperson Name or ID..."
+                      placeholder="Search by Salesperson Name or ID..."
                       value={directorySearch}
                       onChange={(e) => setDirectorySearch(e.target.value)}
-                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl pl-10 pr-4 py-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                     />
+                    <span className="absolute left-3.5 top-3.5 text-xs text-[var(--color-body)]">🔍</span>
                   </div>
                 </div>
 
-                <h3 className="text-lg font-bold text-[var(--color-heading)]">
+                <h3 className="text-base font-bold text-[var(--color-heading)]">
                   Salesperson Cards & Deal Summaries ({filteredDirectoryStats.length})
                 </h3>
 
@@ -575,62 +587,52 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     return (
                       <div
                         key={stat.salespersonId || "unassigned"}
-                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-3"
+                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 hover:border-[var(--color-primary)]/40 transition"
                       >
-                        <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2">
+                        <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
                           <div>
-                            <h4 className="font-bold text-[var(--color-primary)] text-lg">
+                            <h4 className="font-extrabold text-[var(--color-heading)] text-base">
                               {matchedEmp?.name ? `${matchedEmp.name}` : (stat.salespersonId || "Unassigned")}
                             </h4>
-                            <span className="text-[11px] text-[var(--color-body)] font-mono">
+                            <span className="text-[10px] text-[var(--color-body)] font-mono">
                               ID: {stat.salespersonId || "N/A"}
                             </span>
                           </div>
-                          <span className="text-xs bg-[var(--color-surface)] px-2.5 py-1 rounded-md border border-[var(--color-border)] font-medium">
-                            {stat.totalDeals} Total Deals
+                          <span className="text-[10px] bg-[var(--color-surface)] px-3 py-1 rounded-xl border border-[var(--color-border)] font-semibold">
+                            {stat.totalDeals} Deals
                           </span>
                         </div>
-                        <div className="text-xs space-y-1.5 text-[var(--color-heading)]">
-                          <div className="flex justify-between">
-                            <span>Approved Deals:</span>{" "}
-                            <strong className="text-emerald-600">
-                              {stat.approvedDeals}
-                            </strong>
+
+                        <div className="grid grid-cols-3 gap-2 text-center text-xs bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-border)]">
+                          <div>
+                            <span className="text-[10px] text-[var(--color-body)] block">Approved</span>
+                            <strong className="text-emerald-600 text-sm">{stat.approvedDeals}</strong>
                           </div>
-                          <div className="flex justify-between">
-                            <span>Pending Approval:</span>{" "}
-                            <strong className="text-amber-600">
-                              {stat.pendingDeals}
-                            </strong>
+                          <div className="border-x border-[var(--color-border)]">
+                            <span className="text-[10px] text-[var(--color-body)] block">Pending</span>
+                            <strong className="text-amber-600 text-sm">{stat.pendingDeals}</strong>
                           </div>
-                          <div className="flex justify-between">
-                            <span>Rejected Deals:</span>{" "}
-                            <strong className="text-red-500">
-                              {stat.rejectedDeals}
-                            </strong>
+                          <div>
+                            <span className="text-[10px] text-[var(--color-body)] block">Rejected</span>
+                            <strong className="text-red-500 text-sm">{stat.rejectedDeals}</strong>
                           </div>
                         </div>
-                        <div className="bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-border)] text-xs space-y-1">
+
+                        <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] text-xs space-y-1.5 font-medium">
                           <div className="flex justify-between">
-                            <span>Total Revenue:</span>{" "}
-                            <strong>
-                              ₹{stat.totalBusiness?.toLocaleString("en-IN") || 0}
-                            </strong>
+                            <span className="text-[var(--color-body)]">Total Revenue:</span>
+                            <strong className="text-[var(--color-heading)]">₹{stat.totalBusiness?.toLocaleString("en-IN") || 0}</strong>
                           </div>
                           <div className="flex justify-between text-emerald-600">
-                            <span>Collected:</span>{" "}
-                            <strong>
-                              ₹{stat.totalPaid?.toLocaleString("en-IN") || 0}
-                            </strong>
+                            <span>Collected:</span>
+                            <strong>₹{stat.totalPaid?.toLocaleString("en-IN") || 0}</strong>
                           </div>
                         </div>
 
                         <div className="flex gap-2 pt-1">
                           <button
-                            onClick={() =>
-                              handleViewEmployeeDetails(stat.salespersonId || "null")
-                            }
-                            className="flex-1 bg-purple-600/10 hover:bg-purple-600/20 text-purple-700 border border-purple-200 text-xs py-2 rounded-xl font-semibold transition cursor-pointer text-center"
+                            onClick={() => handleViewEmployeeDetails(stat.salespersonId || "null")}
+                            className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border border-purple-500/20 text-xs py-2.5 rounded-xl font-semibold transition cursor-pointer text-center"
                           >
                             👁️ View Deals History
                           </button>
@@ -638,9 +640,9 @@ const AdminDashboard = ({ userId, onLogout }) => {
                           {stat.salespersonId && stat.salespersonId !== "Unassigned" && stat.salespersonId !== userId && (
                             <button
                               onClick={() => handleDeleteEmployee(stat.salespersonId)}
-                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 text-xs px-3 py-2 rounded-xl font-medium transition cursor-pointer"
+                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-3.5 py-2.5 rounded-xl font-semibold transition cursor-pointer"
                             >
-                              ❌ Delete
+                              ❌
                             </button>
                           )}
                         </div>
@@ -654,108 +656,88 @@ const AdminDashboard = ({ userId, onLogout }) => {
             {/* TAB 3: MANAGE TEAM */}
             {activeTab === "employees" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-                  <h3 className="text-md font-bold text-[var(--color-primary)] uppercase tracking-wider">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
+                  <h3 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">
                     ➕ Add Team Member
                   </h3>
                   {empStatus.success && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-xl text-xs">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-2xl text-xs font-semibold">
                       {empStatus.success}
                     </div>
                   )}
                   {empStatus.error && (
-                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-xl text-xs">
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-2xl text-xs font-semibold">
                       {empStatus.error}
                     </div>
                   )}
-                  <form onSubmit={handleAddEmployee} className="space-y-3">
+                  <form onSubmit={handleAddEmployee} className="space-y-3 text-xs">
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
-                        Account Type / Role *
-                      </label>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Account Role *</label>
                       <select
                         value={newEmp.role}
-                        onChange={(e) =>
-                          setNewEmp({ ...newEmp, role: e.target.value })
-                        }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)] font-semibold"
+                        onChange={(e) => setNewEmp({ ...newEmp, role: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)]"
                       >
                         <option value="salesperson">👤 Salesperson</option>
                         <option value="accountant">📑 Accountant</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
-                        Full Name *
-                      </label>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Full Name *</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. Rahul Sharma"
                         value={newEmp.name}
-                        onChange={(e) =>
-                          setNewEmp({ ...newEmp, name: e.target.value })
-                        }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)]"
+                        onChange={(e) => setNewEmp({ ...newEmp, name: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
-                        Email Address *
-                      </label>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Email Address *</label>
                       <input
                         type="email"
                         required
                         placeholder="e.g. rahul@crinza.com"
                         value={newEmp.email}
-                        onChange={(e) =>
-                          setNewEmp({ ...newEmp, email: e.target.value })
-                        }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)]"
+                        onChange={(e) => setNewEmp({ ...newEmp, email: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
-                        User ID / Code *
-                      </label>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">User ID / Code *</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. EMP105"
                         value={newEmp.userId}
-                        onChange={(e) =>
-                          setNewEmp({ ...newEmp, userId: e.target.value })
-                        }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)]"
+                        onChange={(e) => setNewEmp({ ...newEmp, userId: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
-                        Password *
-                      </label>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Password *</label>
                       <input
                         type="text"
                         required
                         placeholder="e.g. Pass@123"
                         value={newEmp.password}
-                        onChange={(e) =>
-                          setNewEmp({ ...newEmp, password: e.target.value })
-                        }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)]"
+                        onChange={(e) => setNewEmp({ ...newEmp, password: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
                     <button
                       type="submit"
-                      className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white text-sm font-semibold py-2.5 rounded-xl transition cursor-pointer shadow-md"
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white text-xs font-semibold py-3 rounded-2xl transition cursor-pointer shadow-sm"
                     >
                       Create Account
                     </button>
                   </form>
                 </div>
 
-                <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <h3 className="text-md font-bold text-[var(--color-heading)]">
+                <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
+                    <h3 className="text-base font-bold text-[var(--color-heading)]">
                       Active Team Members ({filteredEmployees.length} / {employees.length})
                     </h3>
 
@@ -763,52 +745,52 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       <select
                         value={selectedRoleFilter}
                         onChange={(e) => setSelectedRoleFilter(e.target.value)}
-                        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-heading)] focus:outline-none"
+                        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer"
                       >
                         <option value="all">All Roles</option>
                         <option value="salesperson">Salesperson Only</option>
                         <option value="accountant">Accountant Only</option>
                       </select>
 
-                      <div className="relative w-full sm:w-56">
-                        <input
-                          type="text"
-                          placeholder="🔍 Search name/ID..."
-                          value={employeeSearch}
-                          onChange={(e) => setEmployeeSearch(e.target.value)}
-                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-                        />
-                      </div>
+                      <input
+                        type="text"
+                        placeholder="Search name/ID..."
+                        value={employeeSearch}
+                        onChange={(e) => setEmployeeSearch(e.target.value)}
+                        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                      />
                     </div>
                   </div>
 
-                  <div className="divide-y divide-[var(--color-border)] max-h-[400px] overflow-y-auto">
+                  <div className="divide-y divide-[var(--color-border)] max-h-[420px] overflow-y-auto">
                     {filteredEmployees.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-[var(--color-body)]">
+                      <div className="py-12 text-center text-xs text-[var(--color-body)]">
                         No team members found matching your search.
                       </div>
                     ) : (
                       filteredEmployees.map((emp) => (
                         <div
                           key={emp._id}
-                          className="py-3 flex justify-between items-center"
+                          className="py-3.5 flex justify-between items-center text-xs"
                         >
                           <div>
                             <div className="flex items-center gap-2">
-                              <strong className="text-[var(--color-heading)] text-sm">
+                              <strong className="text-[var(--color-heading)] text-sm font-bold">
                                 {emp.name || emp.userId}
                               </strong>
-                              <span className="text-xs text-[var(--color-body)]">
+                              <span className="text-[var(--color-body)] font-mono">
                                 ({emp.userId})
                               </span>
                               <span
-                                className={`text-xs px-2 py-0.5 rounded-md uppercase font-semibold ${emp.role === "accountant" ? "bg-amber-500/10 text-amber-600 border border-amber-200" : "bg-blue-500/10 text-blue-600 border border-blue-200"}`}
+                                className={`text-[10px] px-2.5 py-0.5 rounded-full uppercase font-bold tracking-wider ${
+                                  emp.role === "accountant" ? "bg-amber-500/10 text-amber-600 border border-amber-500/20" : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                                }`}
                               >
                                 {emp.role}
                               </span>
                             </div>
                             {emp.email && (
-                              <p className="text-xs text-[var(--color-body)] mt-0.5">
+                              <p className="text-[var(--color-body)] mt-0.5">
                                 {emp.email}
                               </p>
                             )}
@@ -816,20 +798,16 @@ const AdminDashboard = ({ userId, onLogout }) => {
                           <div className="flex gap-2">
                             {emp.role === "salesperson" && (
                               <button
-                                onClick={() =>
-                                  handleViewEmployeeDetails(emp.userId)
-                                }
-                                className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 text-xs px-3 py-1.5 rounded-lg border border-purple-200 transition cursor-pointer font-medium"
+                                onClick={() => handleViewEmployeeDetails(emp.userId)}
+                                className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 text-xs px-3.5 py-2 rounded-xl border border-purple-500/20 transition cursor-pointer font-semibold"
                               >
                                 👁️ History
                               </button>
                             )}
                             {emp.userId !== userId && (
                               <button
-                                onClick={() =>
-                                  handleDeleteEmployee(emp.userId)
-                                }
-                                className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 text-xs px-3 py-1.5 rounded-lg transition cursor-pointer font-medium"
+                                onClick={() => handleDeleteEmployee(emp.userId)}
+                                className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-3.5 py-2 rounded-xl transition cursor-pointer font-semibold"
                               >
                                 ❌ Delete
                               </button>
@@ -843,12 +821,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 4: GRANULAR / SPECIFIC LEAD TRANSFER */}
+            {/* TAB 4: GRANULAR LEAD TRANSFER */}
             {activeTab === "transfer" && (
               <div className="max-w-4xl mx-auto space-y-6">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-5">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
                   <div>
-                    <h3 className="text-lg font-bold text-[var(--color-primary)]">
+                    <h3 className="text-base font-bold text-[var(--color-primary)]">
                       🔄 Transfer Leads
                     </h3>
                     <p className="text-xs text-[var(--color-body)] mt-1">
@@ -857,21 +835,20 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   </div>
 
                   {transferStatus.success && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-xl text-xs">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3.5 rounded-2xl text-xs font-semibold">
                       {transferStatus.success}
                     </div>
                   )}
                   {transferStatus.error && (
-                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-xl text-xs">
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3.5 rounded-2xl text-xs font-semibold">
                       {transferStatus.error}
                     </div>
                   )}
 
-                  <form onSubmit={handleExecuteGranularTransfer} className="space-y-4">
-                    {/* Step 1: Select Source & Target Salesperson */}
+                  <form onSubmit={handleExecuteGranularTransfer} className="space-y-4 text-xs">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">
+                        <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
                           Source Salesperson (From) *
                         </label>
                         <select
@@ -881,7 +858,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             setTransferData({ ...transferData, fromSalesperson: e.target.value });
                             if (e.target.value) fetchSalespersonLeadsForTransfer(e.target.value);
                           }}
-                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-sm text-[var(--color-heading)]"
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
                         >
                           <option value="">Select Salesperson to pick leads from</option>
                           <option value="null">Unassigned / Deleted (null)</option>
@@ -896,14 +873,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">
+                        <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
                           Target Salesperson (To) *
                         </label>
                         <select
                           required
                           value={transferData.toSalesperson}
                           onChange={(e) => setTransferData({ ...transferData, toSalesperson: e.target.value })}
-                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-sm text-[var(--color-heading)]"
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
                         >
                           <option value="">Select Salesperson to assign leads to</option>
                           {employees
@@ -917,11 +894,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       </div>
                     </div>
 
-                    {/* Step 2: Select Specific Leads/Deals via Checkboxes */}
                     {transferData.fromSalesperson && (
                       <div className="space-y-3 pt-4 border-t border-[var(--color-border)]">
                         <div className="flex justify-between items-center">
-                          <h4 className="text-sm font-bold text-[var(--color-heading)]">
+                          <h4 className="font-bold text-[var(--color-heading)]">
                             Select Leads to Transfer ({selectedLeadIds.length} selected)
                           </h4>
                           {sourceLeads.length > 0 && (
@@ -936,17 +912,17 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         </div>
 
                         {loadingSourceLeads ? (
-                          <div className="py-6 text-center text-xs text-[var(--color-body)]">Loading leads...</div>
+                          <div className="py-8 text-center text-xs text-[var(--color-body)]">Loading leads...</div>
                         ) : sourceLeads.length === 0 ? (
-                          <div className="py-6 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-xl">
-                            No active leads/deals found for this salesperson.
+                          <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+                            No active leads found for this salesperson.
                           </div>
                         ) : (
-                          <div className="max-h-60 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-xl bg-[var(--color-surface)]">
+                          <div className="max-h-60 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)]">
                             {sourceLeads.map((lead) => (
                               <label
                                 key={lead._id}
-                                className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] transition cursor-pointer text-xs"
+                                className="flex items-center justify-between p-3 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition cursor-pointer text-xs"
                               >
                                 <div className="flex items-center gap-3">
                                   <input
@@ -956,11 +932,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
                                     className="w-4 h-4 accent-[var(--color-primary)] cursor-pointer"
                                   />
                                   <div>
-                                    <strong className="text-[var(--color-heading)]">{lead.instituteName}</strong>
+                                    <strong className="text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
                                     <span className="text-[var(--color-body)] ml-2">({lead.city || "N/A"})</span>
                                   </div>
                                 </div>
-                                <span className="font-semibold text-emerald-600">₹{lead.totalAmount || 0}</span>
+                                <span className="text-[var(--color-body)] font-medium">📞 {lead.mobileNo || 'N/A'}</span>
                               </label>
                             ))}
                           </div>
@@ -970,7 +946,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
                     <button
                       type="submit"
-                      className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-semibold py-3 rounded-xl transition cursor-pointer shadow-md"
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs"
                     >
                       Transfer Selected Leads ({selectedLeadIds.length})
                     </button>
@@ -982,25 +958,23 @@ const AdminDashboard = ({ userId, onLogout }) => {
             {/* TAB 5: COUPONS */}
             {activeTab === "coupons" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-                  <h3 className="text-md font-bold text-[var(--color-primary)] uppercase tracking-wider">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
+                  <h3 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">
                     🎟️ Generate Coupon
                   </h3>
                   {couponStatus.success && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-xl text-xs">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-2xl text-xs font-semibold">
                       {couponStatus.success}
                     </div>
                   )}
                   {couponStatus.error && (
-                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-xl text-xs">
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-2xl text-xs font-semibold">
                       {couponStatus.error}
                     </div>
                   )}
-                  <form onSubmit={handleCreateCoupon} className="space-y-3">
+                  <form onSubmit={handleCreateCoupon} className="space-y-3 text-xs">
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
-                        Coupon Code *
-                      </label>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Coupon Code *</label>
                       <input
                         type="text"
                         required
@@ -1012,13 +986,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             code: e.target.value.toUpperCase(),
                           })
                         }
-                        className="w-full uppercase bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)] font-semibold"
+                        className="w-full uppercase bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-mono font-bold focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
-                        Discount Type *
-                      </label>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Discount Type *</label>
                       <select
                         value={newCoupon.discountType}
                         onChange={(e) =>
@@ -1027,14 +999,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             discountType: e.target.value,
                           })
                         }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)]"
                       >
                         <option value="percentage">Percentage (%)</option>
                         <option value="flat">Flat Amount (₹)</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">
                         {newCoupon.discountType === "percentage"
                           ? "Percentage Value (e.g. 10) *"
                           : "Amount in Rupees (e.g. 500) *"}
@@ -1053,13 +1025,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             discountValue: e.target.value,
                           })
                         }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">
-                        Expiry Date (Optional)
-                      </label>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Expiry Date (Optional)</label>
                       <input
                         type="date"
                         value={newCoupon.expiryDate}
@@ -1069,36 +1039,36 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             expiryDate: e.target.value,
                           })
                         }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm text-[var(--color-heading)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                       />
                     </div>
                     <button
                       type="submit"
-                      className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white text-sm font-semibold py-2.5 rounded-xl transition cursor-pointer shadow-md"
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white text-xs font-semibold py-3 rounded-2xl transition cursor-pointer shadow-sm"
                     >
                       Generate & Save Coupon
                     </button>
                   </form>
                 </div>
 
-                <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-                  <h3 className="text-md font-bold text-[var(--color-heading)]">
+                <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
+                  <h3 className="text-base font-bold text-[var(--color-heading)]">
                     Active Discount Coupons ({coupons.length})
                   </h3>
                   {coupons.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-xl">
+                    <div className="py-12 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
                       No active discount coupons generated yet.
                     </div>
                   ) : (
-                    <div className="divide-y divide-[var(--color-border)]">
+                    <div className="divide-y divide-[var(--color-border)] max-h-[420px] overflow-y-auto">
                       {coupons.map((coupon) => (
                         <div
                           key={coupon._id}
-                          className="py-3 flex justify-between items-center text-xs"
+                          className="py-3.5 flex justify-between items-center text-xs"
                         >
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-sm bg-purple-500/10 text-purple-600 px-2 py-0.5 rounded border border-purple-200">
+                              <span className="font-mono font-bold text-sm bg-purple-500/10 text-purple-600 px-2.5 py-1 rounded-xl border border-purple-500/20">
                                 {coupon.code}
                               </span>
                               <span className="text-[var(--color-heading)] font-semibold">
@@ -1117,14 +1087,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             </p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-200 px-2.5 py-1 rounded-md font-medium">
+                            <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-xl font-bold text-[10px] uppercase">
                               Active
                             </span>
                             <button
                               onClick={() =>
                                 handleDeleteCoupon(coupon._id, coupon.code)
                               }
-                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 px-3 py-1.5 rounded-lg transition cursor-pointer font-medium"
+                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 px-3.5 py-2 rounded-xl transition cursor-pointer font-semibold"
                             >
                               ❌ Delete
                             </button>
@@ -1142,10 +1112,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
         {/* MODAL VIEW FOR EMPLOYEE DEALS & LOCATION LOGS */}
         {selectedEmpLogs && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl max-w-3xl w-full p-6 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-3xl w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
               <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
                 <div>
-                  <h3 className="text-xl font-bold text-[var(--color-primary)]">
+                  <h3 className="text-lg font-extrabold text-[var(--color-primary)]">
                     Salesperson Activity & Location Report
                   </h3>
                   <p className="text-xs text-[var(--color-body)]">
@@ -1154,98 +1124,76 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 </div>
                 <button
                   onClick={() => setSelectedEmpLogs(null)}
-                  className="text-[var(--color-body)] hover:text-[var(--color-heading)] text-lg cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
               {loadingLogs ? (
-                <div className="py-8 text-center text-sm text-[var(--color-body)]">
+                <div className="py-12 text-center text-xs text-[var(--color-body)]">
                   Fetching full activity logs...
                 </div>
               ) : selectedEmpLogs.deals.length === 0 ? (
-                <div className="py-8 text-center text-sm text-[var(--color-body)] bg-[var(--color-surface)] rounded-xl">
+                <div className="py-12 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
                   No deals or visit records submitted by this salesperson yet.
                 </div>
               ) : (
                 <div className="space-y-4">
                   <p className="text-xs text-[var(--color-body)]">
-                    Showing all <strong>{selectedEmpLogs.deals.length}</strong>{" "}
-                    deal(s) created by this salesperson:
+                    Showing all <strong>{selectedEmpLogs.deals.length}</strong> deal(s) created by this salesperson:
                   </p>
 
                   <div className="space-y-3">
                     {selectedEmpLogs.deals.map((deal) => (
                       <div
                         key={deal._id}
-                        className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-xl space-y-2 text-xs"
+                        className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl space-y-3 text-xs"
                       >
-                        <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[var(--color-border)] pb-2">
+                        <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[var(--color-border)] pb-3">
                           <span className="text-sm font-bold text-[var(--color-heading)]">
                             {deal.instituteName} ({deal.appName})
                           </span>
                           <span
-                            className={`px-2.5 py-0.5 rounded-full font-semibold uppercase ${deal.status === "approved" ? "bg-emerald-500/10 text-emerald-600 border border-emerald-300" : deal.status === "rejected" ? "bg-red-500/10 text-red-500 border border-red-200" : "bg-amber-500/10 text-amber-600 border border-amber-200"}`}
+                            className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${deal.status === "approved" ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" : deal.status === "rejected" ? "bg-red-500/10 text-red-500 border border-red-500/20" : "bg-amber-500/10 text-amber-600 border border-amber-500/20"}`}
                           >
                             {deal.status}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[var(--color-heading)]">
-                          <div>
-                            📍 <strong>Manual Address:</strong>{" "}
-                            {deal.address || "N/A"}
-                          </div>
-                          <div>
-                            🏙️ <strong>City & State:</strong>{" "}
-                            {deal.city || "N/A"}, {deal.state || "N/A"}
-                          </div>
-                          <div>
-                            📮 <strong>Pincode:</strong> {deal.pincode || "N/A"}
-                          </div>
-                          <div>
-                            📞 <strong>Contact:</strong> {deal.mobileNo} |{" "}
-                            {deal.email}
-                          </div>
+                          <div>📍 <strong>Manual Address:</strong> {deal.address || "N/A"}</div>
+                          <div>🏙️ <strong>City & State:</strong> {deal.city || "N/A"}, {deal.state || "N/A"}</div>
+                          <div>📮 <strong>Pincode:</strong> {deal.pincode || "N/A"}</div>
+                          <div>📞 <strong>Contact:</strong> {deal.mobileNo} | {deal.email}</div>
                         </div>
 
                         {deal.latitude && deal.longitude ? (
-                          <div className="bg-emerald-500/10 border border-emerald-300 p-3 rounded-xl flex items-center justify-between text-xs mt-2">
-                            <span className="text-emerald-800 font-medium">
-                              🛰️ <strong>Verified GPS Location:</strong>{" "}
-                              {deal.latitude.toFixed(5)},{" "}
-                              {deal.longitude.toFixed(5)}
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl flex items-center justify-between text-xs mt-2">
+                            <span className="text-emerald-700 font-medium">
+                              🛰️ <strong>Verified GPS:</strong> {deal.latitude.toFixed(5)}, {deal.longitude.toFixed(5)}
                             </span>
                             <a
                               href={`https://www.google.com/maps?q=${deal.latitude},${deal.longitude}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-lg transition shadow-sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-xl transition shadow-sm"
                             >
-                              🗺️ Open in Google Maps
+                              🗺️ Map
                             </a>
                           </div>
                         ) : (
-                          <div className="bg-amber-500/10 border border-amber-200 p-2.5 rounded-xl text-amber-700 text-xs mt-2 font-medium">
-                            ⚠️ GPS Coordinates were not captured for this deal
-                            submission.
+                          <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-2xl text-amber-600 text-xs mt-2 font-medium">
+                            ⚠️ GPS Coordinates were not captured for this deal submission.
                           </div>
                         )}
 
-                        <div className="flex flex-wrap gap-4 pt-2 border-t border-[var(--color-border)]/60 text-xs">
-                          <span>
-                            Total: <strong>₹{deal.totalAmount}</strong>
-                          </span>
-                          <span className="text-emerald-600">
-                            Paid: <strong>₹{deal.paidAmount}</strong>
-                          </span>
-                          <span className="text-red-500">
-                            Due: <strong>₹{deal.dueAmount}</strong>
-                          </span>
+                        <div className="flex flex-wrap gap-4 pt-2 border-t border-[var(--color-border)] text-xs font-medium">
+                          <span>Total: <strong className="text-[var(--color-heading)]">₹{deal.totalAmount}</strong></span>
+                          <span className="text-emerald-600">Paid: <strong>₹{deal.paidAmount}</strong></span>
+                          <span className="text-red-500">Due: <strong>₹{deal.dueAmount}</strong></span>
                         </div>
 
-                        {/* 🌟 User-Friendly Single Deal Transfer Button */}
                         <div className="pt-2 border-t border-[var(--color-border)] flex justify-end">
                           <button
                             type="button"
@@ -1253,7 +1201,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                               setTransferModalDeal(deal);
                               setTargetSalesperson("");
                             }}
-                            className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 border border-purple-200 text-xs px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer flex items-center gap-1.5"
+                            className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 border border-purple-500/20 text-xs px-3.5 py-2 rounded-xl font-semibold transition cursor-pointer flex items-center gap-1.5"
                           >
                             🔄 Transfer This Deal
                           </button>
@@ -1266,7 +1214,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
               <button
                 onClick={() => setSelectedEmpLogs(null)}
-                className="w-full bg-[var(--color-surface)] hover:bg-[var(--color-border)] py-2.5 rounded-xl font-medium text-sm border border-[var(--color-border)] mt-2 cursor-pointer"
+                className="w-full bg-[var(--color-surface)] hover:bg-[var(--color-border)] py-3 rounded-2xl font-semibold text-xs border border-[var(--color-border)] mt-2 cursor-pointer transition"
               >
                 Close Report
               </button>
@@ -1276,25 +1224,25 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
         {/* 🌟 SIMPLE CONFIRMATION POPUP FOR SINGLE DEAL TRANSFER */}
         {transferModalDeal && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl max-w-md w-full p-6 text-[var(--color-heading)] space-y-4 shadow-2xl">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-md w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl">
               <div>
-                <h3 className="text-lg font-bold text-[var(--color-primary)]">
+                <h3 className="text-base font-bold text-[var(--color-primary)]">
                   Reassign Deal
                 </h3>
                 <p className="text-xs text-[var(--color-body)] mt-1">
-                  Transferring deal for <strong>{transferModalDeal.instituteName}</strong>. Select the salesperson who put in the most effort:
+                  Transferring deal for <strong>{transferModalDeal.instituteName}</strong>. Select the target salesperson:
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-[var(--color-heading)]">
+              <div className="space-y-1.5 text-xs">
+                <label className="block font-medium text-[var(--color-heading)]">
                   Select Target Salesperson *
                 </label>
                 <select
                   value={targetSalesperson}
                   onChange={(e) => setTargetSalesperson(e.target.value)}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
                 >
                   <option value="" disabled>-- Choose Salesperson --</option>
                   {employees
@@ -1307,11 +1255,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 </select>
               </div>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setTransferModalDeal(null)}
-                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[var(--color-heading)] py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer border border-[var(--color-border)]"
+                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[var(--color-heading)] py-3 rounded-2xl text-xs font-semibold transition cursor-pointer border border-[var(--color-border)]"
                 >
                   Cancel
                 </button>
@@ -1319,10 +1267,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   type="button"
                   onClick={handleExecuteSingleDealTransfer}
                   disabled={isTransferring || !targetSalesperson}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer text-white shadow-md ${
+                  className={`flex-1 py-3 rounded-2xl text-xs font-semibold transition cursor-pointer text-white shadow-sm ${
                     isTransferring || !targetSalesperson 
                       ? "bg-purple-400 opacity-60 cursor-not-allowed" 
-                      : "bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)]"
+                      : "bg-[var(--color-primary)] hover:opacity-90"
                   }`}
                 >
                   {isTransferring ? "Transferring..." : "Confirm & Transfer"}

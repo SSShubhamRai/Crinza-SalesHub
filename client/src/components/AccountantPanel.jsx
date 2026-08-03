@@ -16,7 +16,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
   // Search & Filter States
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [salespersonFilter, setSalespersonFilter] = useState("all"); // 🌟 Added Salesperson Filter State
+  const [salespersonFilter, setSalespersonFilter] = useState("all");
 
   // Individual Add-on Prices
   const ADDON_PRICES = {
@@ -44,7 +44,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
   const [rejectModalId, setRejectModalId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  // Fetch Pending Invoices with Token Authorization
+  // Fetch Pending Invoices
   const fetchPendingInvoices = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -64,7 +64,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
     }
   };
 
-  // Fetch Approved / Processed Invoices History with Token Authorization
+  // Fetch Invoice History
   const fetchInvoiceHistory = async () => {
     try {
       const token = localStorage.getItem("token");
@@ -94,7 +94,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
     loadAllData();
   }, []);
 
-  // 🌟 Extract unique list of salespersons from both lists for the dropdown filter options
+  // Unique list of salespersons
   const allSalespersons = Array.from(
     new Set([
       ...pendingList.map((item) => item.salespersonId),
@@ -102,7 +102,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
     ])
   ).filter(Boolean);
 
-  // Filtered lists logic with safety Array checks & Salesperson Filtering
+  // Filtered lists logic
   const filteredPendingList = (Array.isArray(pendingList) ? pendingList : []).filter((item) => {
     const matchesSearch =
       item.instituteName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -130,7 +130,7 @@ const AccountantPanel = ({ userId, onLogout }) => {
     return matchesSearch && matchesStatus && matchesSalesperson;
   });
 
-  // Calculate total automatically when editing baseAmount, coupon or addons in Edit Modal
+  // Recalculate totals in Edit Modal
   const recalculateEditTotal = (updatedData) => {
     const base = Number(updatedData.baseAmount || 0);
     const addonsObj = updatedData.addons || {};
@@ -234,7 +234,6 @@ const AccountantPanel = ({ userId, onLogout }) => {
     }
   };
 
-  // 📊 Export History to CSV Function
   const exportHistoryToCSV = () => {
     if (!historyList || historyList.length === 0) {
       toast.error("No invoice history available to export!");
@@ -285,13 +284,12 @@ const AccountantPanel = ({ userId, onLogout }) => {
     toast.success("Invoice history exported successfully!");
   };
 
-  // ⏳ Skeleton Loader Component for Smooth Loading State
   const AccountantSkeleton = () => (
     <div className="space-y-4 animate-pulse">
       {[1, 2, 3].map((n) => (
         <div
           key={n}
-          className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 flex flex-col md:flex-row justify-between gap-6 shadow-sm"
+          className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 flex flex-col md:flex-row justify-between gap-6 shadow-sm"
         >
           <div className="space-y-3 flex-1">
             <div className="flex items-center gap-3">
@@ -306,8 +304,8 @@ const AccountantPanel = ({ userId, onLogout }) => {
             </div>
           </div>
           <div className="flex flex-col gap-2 justify-center min-w-[220px]">
-            <div className="h-9 w-full bg-[var(--color-surface)] rounded-lg"></div>
-            <div className="h-9 w-full bg-[var(--color-surface)] rounded-lg"></div>
+            <div className="h-9 w-full bg-[var(--color-surface)] rounded-xl"></div>
+            <div className="h-9 w-full bg-[var(--color-surface)] rounded-xl"></div>
           </div>
         </div>
       ))}
@@ -317,50 +315,65 @@ const AccountantPanel = ({ userId, onLogout }) => {
   return (
     <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
+        
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-5 gap-4">
-          <div>
-            <span className="text-xs bg-emerald-500/10 text-emerald-600 px-3 py-1 rounded-full font-semibold border border-emerald-200">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm gap-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
               ACCOUNTANT PANEL
-            </span>
-            <h1 className="text-2xl font-bold text-[var(--color-heading)] mt-1">
+            </div>
+            <h1 className="text-2xl font-extrabold text-[var(--color-heading)] tracking-tight">
               Invoice Billing & Verification
             </h1>
             <p className="text-[var(--color-body)] text-xs">
-              Logged in as:{" "}
-              <strong className="text-[var(--color-primary)]">{userId}</strong>
+              Signed in as <strong className="text-[var(--color-primary)]">{userId}</strong>
             </p>
           </div>
 
           <button
             onClick={onLogout}
-            className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 px-4 py-2 rounded-xl text-sm font-medium transition cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2"
           >
             Logout
           </button>
         </div>
 
         {/* Navigation Tabs & Export Button */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[var(--color-border)] pb-2">
-          <div className="flex gap-2 overflow-x-auto">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex gap-2 p-1.5 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm">
             <button
               onClick={() => setActiveTab("pending")}
-              className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "pending" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+              className={`px-5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === "pending"
+                  ? "bg-[var(--color-primary)] text-white shadow-sm"
+                  : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+              }`}
             >
-              ⏳ Pending Verification ({pendingList.length})
+              ⏳ Pending Verification 
+              <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeTab === "pending" ? "bg-white/20 text-white" : "bg-[var(--color-surface)] text-[var(--color-heading)]"}`}>
+                {pendingList.length}
+              </span>
             </button>
             <button
               onClick={() => setActiveTab("history")}
-              className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "history" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
+              className={`px-5 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer flex items-center gap-2 ${
+                activeTab === "history"
+                  ? "bg-[var(--color-primary)] text-white shadow-sm"
+                  : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+              }`}
             >
-              📜 Processed / Approved History ({historyList.length})
+              📜 Processed History
+              <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeTab === "history" ? "bg-white/20 text-white" : "bg-[var(--color-surface)] text-[var(--color-heading)]"}`}>
+                {historyList.length}
+              </span>
             </button>
           </div>
 
           {activeTab === "history" && historyList.length > 0 && (
             <button
               onClick={exportHistoryToCSV}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm transition cursor-pointer flex items-center gap-2"
+              className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-semibold shadow-sm transition cursor-pointer flex items-center gap-2"
             >
               📥 Export History to CSV / Excel
             </button>
@@ -368,47 +381,42 @@ const AccountantPanel = ({ userId, onLogout }) => {
         </div>
 
         {/* Search and Filters Bar */}
-        <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-[var(--color-card)] p-4 rounded-2xl border border-[var(--color-border)] shadow-sm">
-          <div className="w-full sm:w-72">
-            <input
-              type="text"
-              placeholder="🔍 Search by Institute, ID, or Email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
-            />
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 bg-[var(--color-card)] p-4 rounded-3xl border border-[var(--color-border)] shadow-sm items-center">
+          <div className="md:col-span-6">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search by Institute Name, ID, or Email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl pl-10 pr-4 py-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
+              />
+              <span className="absolute left-3.5 top-3.5 text-xs text-[var(--color-body)]">🔍</span>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-            {/* 🌟 Salesperson / Employee Filter Dropdown */}
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-xs text-[var(--color-body)]">
-                Employee:
-              </span>
+          <div className="md:col-span-6 flex flex-wrap items-center justify-end gap-3">
+            <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-2xl border border-[var(--color-border)]">
+              <span className="text-[11px] text-[var(--color-body)] font-medium">Employee:</span>
               <select
                 value={salespersonFilter}
                 onChange={(e) => setSalespersonFilter(e.target.value)}
-                className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2.5 text-xs text-[var(--color-heading)] focus:outline-none"
+                className="bg-transparent text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer"
               >
                 <option value="all">All Employees</option>
                 {allSalespersons.map((emp) => (
-                  <option key={emp} value={emp}>
-                    {emp}
-                  </option>
+                  <option key={emp} value={emp}>{emp}</option>
                 ))}
               </select>
             </div>
 
-            {/* Status Filter (History tab only) */}
             {activeTab === "history" && (
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <span className="text-xs text-[var(--color-body)]">
-                  Status:
-                </span>
+              <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-2xl border border-[var(--color-border)]">
+                <span className="text-[11px] text-[var(--color-body)] font-medium">Status:</span>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl px-3 py-2.5 text-xs text-[var(--color-heading)] focus:outline-none"
+                  className="bg-transparent text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer"
                 >
                   <option value="all">All Status</option>
                   <option value="approved">Approved</option>
@@ -427,85 +435,85 @@ const AccountantPanel = ({ userId, onLogout }) => {
             {activeTab === "pending" && (
               <div>
                 {filteredPendingList.length === 0 ? (
-                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-12 text-center text-[var(--color-body)] shadow-sm">
-                    🎉 No matching pending invoice requests found!
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
+                    <div className="w-12 h-12 bg-[var(--color-surface)] rounded-full flex items-center justify-center mx-auto text-xl">🎉</div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">No Pending Verifications</h3>
+                    <p className="text-xs text-[var(--color-body)]">All caught up! There are no pending invoice requests matching your filters.</p>
                   </div>
                 ) : (
-                  <div className="space-y-6">
+                  <div className="space-y-4">
                     {filteredPendingList.map((item) => (
                       <div
                         key={item._id}
-                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 flex flex-col md:flex-row justify-between gap-6 shadow-sm"
+                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 flex flex-col lg:flex-row justify-between gap-6 shadow-sm hover:border-[var(--color-primary)]/40 transition"
                       >
                         {/* Details Summary */}
-                        <div className="space-y-2 flex-1">
-                          <div className="flex flex-wrap items-center gap-3">
-                            <span className="text-[var(--color-primary)] font-bold text-lg">
+                        <div className="space-y-3 flex-1">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <span className="text-[var(--color-heading)] font-extrabold text-base">
                               {item.instituteName}
                             </span>
-                            <span className="text-xs bg-[var(--color-surface)] text-[var(--color-heading)] px-2.5 py-1 rounded-md border border-[var(--color-border)]">
-                              ID: {item.invoiceId}
+                            <span className="text-[10px] font-mono bg-[var(--color-surface)] text-[var(--color-heading)] px-2.5 py-1 rounded-lg border border-[var(--color-border)]">
+                              #{item.invoiceId}
                             </span>
-                            <span className="text-xs bg-[var(--color-primary-light)]/20 text-[var(--color-primary-dark)] px-2.5 py-1 rounded-md">
-                              Salesperson: {item.salespersonId}
+                            <span className="text-[10px] font-medium bg-[var(--color-primary)]/10 text-[var(--color-primary)] px-2.5 py-1 rounded-lg">
+                              Emp: {item.salespersonId}
                             </span>
                             {item.couponCode && (
-                              <span className="text-xs bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-md font-semibold border border-emerald-300">
-                                🏷️ Coupon: {item.couponCode} (-₹
-                                {item.discountAmount || 999})
+                              <span className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                                🏷️ {item.couponCode} (-₹{item.discountAmount || 999})
                               </span>
                             )}
                           </div>
 
-                          <p className="text-sm text-[var(--color-heading)]">
-                            App: <strong>{item.appName}</strong> | Email:{" "}
-                            {item.email} | Mobile: {item.mobileNo}
+                          <p className="text-xs text-[var(--color-body)]">
+                            App: <strong className="text-[var(--color-heading)]">{item.appName}</strong> • Email: {item.email} • Mobile: {item.mobileNo}
                           </p>
 
-                          <div className="flex gap-6 text-sm mt-2">
-                            <span className="text-[var(--color-body)]">
-                              Total:{" "}
-                              <strong className="text-[var(--color-heading)]">
-                                ₹{item.totalAmount}
-                              </strong>
-                            </span>
-                            <span className="text-[var(--color-success)]">
-                              Paid: <strong>₹{item.paidAmount}</strong>
-                            </span>
-                            <span className="text-[var(--color-danger)]">
-                              Due: <strong>₹{item.dueAmount}</strong>
-                            </span>
+                          {/* Financial Pills */}
+                          <div className="inline-flex flex-wrap gap-3 bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-border)] text-xs">
+                            <div>
+                              <span className="text-[var(--color-body)] text-[10px] block">Total Amount</span>
+                              <strong className="text-[var(--color-heading)] text-sm">₹{item.totalAmount?.toLocaleString("en-IN")}</strong>
+                            </div>
+                            <div className="w-px bg-[var(--color-border)]"></div>
+                            <div>
+                              <span className="text-[var(--color-body)] text-[10px] block">Paid Amount</span>
+                              <strong className="text-emerald-600 text-sm">₹{item.paidAmount?.toLocaleString("en-IN")}</strong>
+                            </div>
+                            <div className="w-px bg-[var(--color-border)]"></div>
+                            <div>
+                              <span className="text-[var(--color-body)] text-[10px] block">Due Balance</span>
+                              <strong className="text-red-500 text-sm">₹{item.dueAmount?.toLocaleString("en-IN")}</strong>
+                            </div>
                           </div>
 
-                          {actionMessage.id === item._id &&
-                            actionMessage.text && (
-                              <div className="text-xs text-[var(--color-success)] mt-2 font-medium">
-                                {actionMessage.text}
-                              </div>
-                            )}
-                          {actionMessage.id === item._id &&
-                            actionMessage.error && (
-                              <div className="text-xs text-[var(--color-danger)] mt-2 font-medium">
-                                {actionMessage.error}
-                              </div>
-                            )}
+                          {actionMessage.id === item._id && actionMessage.text && (
+                            <div className="text-xs text-[var(--color-primary)] font-medium animate-pulse">
+                              ⚡ {actionMessage.text}
+                            </div>
+                          )}
+                          {actionMessage.id === item._id && actionMessage.error && (
+                            <div className="text-xs text-red-500 font-medium">
+                              ⚠️ {actionMessage.error}
+                            </div>
+                          )}
                         </div>
 
                         {/* Actions Section */}
-                        <div className="flex flex-col gap-3 justify-center border-t md:border-t-0 md:border-l border-[var(--color-border)] pt-4 md:pt-0 md:pl-6 min-w-[220px]">
-                          <div className="flex gap-2">
+                        <div className="flex flex-col gap-2.5 justify-center border-t lg:border-t-0 lg:border-l border-[var(--color-border)] pt-4 lg:pt-0 lg:pl-6 min-w-[240px]">
+                          <div className="grid grid-cols-2 gap-2">
                             <button
                               onClick={() => setViewModalData(item)}
-                              className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[var(--color-heading)] text-xs py-2 px-3 rounded-lg border border-[var(--color-border)] cursor-pointer"
+                              className="bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[var(--color-heading)] text-xs py-2 px-3 rounded-xl border border-[var(--color-border)] transition cursor-pointer font-medium"
                             >
                               👁️ Full Details
                             </button>
-
                             <button
                               onClick={() => setEditModalData(item)}
-                              className="flex-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 text-xs py-2 px-3 rounded-lg border border-amber-200 cursor-pointer"
+                              className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 text-xs py-2 px-3 rounded-xl border border-amber-500/20 transition cursor-pointer font-medium"
                             >
-                              ✏️ Edit
+                              ✏️ Edit Details
                             </button>
                           </div>
 
@@ -514,23 +522,22 @@ const AccountantPanel = ({ userId, onLogout }) => {
                               href={`${API_BASE}/${item.paymentProof}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="bg-[var(--color-primary-light)]/20 hover:bg-[var(--color-primary-light)]/30 text-[var(--color-primary-dark)] text-xs py-2 px-3 rounded-lg border border-[var(--color-primary-light)]/40 text-center font-medium"
+                              className="bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs py-2.5 px-3 rounded-xl border border-[var(--color-primary)]/20 text-center font-semibold transition flex items-center justify-center gap-1.5"
                             >
                               🖼️ View Payment Proof
                             </a>
                           )}
 
-                          <div className="flex gap-2 mt-1">
+                          <div className="grid grid-cols-2 gap-2 pt-1">
                             <button
                               onClick={() => handleApprove(item._id)}
-                              className="flex-1 bg-[var(--color-success)] hover:opacity-90 text-white font-semibold text-xs py-2.5 rounded-lg transition cursor-pointer shadow-md"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs py-2.5 rounded-xl transition cursor-pointer shadow-sm text-center"
                             >
-                              Approve & Send Email
+                              Approve & Email
                             </button>
-
                             <button
                               onClick={() => setRejectModalId(item._id)}
-                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 font-semibold text-xs py-2.5 px-3 rounded-lg transition cursor-pointer"
+                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 font-semibold text-xs py-2.5 rounded-xl transition cursor-pointer text-center"
                             >
                               Reject
                             </button>
@@ -546,77 +553,61 @@ const AccountantPanel = ({ userId, onLogout }) => {
             {/* TAB 2: PROCESSED & APPROVED HISTORY */}
             {activeTab === "history" && (
               <div className="space-y-4">
-                <h3 className="text-lg font-bold text-[var(--color-heading)]">
-                  Processed Invoices History
-                </h3>
-
                 {filteredHistoryList.length === 0 ? (
-                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-12 text-center text-[var(--color-body)] shadow-sm">
-                    No matching history records found.
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
+                    <div className="w-12 h-12 bg-[var(--color-surface)] rounded-full flex items-center justify-center mx-auto text-xl">📂</div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">No History Records Found</h3>
+                    <p className="text-xs text-[var(--color-body)]">There are no approved or rejected invoices matching your criteria.</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {filteredHistoryList.map((item) => (
                       <div
                         key={item._id}
-                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-5 shadow-sm space-y-3"
+                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 shadow-sm space-y-3 hover:border-[var(--color-border)] transition"
                       >
-                        <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[var(--color-border)] pb-2">
+                        <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[var(--color-border)] pb-3">
                           <div className="flex items-center gap-3">
-                            <strong className="text-[var(--color-primary)] text-md">
-                              {item.instituteName} ({item.appName})
+                            <strong className="text-[var(--color-heading)] text-sm font-bold">
+                              {item.instituteName} <span className="text-[var(--color-body)] font-normal">({item.appName})</span>
                             </strong>
-                            <span className="text-xs bg-[var(--color-surface)] px-2 py-0.5 rounded border border-[var(--color-border)] font-mono">
+                            <span className="text-[10px] bg-[var(--color-surface)] px-2.5 py-1 rounded-lg border border-[var(--color-border)] font-mono">
                               #{item.invoiceId}
                             </span>
                           </div>
                           <span
-                            className={`px-3 py-1 rounded-full text-xs font-semibold uppercase ${item.status === "approved" ? "bg-emerald-500/10 text-emerald-600 border border-emerald-300" : "bg-red-500/10 text-red-500 border border-red-200"}`}
+                            className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              item.status === "approved"
+                                ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                : "bg-red-500/10 text-red-500 border border-red-500/20"
+                            }`}
                           >
                             {item.status}
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 text-xs text-[var(--color-heading)]">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-[var(--color-body)]">
                           <div>
-                            📍 <strong>Address:</strong> {item.address || "N/A"}
-                            , {item.city || ""}, {item.state || ""}
+                            📍 <strong>Address:</strong> {item.address || "N/A"}, {item.city || ""}, {item.state || ""}
                           </div>
                           <div>
-                            📞 <strong>Contact:</strong> {item.mobileNo} |{" "}
-                            {item.email}
+                            📞 <strong>Contact:</strong> {item.mobileNo} • {item.email}
                           </div>
                           <div>
-                            👤 <strong>Salesperson:</strong>{" "}
-                            {item.salespersonId}
+                            👤 <strong>Salesperson:</strong> {item.salespersonId}
                           </div>
                         </div>
 
                         <div className="flex flex-wrap justify-between items-center gap-2 pt-2 border-t border-[var(--color-border)] text-xs">
                           <div className="flex gap-4">
-                            <span>
-                              Total:{" "}
-                              <strong>
-                                ₹{item.totalAmount?.toLocaleString("en-IN")}
-                              </strong>
-                            </span>
-                            <span className="text-emerald-600">
-                              Paid:{" "}
-                              <strong>
-                                ₹{item.paidAmount?.toLocaleString("en-IN")}
-                              </strong>
-                            </span>
-                            <span className="text-red-500">
-                              Due:{" "}
-                              <strong>
-                                ₹{item.dueAmount?.toLocaleString("en-IN")}
-                              </strong>
-                            </span>
+                            <span>Total: <strong className="text-[var(--color-heading)]">₹{item.totalAmount?.toLocaleString("en-IN")}</strong></span>
+                            <span className="text-emerald-600">Paid: <strong>₹{item.paidAmount?.toLocaleString("en-IN")}</strong></span>
+                            <span className="text-red-500">Due: <strong>₹{item.dueAmount?.toLocaleString("en-IN")}</strong></span>
                           </div>
 
                           <button
                             onClick={() => setViewModalData(item)}
-                            className="bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-xs px-3 py-1.5 rounded-lg border border-[var(--color-border)] font-medium cursor-pointer"
+                            className="bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-xs px-3.5 py-2 rounded-xl border border-[var(--color-border)] font-medium cursor-pointer transition"
                           >
                             👁️ View Full Breakdown
                           </button>
@@ -632,88 +623,64 @@ const AccountantPanel = ({ userId, onLogout }) => {
 
         {/* --- FULL DETAILS MODAL --- */}
         {viewModalData && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl max-w-lg w-full p-6 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-lg w-full p-6 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                <h3 className="text-lg font-bold text-[var(--color-heading)]">
+                <h3 className="text-base font-bold text-[var(--color-heading)]">
                   Full Invoice Details
                 </h3>
                 <button
                   onClick={() => setViewModalData(null)}
-                  className="text-[var(--color-body)] hover:text-[var(--color-heading)]"
+                  className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-[var(--color-body)] block text-xs">
-                    Institute
-                  </span>{" "}
-                  <strong>{viewModalData.instituteName}</strong>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="bg-[var(--color-surface)] p-2.5 rounded-2xl border border-[var(--color-border)]">
+                  <span className="text-[var(--color-body)] block text-[10px]">Institute</span>
+                  <strong className="text-[var(--color-heading)] text-sm">{viewModalData.instituteName}</strong>
                 </div>
-                <div>
-                  <span className="text-[var(--color-body)] block text-xs">
-                    App Name
-                  </span>{" "}
-                  <strong>{viewModalData.appName}</strong>
+                <div className="bg-[var(--color-surface)] p-2.5 rounded-2xl border border-[var(--color-border)]">
+                  <span className="text-[var(--color-body)] block text-[10px]">App Name</span>
+                  <strong className="text-[var(--color-heading)] text-sm">{viewModalData.appName}</strong>
                 </div>
-                <div>
-                  <span className="text-[var(--color-body)] block text-xs">
-                    Mobile
-                  </span>{" "}
+                <div className="bg-[var(--color-surface)] p-2.5 rounded-2xl border border-[var(--color-border)]">
+                  <span className="text-[var(--color-body)] block text-[10px]">Mobile</span>
                   <strong>{viewModalData.mobileNo}</strong>
                 </div>
-                <div>
-                  <span className="text-[var(--color-body)] block text-xs">
-                    Email
-                  </span>{" "}
-                  <strong>{viewModalData.email}</strong>
+                <div className="bg-[var(--color-surface)] p-2.5 rounded-2xl border border-[var(--color-border)]">
+                  <span className="text-[var(--color-body)] block text-[10px]">Email</span>
+                  <strong className="truncate block">{viewModalData.email}</strong>
                 </div>
-                <div>
-                  <span className="text-[var(--color-body)] block text-xs">
-                    Pincode
-                  </span>{" "}
+                <div className="bg-[var(--color-surface)] p-2.5 rounded-2xl border border-[var(--color-border)]">
+                  <span className="text-[var(--color-body)] block text-[10px]">Pincode</span>
                   <strong>{viewModalData.pincode}</strong>
                 </div>
-                <div>
-                  <span className="text-[var(--color-body)] block text-xs">
-                    GST No
-                  </span>{" "}
+                <div className="bg-[var(--color-surface)] p-2.5 rounded-2xl border border-[var(--color-border)]">
+                  <span className="text-[var(--color-body)] block text-[10px]">GST No</span>
                   <strong>{viewModalData.gstNo || "N/A"}</strong>
-                </div>
-                <div>
-                  <span className="text-[var(--color-body)] block text-xs">
-                    Validity
-                  </span>{" "}
-                  <strong>{viewModalData.packageValidity}</strong>
-                </div>
-                <div>
-                  <span className="text-[var(--color-body)] block text-xs">
-                    Salesperson ID
-                  </span>{" "}
-                  <strong>{viewModalData.salespersonId}</strong>
                 </div>
 
                 {/* Add-on Packages Display */}
-                <div className="col-span-2 bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-border)] mt-1">
-                  <span className="text-[var(--color-body)] block text-xs mb-1 font-medium">
+                <div className="col-span-2 bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-border)]">
+                  <span className="text-[var(--color-body)] block text-[10px] mb-1 font-medium uppercase">
                     Add-on Packages Selected
                   </span>
                   <div className="flex flex-wrap gap-2 mt-1">
                     {viewModalData.addons?.testModule && (
-                      <span className="bg-[var(--color-primary-light)]/20 text-[var(--color-primary-dark)] border border-[var(--color-primary-light)]/40 text-xs px-2.5 py-1 rounded-md font-medium">
+                      <span className="bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 text-xs px-2.5 py-1 rounded-xl font-medium">
                         Test Series Module (+₹5,000)
                       </span>
                     )}
                     {viewModalData.addons?.windowApp && (
-                      <span className="bg-[var(--color-primary-light)]/20 text-[var(--color-primary-dark)] border border-[var(--color-primary-light)]/40 text-xs px-2.5 py-1 rounded-md font-medium">
+                      <span className="bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 text-xs px-2.5 py-1 rounded-xl font-medium">
                         Windows Desktop App (+₹5,000)
                       </span>
                     )}
                     {viewModalData.addons?.iosApp && (
-                      <span className="bg-[var(--color-primary-light)]/20 text-[var(--color-primary-dark)] border border-[var(--color-primary-light)]/40 text-xs px-2.5 py-1 rounded-md font-medium">
+                      <span className="bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 text-xs px-2.5 py-1 rounded-xl font-medium">
                         iOS Mobile App (+₹45,000)
                       </span>
                     )}
@@ -727,62 +694,52 @@ const AccountantPanel = ({ userId, onLogout }) => {
                   </div>
                 </div>
 
-                {/* Coupon Code Information */}
                 {viewModalData.couponCode && (
-                  <div className="col-span-2 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-xl text-xs flex justify-between items-center text-emerald-600">
-                    <span>
-                      Applied Coupon Code:{" "}
-                      <strong>{viewModalData.couponCode}</strong>
-                    </span>
-                    <strong>
-                      Discount: -₹{viewModalData.discountAmount || 999}
-                    </strong>
+                  <div className="col-span-2 bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl text-xs flex justify-between items-center text-emerald-600 font-medium">
+                    <span>Applied Coupon: <strong>{viewModalData.couponCode}</strong></span>
+                    <span>Discount: -₹{viewModalData.discountAmount || 999}</span>
                   </div>
                 )}
               </div>
 
               {/* Amount Breakdown */}
-              <div className="bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-border)] text-xs space-y-1.5">
+              <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] text-xs space-y-2">
                 <div className="flex justify-between">
-                  <span>Base Amount:</span>{" "}
-                  <strong>
-                    ₹{viewModalData.baseAmount || viewModalData.totalAmount}
-                  </strong>
+                  <span className="text-[var(--color-body)]">Base Amount:</span>
+                  <strong>₹{viewModalData.baseAmount || viewModalData.totalAmount}</strong>
                 </div>
                 {viewModalData.discountAmount > 0 && (
                   <div className="flex justify-between text-emerald-600">
-                    <span>Coupon Discount:</span>{" "}
+                    <span>Coupon Discount:</span>
                     <strong>-₹{viewModalData.discountAmount}</strong>
                   </div>
                 )}
-                <div className="flex justify-between border-t border-[var(--color-border)] pt-1 text-sm font-bold">
-                  <span>Total Amount:</span>{" "}
+                <div className="flex justify-between border-t border-[var(--color-border)] pt-2 text-sm font-bold">
+                  <span>Total Amount:</span>
                   <strong>₹{viewModalData.totalAmount}</strong>
                 </div>
-                <div className="flex justify-between text-[var(--color-success)]">
-                  <span>Paid Amount:</span>{" "}
+                <div className="flex justify-between text-emerald-600 font-medium">
+                  <span>Paid Amount:</span>
                   <strong>₹{viewModalData.paidAmount}</strong>
                 </div>
-                <div className="flex justify-between text-[var(--color-danger)] font-semibold">
-                  <span>Due Amount:</span>{" "}
+                <div className="flex justify-between text-red-500 font-bold">
+                  <span>Due Balance:</span>
                   <strong>₹{viewModalData.dueAmount}</strong>
                 </div>
               </div>
 
               <div>
-                <span className="text-[var(--color-body)] block text-xs mb-1">
-                  Terms & Conditions
-                </span>
-                <p className="text-xs bg-[var(--color-surface)] p-3 rounded-xl border border-[var(--color-border)] text-[var(--color-body)] whitespace-pre-line">
+                <span className="text-[var(--color-body)] block text-xs mb-1 font-medium">Terms & Conditions</span>
+                <p className="text-[11px] bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-border)] text-[var(--color-body)] whitespace-pre-line max-h-24 overflow-y-auto">
                   {viewModalData.termsAndConditions}
                 </p>
               </div>
 
               <button
                 onClick={() => setViewModalData(null)}
-                className="w-full bg-[var(--color-surface)] hover:bg-[var(--color-border)] py-2.5 rounded-xl font-medium text-sm border border-[var(--color-border)] cursor-pointer"
+                className="w-full bg-[var(--color-surface)] hover:bg-[var(--color-border)] py-3 rounded-2xl font-semibold text-xs border border-[var(--color-border)] cursor-pointer transition"
               >
-                Close
+                Close Details
               </button>
             </div>
           </div>
@@ -790,114 +747,75 @@ const AccountantPanel = ({ userId, onLogout }) => {
 
         {/* --- EDIT DETAILS MODAL --- */}
         {editModalData && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <form
               onSubmit={handleEditSubmit}
-              className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl max-w-xl w-full p-6 text-[var(--color-heading)] space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl"
+              className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-xl w-full p-6 text-[var(--color-heading)] space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl"
             >
               <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                <h3 className="text-lg font-bold text-[var(--color-heading)]">
-                  Edit Request Details
+                <h3 className="text-base font-bold text-[var(--color-heading)]">
+                  Edit Invoice Request
                 </h3>
                 <button
                   type="button"
                   onClick={() => setEditModalData(null)}
-                  className="text-[var(--color-body)] hover:text-[var(--color-heading)]"
+                  className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
-                  <label className="text-xs text-[var(--color-body)]">
-                    Institute Name
-                  </label>
+                  <label className="text-[var(--color-body)] block mb-1">Institute Name</label>
                   <input
                     type="text"
                     value={editModalData.instituteName}
-                    onChange={(e) =>
-                      setEditModalData({
-                        ...editModalData,
-                        instituteName: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded-lg text-[var(--color-heading)]"
+                    onChange={(e) => setEditModalData({ ...editModalData, instituteName: e.target.value })}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2.5 rounded-xl text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[var(--color-body)]">
-                    App Name
-                  </label>
+                  <label className="text-[var(--color-body)] block mb-1">App Name</label>
                   <input
                     type="text"
                     value={editModalData.appName}
-                    onChange={(e) =>
-                      setEditModalData({
-                        ...editModalData,
-                        appName: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded-lg text-[var(--color-heading)]"
+                    onChange={(e) => setEditModalData({ ...editModalData, appName: e.target.value })}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2.5 rounded-xl text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[var(--color-body)]">
-                    Mobile Number
-                  </label>
+                  <label className="text-[var(--color-body)] block mb-1">Mobile Number</label>
                   <input
                     type="text"
                     value={editModalData.mobileNo}
-                    onChange={(e) =>
-                      setEditModalData({
-                        ...editModalData,
-                        mobileNo: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded-lg text-[var(--color-heading)]"
+                    onChange={(e) => setEditModalData({ ...editModalData, mobileNo: e.target.value })}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2.5 rounded-xl text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-[var(--color-body)]">
-                    Email Address
-                  </label>
+                  <label className="text-[var(--color-body)] block mb-1">Email Address</label>
                   <input
                     type="email"
                     value={editModalData.email}
-                    onChange={(e) =>
-                      setEditModalData({
-                        ...editModalData,
-                        email: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded-lg text-[var(--color-heading)]"
+                    onChange={(e) => setEditModalData({ ...editModalData, email: e.target.value })}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2.5 rounded-xl text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                   />
                 </div>
-
                 <div>
-                  <label className="text-xs text-[var(--color-body)]">
-                    Base Price (₹)
-                  </label>
+                  <label className="text-[var(--color-body)] block mb-1">Base Price (₹)</label>
                   <input
                     type="number"
-                    value={
-                      editModalData.baseAmount || editModalData.totalAmount
-                    }
+                    value={editModalData.baseAmount || editModalData.totalAmount}
                     onChange={(e) => {
-                      const updated = {
-                        ...editModalData,
-                        baseAmount: Number(e.target.value),
-                      };
+                      const updated = { ...editModalData, baseAmount: Number(e.target.value) };
                       setEditModalData(recalculateEditTotal(updated));
                     }}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded-lg text-[var(--color-heading)]"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2.5 rounded-xl text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                   />
                 </div>
-
                 <div>
-                  <label className="text-xs text-[var(--color-body)]">
-                    Coupon Code
-                  </label>
+                  <label className="text-[var(--color-body)] block mb-1">Coupon Code</label>
                   <input
                     type="text"
                     value={editModalData.couponCode || ""}
@@ -907,106 +825,72 @@ const AccountantPanel = ({ userId, onLogout }) => {
                       const updated = { ...editModalData, couponCode: code };
                       setEditModalData(recalculateEditTotal(updated));
                     }}
-                    className="uppercase w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded-lg text-[var(--color-heading)]"
+                    className="uppercase w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2.5 rounded-xl text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-mono"
                   />
                 </div>
-
                 <div>
-                  <label className="text-xs text-[var(--color-body)]">
-                    Total Amount (₹) [Auto]
-                  </label>
+                  <label className="text-[var(--color-body)] block mb-1">Total Amount (₹) [Auto]</label>
                   <input
                     type="number"
                     readOnly
                     value={editModalData.totalAmount}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded-lg text-[var(--color-heading)] font-bold focus:outline-none"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2.5 rounded-xl text-[var(--color-heading)] font-bold focus:outline-none opacity-80 cursor-not-allowed"
                   />
                 </div>
-
                 <div>
-                  <label className="text-xs text-[var(--color-body)]">
-                    Paid Amount (₹)
-                  </label>
+                  <label className="text-[var(--color-body)] block mb-1">Paid Amount (₹)</label>
                   <input
                     type="number"
                     value={editModalData.paidAmount}
                     onChange={(e) => {
                       const paid = Number(e.target.value);
                       const due = Math.max(0, editModalData.totalAmount - paid);
-                      setEditModalData({
-                        ...editModalData,
-                        paidAmount: paid,
-                        dueAmount: due,
-                      });
+                      setEditModalData({ ...editModalData, paidAmount: paid, dueAmount: due });
                     }}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2 rounded-lg text-[var(--color-heading)]"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] p-2.5 rounded-xl text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
                   />
                 </div>
               </div>
 
-              {/* Add-ons Checkboxes in Edit Modal */}
-              <div className="p-3 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl">
-                <label className="block text-xs font-semibold mb-2 text-[var(--color-primary)] uppercase tracking-wider">
+              {/* Add-ons Checkboxes */}
+              <div className="p-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-2">
+                <label className="block text-[10px] font-semibold text-[var(--color-primary)] uppercase tracking-wider">
                   Modify Add-ons
                 </label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs text-[var(--color-heading)]">
-                  <label className="flex items-center gap-2 cursor-pointer bg-[var(--color-card)] p-2 rounded-lg border border-[var(--color-border)]">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                  <label className="flex items-center gap-2 cursor-pointer bg-[var(--color-card)] p-2.5 rounded-xl border border-[var(--color-border)]">
                     <input
                       type="checkbox"
                       checked={!!editModalData.addons?.testModule}
                       onChange={(e) => {
-                        const updatedAddons = {
-                          ...editModalData.addons,
-                          testModule: e.target.checked,
-                        };
-                        setEditModalData(
-                          recalculateEditTotal({
-                            ...editModalData,
-                            addons: updatedAddons,
-                          })
-                        );
+                        const updatedAddons = { ...editModalData.addons, testModule: e.target.checked };
+                        setEditModalData(recalculateEditTotal({ ...editModalData, addons: updatedAddons }));
                       }}
                       className="accent-[var(--color-primary)]"
                     />
                     <span>Test Module (+₹5k)</span>
                   </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer bg-[var(--color-card)] p-2 rounded-lg border border-[var(--color-border)]">
+                  <label className="flex items-center gap-2 cursor-pointer bg-[var(--color-card)] p-2.5 rounded-xl border border-[var(--color-border)]">
                     <input
                       type="checkbox"
                       checked={!!editModalData.addons?.windowApp}
                       onChange={(e) => {
-                        const updatedAddons = {
-                          ...editModalData.addons,
-                          windowApp: e.target.checked,
-                        };
-                        setEditModalData(
-                          recalculateEditTotal({
-                            ...editModalData,
-                            addons: updatedAddons,
-                          })
-                        );
+                        const updatedAddons = { ...editModalData.addons, windowApp: e.target.checked };
+                        setEditModalData(recalculateEditTotal({ ...editModalData, addons: updatedAddons }));
                       }}
                       className="accent-[var(--color-primary)]"
                     />
                     <span>Windows App (+₹5k)</span>
                   </label>
 
-                  <label className="flex items-center gap-2 cursor-pointer bg-[var(--color-card)] p-2 rounded-lg border border-[var(--color-border)]">
+                  <label className="flex items-center gap-2 cursor-pointer bg-[var(--color-card)] p-2.5 rounded-xl border border-[var(--color-border)]">
                     <input
                       type="checkbox"
                       checked={!!editModalData.addons?.iosApp}
                       onChange={(e) => {
-                        const updatedAddons = {
-                          ...editModalData.addons,
-                          iosApp: e.target.checked,
-                        };
-                        setEditModalData(
-                          recalculateEditTotal({
-                            ...editModalData,
-                            addons: updatedAddons,
-                          })
-                        );
+                        const updatedAddons = { ...editModalData.addons, iosApp: e.target.checked };
+                        setEditModalData(recalculateEditTotal({ ...editModalData, addons: updatedAddons }));
                       }}
                       className="accent-[var(--color-primary)]"
                     />
@@ -1019,13 +903,13 @@ const AccountantPanel = ({ userId, onLogout }) => {
                 <button
                   type="button"
                   onClick={() => setEditModalData(null)}
-                  className="flex-1 bg-[var(--color-surface)] py-2 rounded-xl text-sm border border-[var(--color-border)] cursor-pointer"
+                  className="flex-1 bg-[var(--color-surface)] py-3 rounded-2xl text-xs font-semibold border border-[var(--color-border)] cursor-pointer transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] py-2 rounded-xl text-sm font-semibold text-white shadow-md cursor-pointer"
+                  className="flex-1 bg-[var(--color-primary)] hover:opacity-90 py-3 rounded-2xl text-xs font-semibold text-white shadow-sm cursor-pointer transition"
                 >
                   Save Changes
                 </button>
@@ -1036,32 +920,32 @@ const AccountantPanel = ({ userId, onLogout }) => {
 
         {/* --- REJECT REASON MODAL --- */}
         {rejectModalId && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl max-w-md w-full p-6 text-[var(--color-heading)] space-y-4 shadow-2xl">
-              <h3 className="text-lg font-bold text-[var(--color-danger)]">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-md w-full p-6 text-[var(--color-heading)] space-y-4 shadow-2xl">
+              <h3 className="text-base font-bold text-red-500">
                 Reject Invoice Request
               </h3>
               <p className="text-xs text-[var(--color-body)]">
-                Specify the reason why this invoice is being rejected:
+                Please specify the reason why this invoice is being rejected. This will be shared with the team:
               </p>
 
               <textarea
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="e.g. Payment screenshot invalid or amount mismatch."
-                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-sm text-[var(--color-heading)] focus:outline-none focus:border-red-500 h-24"
+                placeholder="e.g. Payment screenshot is unclear or amount mismatch."
+                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-red-500 h-28"
               />
 
               <div className="flex gap-3">
                 <button
                   onClick={() => setRejectModalId(null)}
-                  className="flex-1 bg-[var(--color-surface)] py-2.5 rounded-xl text-sm border border-[var(--color-border)] cursor-pointer"
+                  className="flex-1 bg-[var(--color-surface)] py-3 rounded-2xl text-xs font-semibold border border-[var(--color-border)] cursor-pointer transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleRejectSubmit}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 rounded-xl text-sm shadow-md cursor-pointer"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-2xl text-xs shadow-sm cursor-pointer transition"
                 >
                   Confirm Reject
                 </button>

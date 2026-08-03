@@ -10,7 +10,10 @@ const userSchema = new mongoose.Schema({
     enum: ['salesperson', 'accountant', 'boss', 'admin'], 
     default: 'salesperson',
     index: true
-  }
+  },
+  resetPasswordToken: { type: String },
+  resetPasswordExpires: { type: Date }
 }, { timestamps: true });
 
+// 🌟 module.models ki jagah mongoose.models karein
 module.exports = mongoose.models.User || mongoose.model('User', userSchema);

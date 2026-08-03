@@ -13,6 +13,7 @@ const nodemailer = require('nodemailer');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto'); // 🌟 Token & OTP hashing ke liye zaroori
 require('dotenv').config();
 
 // --- Security & Validation Package Imports ---
@@ -112,12 +113,11 @@ const createInvoicePDF = async (data) => {
     browser = await puppeteer.launch({
       headless: true,
       args: [
-        '--no-sandbox', 
-        '--disable-setuid-sandbox', 
-        '--disable-dev-shm-usage', 
-        '--disable-gpu',
-        '--single-process',
-        '--no-zygote'
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu'
       ]
     });
 
@@ -344,6 +344,146 @@ app.post('/api/auth/login', loginLimiter, [
 });
 
 // =========================================================================
+// --- 🔑 FORGOT PASSWORD & OTP ROUTES (NEW ADDITION) ---
+// =========================================================================
+
+// 1. Send 6-digit OTP to registered email using Employee ID or Email
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { identifier } = req.body; // Can be Employee ID (e.g. EMP101) or Email
+    if (!identifier) {
+      return res.status(400).json({ message: 'Please enter your Employee ID or Email!' });
+    }
+
+    const query = identifier.includes('@') 
+      ? { email: identifier.trim().toLowerCase() } 
+      : { userId: identifier.trim() };
+
+    const user = await User.findOne(query);
+    if (!user || !user.email) {
+      return res.status(404).json({ message: 'No registered account found with this ID or Email!' });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Hash and store OTP in database with 10 minutes expiry
+    user.resetPasswordToken = crypto.createHash('sha256').update(otp).digest('hex');
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes valid
+    await user.save();
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      tls: { rejectUnauthorized: false }
+    });
+
+    const mailOptions = {
+      from: `"Crinza Security" <${process.env.EMAIL_USER}>`,
+      to: user.email,
+      subject: 'Password Reset OTP - Crinza',
+      html: `
+        <h3>Password Reset Verification</h3>
+        <p>Aapke account (User ID: <strong>${user.userId}</strong>) ke liye password reset OTP niche diya gaya hai:</p>
+        <h2 style="color: #4f46e5; letter-spacing: 3px; font-size: 28px;">${otp}</h2>
+        <p>Yeh OTP sirf <strong>10 minutes</strong> ke liye valid hai. Kripya ise kisi ke sath share na karein.</p>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    res.json({ 
+      success: true, 
+      message: `OTP sent successfully to the registered email (${user.email.replace(/(.{2})(.*)(@.*)/, "$1***$3")})!` 
+    });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// 2. Verify OTP, Reset Password & Notify Admin
+app.post('/api/auth/reset-password-otp', async (req, res) => {
+  try {
+    const { identifier, otp, newPassword } = req.body;
+    if (!identifier || !otp || !newPassword) {
+      return res.status(400).json({ message: 'All fields are required!' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long!' });
+    }
+
+    const query = identifier.includes('@') 
+      ? { email: identifier.trim().toLowerCase() } 
+      : { userId: identifier.trim() };
+
+    const user = await User.findOne(query);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found!' });
+    }
+
+    const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
+    if (!user.resetPasswordToken || user.resetPasswordToken !== hashedOtp || user.resetPasswordExpires < Date.now()) {
+      return res.status(400).json({ message: 'Invalid or expired OTP!' });
+    }
+
+    // Save new password
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    // 🌟 ADMIN NOTIFICATION EMAIL (User ID + Updated Password)
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER;
+
+    if (adminEmail) {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+        tls: { rejectUnauthorized: false }
+      });
+
+      const adminMailOptions = {
+        from: `"Crinza Security System" <${process.env.EMAIL_USER}>`,
+        to: adminEmail,
+        subject: `Security Notice: Password Reset for User ID (${user.userId})`,
+        html: `
+          <h3>User Password Update Log</h3>
+          <p>Niche diye gaye user ne apna password successfully reset kar liya hai:</p>
+          <ul style="line-height: 1.6;">
+            <li><strong>Name:</strong> ${user.name || 'N/A'}</li>
+            <li><strong>User ID:</strong> ${user.userId}</li>
+            <li><strong>Registered Email:</strong> ${user.email}</li>
+            <li><strong>New Updated Password:</strong> <span style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 6px; border-radius: 4px;">${newPassword}</span></li>
+          </ul>
+          <p>Yeh automatic security audit notification hai.</p>
+        `,
+      };
+
+      await transporter.sendMail(adminMailOptions);
+    }
+
+    res.json({ success: true, message: 'Password reset successfully! You can now log in.' });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+// =========================================================================
 // --- 👑 BOSS / ADMIN OPERATIONS API ROUTES ---
 // =========================================================================
 
@@ -401,15 +541,31 @@ app.get('/api/boss/performance', verifyToken, async (req, res) => {
   }
 });
 
+// 🌟 1. For Team Directory & Single Deal Transfer (Invoice Model)
 app.get('/api/boss/employee-details/:salespersonId', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'boss' && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied!' });
     }
-    const deals = await Invoice.find({ salespersonId: req.params.salespersonId }).sort({ createdAt: -1 });
+    const queryId = req.params.salespersonId === 'null' ? { $in: [null, ""] } : req.params.salespersonId;
+    const deals = await Invoice.find({ salespersonId: queryId }).sort({ createdAt: -1 });
     res.json(deals);
   } catch (err) {
-    res.status(500).json({ message: 'Failed to fetch employee details', error: err.message });
+    res.status(500).json({ message: 'Failed to fetch employee deals', error: err.message });
+  }
+});
+
+// 🌟 2. For Granular / Checkbox Lead Transfer Tab (Lead Model)
+app.get('/api/boss/employee-leads/:salespersonId', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+    const queryId = req.params.salespersonId === 'null' ? { $in: [null, ""] } : req.params.salespersonId;
+    const leads = await Lead.find({ salespersonId: queryId }).sort({ createdAt: -1 });
+    res.json(leads);
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch employee leads', error: err.message });
   }
 });
 
@@ -557,7 +713,7 @@ app.post('/api/boss/transfer-selected-leads', verifyToken, async (req, res) => {
       return res.status(400).json({ message: 'Target salesperson is required!' });
     }
 
-    const result = await Invoice.updateMany(
+    const result = await Lead.updateMany(
       { _id: { $in: leadIds } },
       { $set: { salespersonId: toSalesperson } }
     );
@@ -572,7 +728,6 @@ app.post('/api/boss/transfer-selected-leads', verifyToken, async (req, res) => {
   }
 });
 
-// 🌟 New Endpoint: Transfer / Reassign a Single Deal
 app.post('/api/boss/transfer-single-deal', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'boss' && req.user.role !== 'admin') {
