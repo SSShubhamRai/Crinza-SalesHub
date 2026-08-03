@@ -29,6 +29,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [selectedEmpLogs, setSelectedEmpLogs] = useState(null);
   const [loadingLogs, setLoadingLoadingLogs] = useState(false);
 
+  // 🔄 Single Deal Transfer Popup States
+  const [transferModalDeal, setTransferModalDeal] = useState(null);
+  const [targetSalesperson, setTargetSalesperson] = useState("");
+  const [isTransferring, setIsTransferring] = useState(false);
+
   // New Employee Form State
   const [newEmp, setNewEmp] = useState({
     userId: "",
@@ -39,6 +44,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
   });
   const [empStatus, setEmpStatus] = useState({ success: "", error: "" });
 
+  // 🔄 Granular Transfer States
   const [transferData, setTransferData] = useState({
     fromSalesperson: "",
     toSalesperson: "",
@@ -47,6 +53,9 @@ const AdminDashboard = ({ userId, onLogout }) => {
     success: "",
     error: "",
   });
+  const [sourceLeads, setSourceLeads] = useState([]);
+  const [loadingSourceLeads, setLoadingSourceLeads] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
 
   // 🎫 Coupon Generator State
   const [coupons, setCoupons] = useState([]);
@@ -118,6 +127,43 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
+  // 🔄 Handler for executing single deal transfer
+  const handleExecuteSingleDealTransfer = async () => {
+    if (!targetSalesperson) {
+      toast.error("Please select a salesperson!");
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/boss/transfer-single-deal`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ 
+          dealId: transferModalDeal._id, 
+          newSalespersonId: targetSalesperson 
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to transfer deal");
+
+      toast.success(data.message || "Deal transferred successfully!");
+      
+      setTransferModalDeal(null);
+      setTargetSalesperson("");
+      handleViewEmployeeDetails(selectedEmpLogs.userId);
+      fetchData();
+    } catch (err) {
+      toast.error(err.message || "Error transferring deal");
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
   const handleAddEmployee = async (e) => {
     e.preventDefault();
     setEmpStatus({ success: "", error: "" });
@@ -182,7 +228,42 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  const handleTransferLeads = async (e) => {
+  // 🔄 Fetch leads for granular transfer when source changes
+  const fetchSalespersonLeadsForTransfer = async (empId) => {
+    setLoadingSourceLeads(true);
+    setSelectedLeadIds([]);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/boss/employee-details/${empId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setSourceLeads(data || []);
+    } catch (err) {
+      console.error("Failed to load leads for transfer:", err);
+      toast.error("Failed to load salesperson leads");
+    } finally {
+      setLoadingSourceLeads(false);
+    }
+  };
+
+  const handleToggleLeadSelection = (leadId) => {
+    if (selectedLeadIds.includes(leadId)) {
+      setSelectedLeadIds(selectedLeadIds.filter((id) => id !== leadId));
+    } else {
+      setSelectedLeadIds([...selectedLeadIds, leadId]);
+    }
+  };
+
+  const handleSelectAllLeads = () => {
+    if (selectedLeadIds.length === sourceLeads.length) {
+      setSelectedLeadIds([]);
+    } else {
+      setSelectedLeadIds(sourceLeads.map((l) => l._id));
+    }
+  };
+
+  const handleExecuteGranularTransfer = async (e) => {
     e.preventDefault();
     if (transferData.fromSalesperson === transferData.toSalesperson) {
       setTransferStatus({
@@ -191,23 +272,36 @@ const AdminDashboard = ({ userId, onLogout }) => {
       });
       return;
     }
+    if (!transferData.toSalesperson) {
+      setTransferStatus({ success: "", error: "Please select a Target Salesperson!" });
+      return;
+    }
+    if (selectedLeadIds.length === 0) {
+      setTransferStatus({ success: "", error: "Please select at least one lead to transfer!" });
+      return;
+    }
 
     setTransferStatus({ success: "", error: "" });
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/api/boss/transfer-leads`, {
+      const res = await fetch(`${API_BASE}/api/boss/transfer-selected-leads`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(transferData),
+        body: JSON.stringify({
+          leadIds: selectedLeadIds,
+          toSalesperson: transferData.toSalesperson,
+        }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw new Error(data.message || "Transfer failed");
 
-      toast.success(data.message);
-      setTransferStatus({ success: data.message, error: "" });
+      toast.success(data.message || "Leads transferred successfully!");
+      setTransferStatus({ success: data.message || "Leads transferred successfully!", error: "" });
+      setSelectedLeadIds([]);
+      setSourceLeads([]);
       setTransferData({ fromSalesperson: "", toSalesperson: "" });
       fetchData();
     } catch (err) {
@@ -347,7 +441,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
             onClick={() => setActiveTab("transfer")}
             className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition cursor-pointer ${activeTab === "transfer" ? "bg-[var(--color-primary)] text-white shadow-md" : "bg-[var(--color-card)] text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}
           >
-            🔄 Transfer Leads / Invoices
+            🔄 Transfer Leads
           </button>
           <button
             onClick={() => setActiveTab("coupons")}
@@ -375,7 +469,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   <div>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">
                       📞 Salesperson Call, Demo & Follow-up Schedule
-                    </h3>
+                    </h3> 
                     <p className="text-xs text-[var(--color-body)]">
                       See exactly who each salesperson needs to call or give a demo to.
                     </p>
@@ -749,95 +843,139 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 4: TRANSFER LEADS */}
+            {/* TAB 4: GRANULAR / SPECIFIC LEAD TRANSFER */}
             {activeTab === "transfer" && (
-              <div className="max-w-2xl mx-auto bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-5">
-                <div>
-                  <h3 className="text-lg font-bold text-[var(--color-primary)]">
-                    🔄 Transfer Leads & Invoices
-                  </h3>
-                  <p className="text-xs text-[var(--color-body)] mt-1">
-                    Reassign all deal records created by one salesperson to
-                    another salesperson (or unassigned/deleted accounts).
-                  </p>
+              <div className="max-w-4xl mx-auto space-y-6">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-5">
+                  <div>
+                    <h3 className="text-lg font-bold text-[var(--color-primary)]">
+                      🔄 Transfer Leads
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)] mt-1">
+                      Select a source salesperson to view their active leads, choose specific leads using checkboxes, and reassign them to another salesperson.
+                    </p>
+                  </div>
+
+                  {transferStatus.success && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-xl text-xs">
+                      {transferStatus.success}
+                    </div>
+                  )}
+                  {transferStatus.error && (
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-xl text-xs">
+                      {transferStatus.error}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleExecuteGranularTransfer} className="space-y-4">
+                    {/* Step 1: Select Source & Target Salesperson */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">
+                          Source Salesperson (From) *
+                        </label>
+                        <select
+                          required
+                          value={transferData.fromSalesperson}
+                          onChange={(e) => {
+                            setTransferData({ ...transferData, fromSalesperson: e.target.value });
+                            if (e.target.value) fetchSalespersonLeadsForTransfer(e.target.value);
+                          }}
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-sm text-[var(--color-heading)]"
+                        >
+                          <option value="">Select Salesperson to pick leads from</option>
+                          <option value="null">Unassigned / Deleted (null)</option>
+                          {employees
+                            .filter((emp) => emp.role === "salesperson")
+                            .map((emp) => (
+                              <option key={emp.userId} value={emp.userId}>
+                                {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">
+                          Target Salesperson (To) *
+                        </label>
+                        <select
+                          required
+                          value={transferData.toSalesperson}
+                          onChange={(e) => setTransferData({ ...transferData, toSalesperson: e.target.value })}
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-sm text-[var(--color-heading)]"
+                        >
+                          <option value="">Select Salesperson to assign leads to</option>
+                          {employees
+                            .filter((emp) => emp.role === "salesperson")
+                            .map((emp) => (
+                              <option key={emp.userId} value={emp.userId}>
+                                {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Step 2: Select Specific Leads/Deals via Checkboxes */}
+                    {transferData.fromSalesperson && (
+                      <div className="space-y-3 pt-4 border-t border-[var(--color-border)]">
+                        <div className="flex justify-between items-center">
+                          <h4 className="text-sm font-bold text-[var(--color-heading)]">
+                            Select Leads to Transfer ({selectedLeadIds.length} selected)
+                          </h4>
+                          {sourceLeads.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleSelectAllLeads}
+                              className="text-xs text-[var(--color-primary)] font-semibold hover:underline cursor-pointer"
+                            >
+                              {selectedLeadIds.length === sourceLeads.length ? "Deselect All" : "Select All"}
+                            </button>
+                          )}
+                        </div>
+
+                        {loadingSourceLeads ? (
+                          <div className="py-6 text-center text-xs text-[var(--color-body)]">Loading leads...</div>
+                        ) : sourceLeads.length === 0 ? (
+                          <div className="py-6 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-xl">
+                            No active leads/deals found for this salesperson.
+                          </div>
+                        ) : (
+                          <div className="max-h-60 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-xl bg-[var(--color-surface)]">
+                            {sourceLeads.map((lead) => (
+                              <label
+                                key={lead._id}
+                                className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] transition cursor-pointer text-xs"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedLeadIds.includes(lead._id)}
+                                    onChange={() => handleToggleLeadSelection(lead._id)}
+                                    className="w-4 h-4 accent-[var(--color-primary)] cursor-pointer"
+                                  />
+                                  <div>
+                                    <strong className="text-[var(--color-heading)]">{lead.instituteName}</strong>
+                                    <span className="text-[var(--color-body)] ml-2">({lead.city || "N/A"})</span>
+                                  </div>
+                                </div>
+                                <span className="font-semibold text-emerald-600">₹{lead.totalAmount || 0}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-semibold py-3 rounded-xl transition cursor-pointer shadow-md"
+                    >
+                      Transfer Selected Leads ({selectedLeadIds.length})
+                    </button>
+                  </form>
                 </div>
-                {transferStatus.success && (
-                  <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-xl text-xs">
-                    {transferStatus.success}
-                  </div>
-                )}
-                {transferStatus.error && (
-                  <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-xl text-xs">
-                    {transferStatus.error}
-                  </div>
-                )}
-                <form onSubmit={handleTransferLeads} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">
-                      From Salesperson (Source) *
-                    </label>
-                    <select
-                      required
-                      value={transferData.fromSalesperson}
-                      onChange={(e) =>
-                        setTransferData({
-                          ...transferData,
-                          fromSalesperson: e.target.value,
-                        })
-                      }
-                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-sm text-[var(--color-heading)]"
-                    >
-                      <option value="">
-                        Select Salesperson to take leads from
-                      </option>
-                      <option value="null">Unassigned / Deleted (null)</option>
-                      {employees
-                        .filter((emp) => emp.role === "salesperson")
-                        .map((emp) => (
-                          <option key={emp.userId} value={emp.userId}>
-                            {emp.name
-                              ? `${emp.name} (${emp.userId})`
-                              : emp.userId}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">
-                      To Salesperson (Target) *
-                    </label>
-                    <select
-                      required
-                      value={transferData.toSalesperson}
-                      onChange={(e) =>
-                        setTransferData({
-                          ...transferData,
-                          toSalesperson: e.target.value,
-                        })
-                      }
-                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-sm text-[var(--color-heading)]"
-                    >
-                      <option value="">
-                        Select Salesperson to assign leads to
-                      </option>
-                      {employees
-                        .filter((emp) => emp.role === "salesperson")
-                        .map((emp) => (
-                          <option key={emp.userId} value={emp.userId}>
-                            {emp.name
-                              ? `${emp.name} (${emp.userId})`
-                              : emp.userId}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-semibold py-3 rounded-xl transition cursor-pointer shadow-md"
-                  >
-                    Execute Lead Transfer
-                  </button>
-                </form>
               </div>
             )}
 
@@ -1106,6 +1244,20 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             Due: <strong>₹{deal.dueAmount}</strong>
                           </span>
                         </div>
+
+                        {/* 🌟 User-Friendly Single Deal Transfer Button */}
+                        <div className="pt-2 border-t border-[var(--color-border)] flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTransferModalDeal(deal);
+                              setTargetSalesperson("");
+                            }}
+                            className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 border border-purple-200 text-xs px-3 py-1.5 rounded-xl font-semibold transition cursor-pointer flex items-center gap-1.5"
+                          >
+                            🔄 Transfer This Deal
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1118,6 +1270,64 @@ const AdminDashboard = ({ userId, onLogout }) => {
               >
                 Close Report
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* 🌟 SIMPLE CONFIRMATION POPUP FOR SINGLE DEAL TRANSFER */}
+        {transferModalDeal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl max-w-md w-full p-6 text-[var(--color-heading)] space-y-4 shadow-2xl">
+              <div>
+                <h3 className="text-lg font-bold text-[var(--color-primary)]">
+                  Reassign Deal
+                </h3>
+                <p className="text-xs text-[var(--color-body)] mt-1">
+                  Transferring deal for <strong>{transferModalDeal.instituteName}</strong>. Select the salesperson who put in the most effort:
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs font-medium text-[var(--color-heading)]">
+                  Select Target Salesperson *
+                </label>
+                <select
+                  value={targetSalesperson}
+                  onChange={(e) => setTargetSalesperson(e.target.value)}
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                >
+                  <option value="" disabled>-- Choose Salesperson --</option>
+                  {employees
+                    .filter((emp) => emp.role === "salesperson" && emp.userId !== transferModalDeal.salespersonId)
+                    .map((emp) => (
+                      <option key={emp.userId} value={emp.userId}>
+                        {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setTransferModalDeal(null)}
+                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[var(--color-heading)] py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer border border-[var(--color-border)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExecuteSingleDealTransfer}
+                  disabled={isTransferring || !targetSalesperson}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer text-white shadow-md ${
+                    isTransferring || !targetSalesperson 
+                      ? "bg-purple-400 opacity-60 cursor-not-allowed" 
+                      : "bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)]"
+                  }`}
+                >
+                  {isTransferring ? "Transferring..." : "Confirm & Transfer"}
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -25,4 +25,7 @@ const leadSchema = new mongoose.Schema({
   status: { type: String, default: 'Active' }
 }, { timestamps: true });
 
+// 🛡️ Prevent duplicate leads based on Salesperson & Mobile Number
+leadSchema.index({ salespersonId: 1, mobileNo: 1 }, { unique: true });
+
 module.exports = mongoose.models.Lead || mongoose.model('Lead', leadSchema);

@@ -90,7 +90,7 @@ const taskSchema = new mongoose.Schema({
 const Task = mongoose.model('Task', taskSchema);
 
 // =========================================================================
-// --- 📄 PDF GENERATOR HELPER (Smart Dual Mode: Local & Cloud) ---
+// --- 📄 PDF GENERATOR HELPER (Universal Stable Mode) ---
 // =========================================================================
 const createInvoicePDF = async (data) => {
   let browser;
@@ -107,28 +107,19 @@ const createInvoicePDF = async (data) => {
       logoBase64 = `data:image/jpeg;base64,${logoBuffer.toString('base64')}`;
     }
 
-    const isLocal = process.env.NODE_ENV !== 'production' && !process.env.RENDER;
-
-    if (isLocal) {
-      // 💻 Localhost / Development Mode
-      const puppeteer = require('puppeteer');
-      browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-      });
-    } else {
-      // ☁️ Render / Production Cloud Mode (Using stable v119 chromium setup)
-      const chromium = require('@sparticuz/chromium');
-      const puppeteerCore = require('puppeteer-core');
-      
-      browser = await puppeteerCore.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
-        ignoreHTTPSErrors: true,
-      });
-    }
+    const puppeteer = require('puppeteer');
+    
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox', 
+        '--disable-dev-shm-usage', 
+        '--disable-gpu',
+        '--single-process',
+        '--no-zygote'
+      ]
+    });
 
     const page = await browser.newPage();
 
@@ -244,18 +235,20 @@ const createInvoicePDF = async (data) => {
 };
 
 // =========================================================================
-// --- 📧 EMAIL SENDER HELPER (Brevo SMTP) ---
+// --- 📧 EMAIL SENDER HELPER ---
 // =========================================================================
 const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
   try {
     const transporter = nodemailer.createTransport({
-      host: 'smtp-relay.brevo.com',
-      port: 587,
-      secure: false,
+      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      tls: { rejectUnauthorized: false }
     });
 
     const mailOptions = {
@@ -420,7 +413,6 @@ app.get('/api/boss/employee-details/:salespersonId', verifyToken, async (req, re
   }
 });
 
-// 🌟 Admin Endpoint to view all Tasks / Calls / Demos assigned or created by Salespersons
 app.get('/api/boss/tasks', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'boss' && req.user.role !== 'admin') {
@@ -546,6 +538,70 @@ app.post('/api/boss/transfer-leads', verifyToken, async (req, res) => {
     res.json({ message: `Successfully transferred leads & invoices from ${fromSalesperson} to ${toSalesperson}!` });
   } catch (err) {
     res.status(500).json({ message: 'Transfer failed', error: err.message });
+  }
+});
+
+app.post('/api/boss/transfer-selected-leads', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+
+    const { leadIds, toSalesperson } = req.body;
+
+    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
+      return res.status(400).json({ message: 'No leads selected for transfer!' });
+    }
+
+    if (!toSalesperson) {
+      return res.status(400).json({ message: 'Target salesperson is required!' });
+    }
+
+    const result = await Invoice.updateMany(
+      { _id: { $in: leadIds } },
+      { $set: { salespersonId: toSalesperson } }
+    );
+
+    res.json({ 
+      success: true, 
+      message: `Successfully transferred ${result.modifiedCount || leadIds.length} lead(s) to ${toSalesperson}!` 
+    });
+  } catch (err) {
+    console.error('Granular lead transfer error:', err);
+    res.status(500).json({ message: 'Failed to transfer selected leads', error: err.message });
+  }
+});
+
+// 🌟 New Endpoint: Transfer / Reassign a Single Deal
+app.post('/api/boss/transfer-single-deal', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+
+    const { dealId, newSalespersonId } = req.body;
+
+    if (!dealId || !newSalespersonId) {
+      return res.status(400).json({ message: 'Deal ID and New Salesperson ID are required!' });
+    }
+
+    const updatedDeal = await Invoice.findByIdAndUpdate(
+      dealId,
+      { $set: { salespersonId: newSalespersonId } },
+      { new: true }
+    );
+
+    if (!updatedDeal) {
+      return res.status(404).json({ message: 'Deal not found!' });
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Deal for "${updatedDeal.instituteName}" successfully reassigned to ${newSalespersonId}!` 
+    });
+  } catch (err) {
+    console.error('Single deal transfer error:', err);
+    res.status(500).json({ message: 'Failed to transfer deal', error: err.message });
   }
 });
 
@@ -705,6 +761,11 @@ app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), a
       return res.status(400).json({ message: 'Mandatory fields are missing!' });
     }
 
+    const existing = await Lead.findOne({ salespersonId: req.user.userId, mobileNo });
+    if (existing) {
+      return res.status(400).json({ message: 'This lead with this mobile number already exists!' });
+    }
+
     const normalizedPath = req.file ? req.file.path.replace(/\\/g, '/') : '';
 
     const newLead = new Lead({
@@ -728,7 +789,6 @@ app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), a
 
     await newLead.save();
 
-    // Automatically create a tracking task when a lead follow-up is scheduled
     if (followUpDate) {
       await Task.create({
         salespersonId: req.user.userId,
@@ -742,6 +802,58 @@ app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), a
     res.status(201).json({ message: 'Lead & Follow-up saved successfully!', lead: newLead });
   } catch (err) {
     res.status(500).json({ message: 'Failed to save lead', error: err.message });
+  }
+});
+
+app.post('/api/salesperson/leads/bulk', verifyToken, async (req, res) => {
+  try {
+    const { leads } = req.body;
+    const salespersonId = req.user.userId;
+
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({ message: 'No valid lead data provided.' });
+    }
+
+    let importedCount = 0;
+    let duplicateCount = 0;
+
+    for (const lead of leads) {
+      const mobileNo = String(lead.mobileNo || '').trim();
+      if (!mobileNo) continue;
+
+      const existingLead = await Lead.findOne({ salespersonId, mobileNo });
+
+      if (existingLead) {
+        duplicateCount++;
+      } else {
+        await Lead.create({
+          salespersonId,
+          instituteName: lead.instituteName || 'Unknown Institute',
+          contactPerson: lead.contactPerson || 'N/A',
+          mobileNo: mobileNo,
+          email: lead.email || '',
+          address: lead.address || '',
+          city: lead.city || '',
+          state: lead.state || '',
+          pincode: String(lead.pincode || ''),
+          notes: lead.notes || 'Imported via Excel Bulk Upload',
+          leadStatus: 'Active',
+          demoStatus: 'Not Given',
+        });
+        importedCount++;
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      importedCount,
+      duplicateCount,
+      message: `Successfully imported ${importedCount} new lead(s). Skipped ${duplicateCount} duplicate lead(s).`
+    });
+
+  } catch (err) {
+    console.error('Bulk lead upload error:', err);
+    res.status(500).json({ message: 'Server error during bulk upload', error: err.message });
   }
 });
 
@@ -762,7 +874,6 @@ app.put('/api/salesperson/leads/:id', verifyToken, async (req, res) => {
   }
 });
 
-// 🌟 Salesperson Tasks API (Create/View tasks like calls & demos)
 app.get('/api/salesperson/tasks', verifyToken, async (req, res) => {
   try {
     const tasks = await Task.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 });
@@ -794,7 +905,6 @@ app.post('/api/salesperson/tasks', verifyToken, async (req, res) => {
   }
 });
 
-// --- 🏷️ PUBLIC / SALESPERSON COUPON VERIFICATION ROUTE ---
 app.post('/api/coupons/verify', verifyToken, async (req, res) => {
   try {
     const { code } = req.body;

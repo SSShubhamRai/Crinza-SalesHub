@@ -56,9 +56,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
     gstNo: '',
     packageValidity: '1 Year',
     baseAmount: 15000,
-    subtotalAmount: 15000, // Subtotal before GST
-    gstAmount: 2700,       // 18% GST amount
-    totalAmount: 17700,    // Grand Total (Subtotal + GST)
+    subtotalAmount: 15000,
+    gstAmount: 2700,
+    totalAmount: 17700,
     paidAmount: 0,
     couponCode: '',
     discountAmount: 0,
@@ -173,11 +173,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
 
     const discountedSubtotal = Math.max(0, baseSubtotal - discount);
-    
-    // Calculate 18% GST on the discounted subtotal
     const gst = discountedSubtotal * 0.18;
-    
-    // Final Grand Total (Subtotal + GST)
     const calculatedTotal = discountedSubtotal + gst;
 
     setFormData((prev) => ({
@@ -594,11 +590,24 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- Submit New Prospect Lead ---
+  // --- Submit New Prospect Lead with Duplicate Check ---
   const handleLeadSubmit = async (e) => {
     e.preventDefault();
     if (!meetingPhotoFile) {
       setStatus({ loading: false, success: '', error: 'Please upload the meeting photo!' });
+      return;
+    }
+
+    const isDuplicate = myLeads.some(
+      lead => lead.mobileNo.trim() === leadFormData.mobileNo.trim()
+    );
+
+    if (isDuplicate) {
+      setStatus({ 
+        loading: false, 
+        success: '', 
+        error: `Duplicate Lead Error: A lead with mobile number "${leadFormData.mobileNo}" already exists in your directory!` 
+      });
       return;
     }
 
@@ -712,273 +721,249 @@ const SalespersonForm = ({ userId, onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        
-        {/* Header Bar */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-5 gap-4">
-          <div>
-            <span className="text-xs bg-[var(--color-primary-light)]/20 text-[var(--color-primary-dark)] px-3 py-1 rounded-full font-semibold">
-              👤 SALESPERSON PORTAL
-            </span>
-            <h1 className="text-2xl font-bold text-[var(--color-heading)] mt-1">
-              {activeView === 'dashboard' && 'My Dashboard & Performance'}
-              {activeView === 'leads' && 'My Generated Leads'}
-              {activeView === 'calendar' && '📅 Follow-up & Meeting Calendar'}
-              {activeView === 'lead-form' && 'Create New Lead & Schedule Follow-up'}
-              {activeView === 'invoice-form' && 'Create Invoice Request'}
-            </h1>
-            <p className="text-[var(--color-body)] text-xs">Logged in as: <strong className="text-[var(--color-primary)]">{userId}</strong></p>
-          </div>
+    <>
+      <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
+        <div className="max-w-5xl mx-auto space-y-6">
+          
+          {/* Header Bar */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-5 gap-4">
+            <div>
+              <span className="text-xs bg-[var(--color-primary-light)]/20 text-[var(--color-primary-dark)] px-3 py-1 rounded-full font-semibold">
+                👤 SALESPERSON PORTAL
+              </span>
+              <h1 className="text-2xl font-bold text-[var(--color-heading)] mt-1">
+                {activeView === 'dashboard' && 'My Dashboard & Performance'}
+                {activeView === 'leads' && 'My Generated Leads'}
+                {activeView === 'calendar' && '📅 Follow-up & Meeting Calendar'}
+                {activeView === 'lead-form' && 'Create New Lead & Schedule Follow-up'}
+                {activeView === 'invoice-form' && 'Create Invoice Request'}
+              </h1>
+              <p className="text-[var(--color-body)] text-xs">Logged in as: <strong className="text-[var(--color-primary)]">{userId}</strong></p>
+            </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {activeView !== 'dashboard' && (
-              <button onClick={() => setActiveView('dashboard')} className="bg-[var(--color-surface)] text-[var(--color-heading)] text-xs px-3 py-2 rounded-xl font-medium border border-[var(--color-border)] cursor-pointer">
-                📊 Dashboard
+            <div className="flex items-center gap-2 flex-wrap">
+              {activeView !== 'dashboard' && (
+                <button onClick={() => setActiveView('dashboard')} className="bg-[var(--color-surface)] text-[var(--color-heading)] text-xs px-3 py-2 rounded-xl font-medium border border-[var(--color-border)] cursor-pointer">
+                  📊 Dashboard
+                </button>
+              )}
+              <button onClick={() => setActiveView('leads')} className={`text-xs px-3 py-2 rounded-xl font-medium border cursor-pointer ${activeView === 'leads' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                📋 My Leads ({totalLeadsCount})
               </button>
-            )}
-            <button onClick={() => setActiveView('leads')} className={`text-xs px-3 py-2 rounded-xl font-medium border cursor-pointer ${activeView === 'leads' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-              📋 My Leads ({totalLeadsCount})
-            </button>
-            <button onClick={() => setActiveView('calendar')} className={`text-xs px-3 py-2 rounded-xl font-medium border cursor-pointer ${activeView === 'calendar' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-              📅 Calendar / Follow-ups
-            </button>
-            <button onClick={() => setActiveView('lead-form')} className={`text-xs px-3 py-2 rounded-xl font-medium border cursor-pointer ${activeView === 'lead-form' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-              ➕ New Lead
-            </button>
-            <button onClick={() => setActiveView('invoice-form')} className={`text-xs px-3 py-2 rounded-xl font-medium border cursor-pointer ${activeView === 'invoice-form' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-              🧾 New Invoice
-            </button>
-            <button onClick={onLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer">
-              Logout
-            </button>
+              <button onClick={() => setActiveView('calendar')} className={`text-xs px-3 py-2 rounded-xl font-medium border cursor-pointer ${activeView === 'calendar' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                📅 Calendar
+              </button>
+              <button onClick={() => setActiveView('lead-form')} className={`text-xs px-3 py-2 rounded-xl font-medium border cursor-pointer ${activeView === 'lead-form' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                ➕ New Lead
+              </button>
+              <button onClick={() => setActiveView('invoice-form')} className={`text-xs px-3 py-2 rounded-xl font-medium border cursor-pointer ${activeView === 'invoice-form' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                🧾 New Invoice
+              </button>
+              <button onClick={onLogout} className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-200 px-3 py-2 rounded-xl text-xs font-medium cursor-pointer">
+                Logout
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* VIEW 1: DASHBOARD */}
-        {activeView === 'dashboard' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div onClick={() => setActiveView('lead-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 rounded-2xl shadow-sm cursor-pointer transition flex items-center justify-between group">
-                <div>
-                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">➕ Create Lead & Follow-up</h3>
-                  <p className="text-xs text-[var(--color-body)] mt-0.5">Record details, photo & schedule meetings.</p>
+          {/* VIEW 1: DASHBOARD */}
+          {activeView === 'dashboard' && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div onClick={() => setActiveView('lead-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 rounded-2xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">➕ Create Lead</h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">Record details & photo.</p>
+                  </div>
+                  <span className="text-2xl">🎯</span>
                 </div>
-                <span className="text-2xl">🎯</span>
+                <div onClick={() => setActiveView('calendar')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 rounded-2xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">📅 View Calendar</h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">Check upcoming calls & meetings.</p>
+                  </div>
+                  <span className="text-2xl">🗓️</span>
+                </div>
+                <div onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 rounded-2xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">🧾 Create Invoice</h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">Submit payment proof & details.</p>
+                  </div>
+                  <span className="text-2xl">💳</span>
+                </div>
               </div>
-              <div onClick={() => setActiveView('calendar')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 rounded-2xl shadow-sm cursor-pointer transition flex items-center justify-between group">
-                <div>
-                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">📅 View Calendar</h3>
-                  <p className="text-xs text-[var(--color-body)] mt-0.5">Check upcoming calls & meetings schedule.</p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm">
+                  <span className="text-xs text-[var(--color-body)] block font-medium">Total Invoices / Deals</span>
+                  <strong className="text-2xl font-extrabold text-[var(--color-primary)]">{totalDealsCount}</strong>
                 </div>
-                <span className="text-2xl">🗓️</span>
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm">
+                  <span className="text-xs text-[var(--color-body)] block font-medium">Total Leads Generated</span>
+                  <strong className="text-2xl font-extrabold text-blue-600">{totalLeadsCount}</strong>
+                </div>
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm">
+                  <span className="text-xs text-[var(--color-body)] block font-medium">Approved Invoices</span>
+                  <strong className="text-2xl font-extrabold text-emerald-600">{approvedDealsCount}</strong>
+                </div>
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm">
+                  <span className="text-xs text-[var(--color-body)] block font-medium">Pending Invoices</span>
+                  <strong className="text-2xl font-extrabold text-amber-600">{pendingDealsCount}</strong>
+                </div>
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm sm:col-span-2 md:col-span-1">
+                  <span className="text-xs text-[var(--color-body)] block font-medium">Payment Collected</span>
+                  <strong className="text-2xl font-extrabold text-emerald-600">₹{totalPaidCollected.toLocaleString('en-IN')}</strong>
+                </div>
               </div>
-              <div onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 rounded-2xl shadow-sm cursor-pointer transition flex items-center justify-between group">
-                <div>
-                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">🧾 Create Invoice</h3>
-                  <p className="text-xs text-[var(--color-body)] mt-0.5">Submit payment proof & package details.</p>
+
+              {/* My Submitted Invoices History List */}
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
+                  <h3 className="text-lg font-bold text-[var(--color-heading)]">📋 My Invoice Requests History</h3>
+                  <span className="text-xs bg-[var(--color-surface)] px-3 py-1 rounded-lg border border-[var(--color-border)] font-medium">
+                    {myDeals.length} Record(s)
+                  </span>
                 </div>
-                <span className="text-2xl">💳</span>
+
+                {loadingDeals ? (
+                  <div className="text-center py-8 text-sm text-[var(--color-body)]">Loading your deals...</div>
+                ) : myDeals.length === 0 ? (
+                  <div className="text-center py-10 bg-[var(--color-surface)] rounded-xl text-sm text-[var(--color-body)] space-y-3">
+                    <p>You haven't submitted any invoice requests yet.</p>
+                    <button onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl font-medium cursor-pointer">
+                      Create Your First Invoice Request
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {myDeals.map((deal) => (
+                      <div key={deal._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-xl space-y-2 text-xs">
+                        <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[var(--color-border)] pb-2">
+                          <div>
+                            <strong className="text-sm text-[var(--color-heading)]">{deal.instituteName}</strong>
+                            <span className="ml-2 text-xs text-[var(--color-body)]">({deal.appName})</span>
+                          </div>
+                          <span className={`px-2.5 py-0.5 rounded-full font-semibold uppercase ${deal.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-300' : deal.status === 'rejected' ? 'bg-red-500/10 text-red-500 border border-red-200' : 'bg-amber-500/10 text-amber-600 border border-amber-200'}`}>
+                            {deal.status}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[var(--color-heading)]">
+                          <div>📍 <strong>Address:</strong> {deal.address || 'N/A'}, {deal.city || ''}, {deal.state || ''} ({deal.pincode || ''})</div>
+                          <div>📞 <strong>Client Contact:</strong> <a href={`tel:${deal.mobileNo}`} className="text-[var(--color-primary)] hover:underline">{deal.mobileNo}</a> | {deal.email}</div>
+                        </div>
+                        <div className="flex flex-wrap gap-4 pt-2 border-t border-[var(--color-border)]/60">
+                          <span>Total Amount: <strong>₹{deal.totalAmount?.toLocaleString('en-IN')}</strong></span>
+                          <span className="text-emerald-600">Paid: <strong>₹{deal.paidAmount?.toLocaleString('en-IN')}</strong></span>
+                          <span className="text-red-500">Due: <strong>₹{deal.dueAmount?.toLocaleString('en-IN')}</strong></span>
+                          {deal.invoiceId && <span className="text-[var(--color-primary)]">Invoice ID: #{deal.invoiceId}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
+          )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm">
-                <span className="text-xs text-[var(--color-body)] block font-medium">Total Invoices / Deals</span>
-                <strong className="text-2xl font-extrabold text-[var(--color-primary)]">{totalDealsCount}</strong>
-              </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm">
-                <span className="text-xs text-[var(--color-body)] block font-medium">Total Leads Generated</span>
-                <strong className="text-2xl font-extrabold text-blue-600">{totalLeadsCount}</strong>
-              </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm">
-                <span className="text-xs text-[var(--color-body)] block font-medium">Approved Invoices</span>
-                <strong className="text-2xl font-extrabold text-emerald-600">{approvedDealsCount}</strong>
-              </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm">
-                <span className="text-xs text-[var(--color-body)] block font-medium">Pending Invoices</span>
-                <strong className="text-2xl font-extrabold text-amber-600">{pendingDealsCount}</strong>
-              </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 shadow-sm sm:col-span-2 md:col-span-1">
-                <span className="text-xs text-[var(--color-body)] block font-medium">Payment Collected</span>
-                <strong className="text-2xl font-extrabold text-emerald-600">₹{totalPaidCollected.toLocaleString('en-IN')}</strong>
-              </div>
-            </div>
-
-            {/* My Submitted Invoices History List */}
+          {/* VIEW 2: LEADS LIST */}
+          {activeView === 'leads' && (
             <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-              <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                <h3 className="text-lg font-bold text-[var(--color-heading)]">📋 My Invoice Requests History</h3>
-                <span className="text-xs bg-[var(--color-surface)] px-3 py-1 rounded-lg border border-[var(--color-border)] font-medium">
-                  {myDeals.length} Record(s)
-                </span>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-3">
+                <h3 className="text-lg font-bold text-[var(--color-heading)]">📋 My Generated Leads Directory</h3>
+                <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2.5 rounded-xl font-semibold cursor-pointer">
+                  ➕ Add New Lead
+                </button>
               </div>
 
-              {loadingDeals ? (
-                <div className="text-center py-8 text-sm text-[var(--color-body)]">Loading your deals...</div>
-              ) : myDeals.length === 0 ? (
+              {/* 🔍 Leads Filter Action Bar */}
+              <div className="flex gap-2 flex-wrap pt-2">
+                <button onClick={() => setLeadFilter('all')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'all' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  All Active ({activeLeadsList.length})
+                </button>
+                <button onClick={() => setLeadFilter('call')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'call' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  📞 To Call / Call Back
+                </button>
+                <button onClick={() => setLeadFilter('meeting')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'meeting' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  🤝 Meetings
+                </button>
+                <button onClick={() => setLeadFilter('demo-done')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'demo-done' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  ✅ Demo Done
+                </button>
+                <button onClick={() => setLeadFilter('demo-pending')} className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  ⏳ Demo Pending
+                </button>
+              </div>
+
+              {loadingLeads ? (
+                <div className="text-center py-8 text-sm text-[var(--color-body)]">Loading your leads...</div>
+              ) : filteredLeads.length === 0 ? (
                 <div className="text-center py-10 bg-[var(--color-surface)] rounded-xl text-sm text-[var(--color-body)] space-y-3">
-                  <p>You haven't submitted any invoice requests yet.</p>
-                  <button onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl font-medium cursor-pointer">
-                    Create Your First Invoice Request
-                  </button>
+                  <p>No leads found matching this filter.</p>
+                  <button onClick={() => setLeadFilter('all')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl">View All Leads</button>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {myDeals.map((deal) => (
-                    <div key={deal._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-xl space-y-2 text-xs">
-                      <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[var(--color-border)] pb-2">
-                        <div>
-                          <strong className="text-sm text-[var(--color-heading)]">{deal.instituteName}</strong>
-                          <span className="ml-2 text-xs text-[var(--color-body)]">({deal.appName})</span>
-                        </div>
-                        <span className={`px-2.5 py-0.5 rounded-full font-semibold uppercase ${deal.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-300' : deal.status === 'rejected' ? 'bg-red-500/10 text-red-500 border border-red-200' : 'bg-amber-500/10 text-amber-600 border border-amber-200'}`}>
-                          {deal.status}
+                  {filteredLeads.map((lead) => (
+                    <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-4 rounded-xl space-y-2 text-xs transition shadow-sm">
+                      <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2">
+                        <strong onClick={() => setSelectedLead(lead)} className="text-sm text-[var(--color-heading)] cursor-pointer">{lead.instituteName}</strong>
+                        <span className="bg-blue-500/10 text-blue-600 border border-blue-200 px-2.5 py-0.5 rounded-full font-semibold">
+                          {lead.leadStatus || 'Active Lead'}
                         </span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[var(--color-heading)]">
-                        <div>📍 <strong>Address:</strong> {deal.address || 'N/A'}, {deal.city || ''}, {deal.state || ''} ({deal.pincode || ''})</div>
-                        <div>📞 <strong>Client Contact:</strong> {deal.mobileNo} | {deal.email}</div>
-                      </div>
-                      <div className="flex flex-wrap gap-4 pt-2 border-t border-[var(--color-border)]/60">
-                        <span>Total Amount: <strong>₹{deal.totalAmount?.toLocaleString('en-IN')}</strong></span>
-                        <span className="text-emerald-600">Paid: <strong>₹{deal.paidAmount?.toLocaleString('en-IN')}</strong></span>
-                        <span className="text-red-500">Due: <strong>₹{deal.dueAmount?.toLocaleString('en-IN')}</strong></span>
-                        {deal.invoiceId && <span className="text-[var(--color-primary)]">Invoice ID: #{deal.invoiceId}</span>}
+                        <div>
+                          👤 <strong>Contact:</strong> {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">📞 {lead.mobileNo}</a>
+                        </div>
+                        <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">📍 <strong>Location:</strong> {lead.address || 'N/A'}, {lead.city}, {lead.state} ({lead.pincode})</div>
+                        <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">🎯 <strong>Demo Status:</strong> <span className="text-amber-600 font-semibold">{lead.demoStatus || 'Not Given'}</span></div>
+                        {lead.followUpDate && (
+                          <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2 rounded-lg border border-amber-200 cursor-pointer">
+                            🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}
+                          </div>
+                        )}
+                        {lead.notes && <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 cursor-pointer">📝 <strong>Notes:</strong> {lead.notes}</div>}
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
 
-          </div>
-        )}
-
-        {/* VIEW 2: LEADS LIST */}
-        {activeView === 'leads' && (
-          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-3">
-              <h3 className="text-lg font-bold text-[var(--color-heading)]">📋 My Generated Leads Directory</h3>
-              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2.5 rounded-xl font-semibold cursor-pointer">
-                ➕ Add New Lead
-              </button>
-            </div>
-
-            {/* 🔍 Leads Filter Action Bar */}
-            <div className="flex gap-2 flex-wrap pt-2">
-              <button
-                onClick={() => setLeadFilter('all')}
-                className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'all' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
-              >
-                All Active ({activeLeadsList.length})
-              </button>
-              <button
-                onClick={() => setLeadFilter('call')}
-                className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'call' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
-              >
-                📞 To Call / Call Back
-              </button>
-              <button
-                onClick={() => setLeadFilter('meeting')}
-                className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'meeting' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
-              >
-                🤝 Meetings
-              </button>
-              <button
-                onClick={() => setLeadFilter('demo-done')}
-                className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'demo-done' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
-              >
-                ✅ Demo Done
-              </button>
-              <button
-                onClick={() => setLeadFilter('demo-pending')}
-                className={`text-xs px-3.5 py-1.5 rounded-xl font-medium border cursor-pointer ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
-              >
-                ⏳ Demo Pending
-              </button>
-            </div>
-
-            {loadingLeads ? (
-              <div className="text-center py-8 text-sm text-[var(--color-body)]">Loading your leads...</div>
-            ) : filteredLeads.length === 0 ? (
-              <div className="text-center py-10 bg-[var(--color-surface)] rounded-xl text-sm text-[var(--color-body)] space-y-3">
-                <p>No leads found matching this filter.</p>
-                <button onClick={() => setLeadFilter('all')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl">View All Leads</button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredLeads.map((lead) => (
-                  <div 
-                    key={lead._id} 
-                    onClick={() => setSelectedLead(lead)}
-                    className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-4 rounded-xl space-y-2 text-xs cursor-pointer transition shadow-sm"
-                  >
-                    <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2">
-                      <strong className="text-sm text-[var(--color-heading)]">{lead.instituteName}</strong>
-                      <span className="bg-blue-500/10 text-blue-600 border border-blue-200 px-2.5 py-0.5 rounded-full font-semibold">
-                        {lead.leadStatus || 'Active Lead'}
-                      </span>
+              {selectedLead && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
+                    <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
+                      <h3 className="text-lg font-bold text-[var(--color-heading)]">{selectedLead.instituteName}</h3>
+                      <button onClick={() => { setSelectedLead(null); setFollowUpModalAction(null); }} className="text-xs bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-lg cursor-pointer">✕ Close</button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[var(--color-heading)]">
-                      <div>👤 <strong>Contact:</strong> {lead.contactPerson} | 📞 {lead.mobileNo}</div>
-                      <div>📍 <strong>Location:</strong> {lead.address || 'N/A'}, {lead.city}, {lead.state} ({lead.pincode})</div>
-                      <div>🎯 <strong>Demo Status:</strong> <span className="text-amber-600 font-semibold">{lead.demoStatus || 'Not Given'}</span></div>
-                      {lead.followUpDate && (
-                        <div className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2 rounded-lg border border-amber-200">
-                          🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}
+
+                    <div className="space-y-2 text-xs text-[var(--color-heading)]">
+                      <p>👤 <strong>Contact Person:</strong> {selectedLead.contactPerson} | 📞 <a href={`tel:${selectedLead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">📞 {selectedLead.mobileNo}</a></p>
+                      <p>✉️ <strong>Email:</strong> {selectedLead.email || 'N/A'}</p>
+                      <p>📍 <strong>Address:</strong> {selectedLead.address || 'N/A'}, {selectedLead.city}, {selectedLead.state} - {selectedLead.pincode}</p>
+                      <p>🎯 <strong>Current Demo Status:</strong> <span className="text-[var(--color-primary)] font-bold">{selectedLead.demoStatus || 'Not Given'}</span></p>
+                      <p>📌 <strong>Pipeline Status:</strong> <span className="text-emerald-600 font-bold">{selectedLead.leadStatus || 'Active'}</span></p>
+                      {selectedLead.meetingPhoto && (
+                        <div>
+                          <strong className="block mb-1">Meeting Photo:</strong>
+                          <img src={`${API_BASE}/${selectedLead.meetingPhoto}`} alt="Meeting" className="h-32 rounded-lg object-cover border" />
                         </div>
                       )}
-                      {lead.notes && <div className="sm:col-span-2">📝 <strong>Notes:</strong> {lead.notes}</div>}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
 
-            {selectedLead && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
-                  <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                    <h3 className="text-lg font-bold text-[var(--color-heading)]">{selectedLead.instituteName}</h3>
-                    <button onClick={() => { setSelectedLead(null); setFollowUpModalAction(null); }} className="text-xs bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-lg cursor-pointer">✕ Close</button>
-                  </div>
-
-                  <div className="space-y-2 text-xs text-[var(--color-heading)]">
-                    <p>👤 <strong>Contact Person:</strong> {selectedLead.contactPerson} ({selectedLead.mobileNo})</p>
-                    <p>✉️ <strong>Email:</strong> {selectedLead.email || 'N/A'}</p>
-                    <p>📍 <strong>Address:</strong> {selectedLead.address || 'N/A'}, {selectedLead.city}, {selectedLead.state} - {selectedLead.pincode}</p>
-                    <p>🎯 <strong>Current Demo Status:</strong> <span className="text-[var(--color-primary)] font-bold">{selectedLead.demoStatus || 'Not Given'}</span></p>
-                    <p>📌 <strong>Pipeline Status:</strong> <span className="text-emerald-600 font-bold">{selectedLead.leadStatus || 'Active'}</span></p>
-                    {selectedLead.meetingPhoto && (
+                    <div className="space-y-3 pt-3 border-t border-[var(--color-border)]">
                       <div>
-                        <strong className="block mb-1">Meeting Photo:</strong>
-                        <img src={`${API_BASE}/${selectedLead.meetingPhoto}`} alt="Meeting" className="h-32 rounded-lg object-cover border" />
+                        <label className="block text-xs font-semibold mb-1 text-[var(--color-primary)] uppercase">1. Demo Status</label>
+                        <div className="flex gap-2 flex-wrap">
+                          {['Not Given', 'Scheduled', 'Completed', 'Interested'].map((st) => (
+                            <button key={st} type="button" onClick={() => handleUpdateLeadStatus(selectedLead._id, null, st)} className={`px-3 py-1.5 rounded-lg text-xs font-medium border cursor-pointer ${selectedLead.demoStatus === st ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] border-[var(--color-border)]'}`}>
+                              {st === 'Completed' ? '✅ Completed (Auto Timestamp)' : st}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    )}
-                  </div>
 
-                  <div className="space-y-3 pt-3 border-t border-[var(--color-border)]">
-                    <div>
-                      <label className="block text-xs font-semibold mb-1 text-[var(--color-primary)] uppercase">1. Demo Status</label>
-                      <div className="flex gap-2 flex-wrap">
-                        {['Not Given', 'Scheduled', 'Completed', 'Interested'].map((st) => (
-                          <button
-                            key={st}
-                            type="button"
-                            onClick={() => handleUpdateLeadStatus(selectedLead._id, null, st)}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border cursor-pointer ${selectedLead.demoStatus === st ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] border-[var(--color-border)]'}`}
-                          >
-                            {st === 'Completed' ? '✅ Completed (Auto Timestamp)' : st}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <button
-                        type="button"
-                        onClick={async () => {
+                      <div>
+                        <button type="button" onClick={async () => {
                           await handleUpdateLeadStatus(selectedLead._id, 'Deal Close', null);
                           setFormData((prev) => ({
                             ...prev,
@@ -992,394 +977,360 @@ const SalespersonForm = ({ userId, onLogout }) => {
                           }));
                           setSelectedLead(null);
                           setActiveView('invoice-form');
-                        }}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl text-xs transition cursor-pointer shadow"
-                      >
-                        🚀 Sales Punch (Generate Invoice & Close Lead)
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold mb-1 text-[var(--color-primary)] uppercase">3. Update Lead Stage / Response</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => setFollowUpModalAction('Call Back')} className="bg-amber-500/10 text-amber-600 border border-amber-200 py-2 rounded-xl font-semibold cursor-pointer hover:bg-amber-500/20">
-                          📞 Call Back (Select Date)
-                        </button>
-                        <button onClick={() => setFollowUpModalAction('Follow Up')} className="bg-blue-500/10 text-blue-600 border border-blue-200 py-2 rounded-xl font-semibold cursor-pointer hover:bg-blue-500/20">
-                          🔔 Follow Up (Select Date)
-                        </button>
-                        <button onClick={() => handleUpdateLeadStatus(selectedLead._id, 'Not Interested', null)} className="bg-red-500/10 text-red-500 border border-red-200 py-2 rounded-xl font-semibold cursor-pointer hover:bg-red-500/20">
-                          ❌ Not Interested
-                        </button>
-                        <button onClick={() => handleUpdateLeadStatus(selectedLead._id, 'Deal Close', null)} className="bg-emerald-500/10 text-emerald-600 border border-emerald-200 py-2 rounded-xl font-semibold cursor-pointer hover:bg-emerald-500/20">
-                          🎉 Deal Close
+                        }} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl text-xs transition cursor-pointer shadow">
+                          🚀 Sales Punch (Generate Invoice & Close Lead)
                         </button>
                       </div>
 
-                      {followUpModalAction && (
-                        <div className="mt-3 p-3 bg-[var(--color-surface)] border border-[var(--color-primary)] rounded-xl space-y-3">
-                          <p className="text-xs font-bold text-[var(--color-primary)]">Select Date & Time for {followUpModalAction}:</p>
-                          <div className="grid grid-cols-2 gap-2">
-                            <input 
-                              type="date" 
-                              value={modalDate} 
-                              onChange={(e) => setModalDate(e.target.value)} 
-                              className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-2 text-xs" 
-                            />
-                            <input 
-                              type="time" 
-                              value={modalTime} 
-                              onChange={(e) => setModalTime(e.target.value)} 
-                              className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-2 text-xs" 
-                            />
-                          </div>
-                          <button 
-                            type="button"
-                            onClick={() => {
-                              if (!modalDate) {
-                                alert('Please select a date!');
-                                return;
-                              }
-                              handleUpdateLeadStatus(selectedLead._id, followUpModalAction, null, modalDate, modalTime);
-                            }}
-                            className="w-full bg-[var(--color-primary)] text-white text-xs py-2 rounded-lg font-semibold cursor-pointer"
-                          >
-                            Save Reminder Date & Time
-                          </button>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1 text-[var(--color-primary)] uppercase">3. Update Lead Stage / Response</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button onClick={() => setFollowUpModalAction('Call Back')} className="bg-amber-500/10 text-amber-600 border border-amber-200 py-2 rounded-xl font-semibold cursor-pointer hover:bg-amber-500/20">📞 Call Back</button>
+                          <button onClick={() => setFollowUpModalAction('Follow Up')} className="bg-blue-500/10 text-blue-600 border border-blue-200 py-2 rounded-xl font-semibold cursor-pointer hover:bg-blue-500/20">🔔 Follow Up</button>
+                          <button onClick={() => handleUpdateLeadStatus(selectedLead._id, 'Not Interested', null)} className="bg-red-500/10 text-red-500 border border-red-200 py-2 rounded-xl font-semibold cursor-pointer hover:bg-red-500/20">❌ Not Interested</button>
+                          <button onClick={() => handleUpdateLeadStatus(selectedLead._id, 'Deal Close', null)} className="bg-emerald-500/10 text-emerald-600 border border-emerald-200 py-2 rounded-xl font-semibold cursor-pointer hover:bg-emerald-500/20">🎉 Deal Close</button>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
-        {/* VIEW: CALENDAR */}
-        {activeView === 'calendar' && (
-          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="border-b border-[var(--color-border)] pb-3">
-              <h3 className="text-lg font-bold text-[var(--color-heading)]">📅 Upcoming Follow-ups & Meetings Schedule</h3>
-              <p className="text-xs text-[var(--color-body)]">Keep track of all client callbacks and meetings scheduled for upcoming dates.</p>
-            </div>
-
-            {myLeads.filter(l => l.followUpDate && l.leadStatus !== 'Not Interested' && l.leadStatus !== 'Deal Close').length === 0 ? (
-              <div className="text-center py-10 bg-[var(--color-surface)] rounded-xl text-sm text-[var(--color-body)] space-y-3">
-                <p>No active follow-up reminders scheduled yet.</p>
-                <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl">Schedule a Follow-up</button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {myLeads
-                  .filter(l => l.followUpDate && l.leadStatus !== 'Not Interested' && l.leadStatus !== 'Deal Close')
-                  .sort((a,b) => new Date(a.followUpDate) - new Date(b.followUpDate))
-                  .map((lead) => (
-                  <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="bg-[var(--color-primary)] text-white px-2.5 py-0.5 rounded-full font-bold uppercase">{lead.followUpAction || 'Call'}</span>
-                        <strong className="text-sm text-[var(--color-heading)]">{lead.instituteName}</strong>
+                        {followUpModalAction && (
+                          <div className="mt-3 p-3 bg-[var(--color-surface)] border border-[var(--color-primary)] rounded-xl space-y-3">
+                            <p className="text-xs font-bold text-[var(--color-primary)]">Select Date & Time for {followUpModalAction}:</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input type="date" value={modalDate} onChange={(e) => setModalDate(e.target.value)} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-2 text-xs" />
+                              <input type="time" value={modalTime} onChange={(e) => setModalTime(e.target.value)} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-lg p-2 text-xs" />
+                            </div>
+                            <button type="button" onClick={() => {
+                              if (!modalDate) { alert('Please select a date!'); return; }
+                              handleUpdateLeadStatus(selectedLead._id, followUpModalAction, null, modalDate, modalTime);
+                            }} className="w-full bg-[var(--color-primary)] text-white text-xs py-2 rounded-lg font-semibold cursor-pointer">
+                              Save Reminder Date & Time
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 {lead.mobileNo}</p>
-                      {lead.notes && <p className="text-[var(--color-heading)]">📝 Note: {lead.notes}</p>}
-                    </div>
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-3 rounded-xl text-right sm:min-w-[180px]">
-                      <span className="text-[var(--color-body)] block font-medium">Scheduled For:</span>
-                      <strong className="text-emerald-600 text-sm">📅 {new Date(lead.followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong>
-                      {lead.followUpTime && <span className="block text-[var(--color-heading)] font-semibold mt-0.5">⏰ {lead.followUpTime}</span>}
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                </div>
+              )}
+            </div>
+          )}
 
-        {/* VIEW 3: NEW LEAD FORM */}
-        {activeView === 'lead-form' && (
-          <div>
-            {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-xl mb-6 text-sm">{status.success}</div>}
-            {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-xl mb-6 text-sm">{status.error}</div>}
-
-            <form onSubmit={handleLeadSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
-                <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider">New Lead & Follow-up Schedule</h3>
-                <button 
-                  type="button" 
-                  onClick={handleAutoDetectLocation}
-                  className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-200 text-xs px-4 py-2.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-2"
-                >
-                  📍 Auto-Detect Current GPS Location & Address
-                </button>
+          {/* VIEW: CALENDAR */}
+          {activeView === 'calendar' && (
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm space-y-4">
+              <div className="border-b border-[var(--color-border)] pb-3">
+                <h3 className="text-lg font-bold text-[var(--color-heading)]">📅 Upcoming Follow-ups & Meetings Schedule</h3>
+                <p className="text-xs text-[var(--color-body)]">Keep track of all client callbacks and meetings scheduled for upcoming dates.</p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Institute Name *</label>
-                  <input type="text" name="instituteName" required value={leadFormData.instituteName} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Global Public School" />
+              {myLeads.filter(l => l.followUpDate && l.leadStatus !== 'Not Interested' && l.leadStatus !== 'Deal Close').length === 0 ? (
+                <div className="text-center py-10 bg-[var(--color-surface)] rounded-xl text-sm text-[var(--color-body)] space-y-3">
+                  <p>No active follow-up reminders scheduled yet.</p>
+                  <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl">Schedule a Follow-up</button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Contact Person Name *</label>
-                  <input type="text" name="contactPerson" required value={leadFormData.contactPerson} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Mr. Rajesh Kumar" />
+              ) : (
+                <div className="space-y-3">
+                  {myLeads
+                    .filter(l => l.followUpDate && l.leadStatus !== 'Not Interested' && l.leadStatus !== 'Deal Close')
+                    .sort((a,b) => new Date(a.followUpDate) - new Date(b.followUpDate))
+                    .map((lead) => (
+                    <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-[var(--color-primary)] text-white px-2.5 py-0.5 rounded-full font-bold uppercase">{lead.followUpAction || 'Call'}</span>
+                          <strong className="text-sm text-[var(--color-heading)]">{lead.instituteName}</strong>
+                        </div>
+                        <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{lead.mobileNo}</a></p>
+                        {lead.notes && <p className="text-[var(--color-heading)]">📝 Note: {lead.notes}</p>}
+                      </div>
+                      <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-3 rounded-xl text-right sm:min-w-[180px]">
+                        <span className="text-[var(--color-body)] block font-medium">Scheduled For:</span>
+                        <strong className="text-emerald-600 text-sm">📅 {new Date(lead.followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong>
+                        {lead.followUpTime && <span className="block text-[var(--color-heading)] font-semibold mt-0.5">⏰ {lead.followUpTime}</span>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Mobile Number *</label>
-                  <input type="tel" name="mobileNo" required value={leadFormData.mobileNo} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="9876543210" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Email Address (Optional)</label>
-                  <input type="email" name="email" value={leadFormData.email} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="director@school.com" />
+              )}
+            </div>
+          )}
+
+          {/* VIEW 3: NEW LEAD FORM */}
+          {activeView === 'lead-form' && (
+            <div>
+              {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-xl mb-6 text-sm">{status.success}</div>}
+              {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-xl mb-6 text-sm">{status.error}</div>}
+
+              <form onSubmit={handleLeadSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
+                  <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider">New Lead & Follow-up Schedule</h3>
+                  <button type="button" onClick={handleAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-200 text-xs px-4 py-2.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-2">
+                    📍 Auto-Detect Current GPS Location & Address
+                  </button>
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Street Address (Optional)</label>
-                  <textarea name="address" rows="2" value={leadFormData.address} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Office No, Landmark"></textarea>
-                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Institute Name *</label>
+                    <input type="text" name="instituteName" required value={leadFormData.instituteName} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Global Public School" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Contact Person Name *</label>
+                    <input type="text" name="contactPerson" required value={leadFormData.contactPerson} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Mr. Rajesh Kumar" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Mobile Number *</label>
+                    <input type="tel" name="mobileNo" required value={leadFormData.mobileNo} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="9876543210" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Email Address (Optional)</label>
+                    <input type="email" name="email" value={leadFormData.email} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="director@school.com" />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">State *</label>
-                  <select name="state" required value={leadStateCode} onChange={handleLeadStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] font-medium">
-                    <option value="">Select State</option>
-                    {indianStates.map((st) => (
-                      <option key={st.isoCode} value={st.isoCode}>{st.name}</option>
-                    ))}
-                  </select>
-                </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Street Address (Optional)</label>
+                    <textarea name="address" rows="2" value={leadFormData.address} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Office No, Landmark"></textarea>
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">City / District *</label>
-                  <select name="city" required disabled={!leadStateCode} value={leadFormData.city} onChange={handleLeadCityChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] disabled:opacity-50 font-medium">
-                    <option value="">Select City</option>
-                    {citiesOfLeadState.map((ct) => (
-                      <option key={ct.name} value={ct.name}>{ct.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Pincode *</label>
-                  {leadAvailablePincodes.length > 0 ? (
-                    <select name="pincode" required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] font-medium">
-                      <option value="">Select Pincode</option>
-                      {leadAvailablePincodes.map((pin) => <option key={pin} value={pin}>{pin}</option>)}
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">State *</label>
+                    <select name="state" required value={leadStateCode} onChange={handleLeadStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] font-medium">
+                      <option value="">Select State</option>
+                      {indianStates.map((st) => (
+                        <option key={st.isoCode} value={st.isoCode}>{st.name}</option>
+                      ))}
                     </select>
-                  ) : (
-                    <input type="text" name="pincode" maxLength={6} required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="6-digit Pincode" />
-                  )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">City / District *</label>
+                    <select name="city" required disabled={!leadStateCode} value={leadFormData.city} onChange={handleLeadCityChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] disabled:opacity-50 font-medium">
+                      <option value="">Select City</option>
+                      {citiesOfLeadState.map((ct) => (
+                        <option key={ct.name} value={ct.name}>{ct.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Pincode *</label>
+                    {leadAvailablePincodes.length > 0 ? (
+                      <select name="pincode" required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] font-medium">
+                        <option value="">Select Pincode</option>
+                        {leadAvailablePincodes.map((pin) => <option key={pin} value={pin}>{pin}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" name="pincode" maxLength={6} required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="6-digit Pincode" />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-primary-dark)]">📸 Upload Meeting Photo *</label>
+                    <input type="file" accept="image/*" required onChange={handleMeetingPhotoChange} className="block w-full text-sm text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" />
+                  </div>
+
+                  <div className="md:col-span-2 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-4">
+                    <h4 className="text-xs font-semibold text-[var(--color-primary)] uppercase tracking-wider">📅 Schedule Next Follow-up / Meeting</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">Follow-up Action</label>
+                        <select name="followUpAction" value={leadFormData.followUpAction} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs font-medium">
+                          <option value="Call">Phone Call</option>
+                          <option value="Next Meeting">Next Meeting</option>
+                          <option value="Demo">Software Demo</option>
+                          <option value="Closed">Deal Closing</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">Follow-up Date</label>
+                        <input type="date" name="followUpDate" value={leadFormData.followUpDate} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">Follow-up Time</label>
+                        <input type="time" name="followUpTime" value={leadFormData.followUpTime} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Prospect Notes</label>
+                    <textarea name="notes" rows="3" value={leadFormData.notes} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Discussion summary..."></textarea>
+                  </div>
                 </div>
+
+                <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-semibold py-3.5 rounded-xl transition cursor-pointer disabled:opacity-50 shadow-md">
+                  {status.loading ? 'Detecting Live GPS & Saving...' : 'Save Lead & Schedule Follow-up'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* VIEW 4: INVOICE FORM */}
+          {activeView === 'invoice-form' && (
+            <div>
+              {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-xl mb-6 text-sm">{status.success}</div>}
+              {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-xl mb-6 text-sm">{status.error}</div>}
+
+              <form onSubmit={handleSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
+                  <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider">1. Client Details for Invoice</h3>
+                  <button type="button" onClick={handleInvoiceAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-200 text-xs px-4 py-2.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-2">
+                    📍 Auto-Detect Current GPS Location & Address
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Institute Name *</label>
+                    <input type="text" name="instituteName" required value={formData.instituteName} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Type or select existing lead institute" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">App Name *</label>
+                    <input type="text" name="appName" required value={formData.appName} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Mobile Number *</label>
+                    <input type="tel" name="mobileNo" required value={formData.mobileNo} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Client Email *</label>
+                    <input type="email" name="email" required value={formData.email} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Street Address *</label>
+                    <textarea name="address" rows="2" required value={formData.address} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]"></textarea>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">State *</label>
+                    <select name="state" required value={selectedStateCode} onChange={handleInvoiceStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
+                      <option value="">Select State</option>
+                      {indianStates.map((st) => <option key={st.isoCode} value={st.isoCode}>{st.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">City *</label>
+                    <select name="city" required disabled={!selectedStateCode} value={formData.city} onChange={handleInvoiceCityChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 disabled:opacity-50 font-medium">
+                      <option value="">Select City</option>
+                      {citiesOfSelectedState.map((ct) => <option key={ct.name} value={ct.name}>{ct.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Pincode *</label>
+                    {availablePincodes.length > 0 ? (
+                      <select name="pincode" required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
+                        <option value="">Select Pincode</option>
+                        {availablePincodes.map(pin => <option key={pin} value={pin}>{pin}</option>)}
+                      </select>
+                    ) : (
+                      <input type="text" name="pincode" maxLength={6} required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" placeholder="Pincode" />
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">GST Number</label>
+                    <input type="text" name="gstNo" value={formData.gstNo} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" placeholder="Optional" />
+                  </div>
+                </div>
+
+                <hr className="border-[var(--color-border)]" />
 
                 <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-primary-dark)]">📸 Upload Meeting Photo *</label>
-                  <input type="file" accept="image/*" required onChange={handleMeetingPhotoChange} className="block w-full text-sm text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" />
-                </div>
-
-                <div className="md:col-span-2 p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl space-y-4">
-                  <h4 className="text-xs font-semibold text-[var(--color-primary)] uppercase tracking-wider">📅 Schedule Next Follow-up / Meeting</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider mb-4">2. Billing & Add-on Packages</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">Follow-up Action</label>
-                      <select name="followUpAction" value={leadFormData.followUpAction} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs font-medium">
-                        <option value="Call">Phone Call</option>
-                        <option value="Next Meeting">Next Meeting</option>
-                        <option value="Demo">Software Demo</option>
-                        <option value="Closed">Deal Closing</option>
+                      <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Validity</label>
+                      <select name="packageValidity" value={formData.packageValidity} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
+                        <option value="6 Months">6 Months</option>
+                        <option value="1 Year">1 Year</option>
+                        <option value="2 Years">2 Years</option>
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">Follow-up Date</label>
-                      <input type="date" name="followUpDate" value={leadFormData.followUpDate} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
+                      <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Base Price (₹)</label>
+                      <input type="number" name="baseAmount" value={formData.baseAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1 text-[var(--color-heading)]">Follow-up Time</label>
-                      <input type="time" name="followUpTime" value={leadFormData.followUpTime} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
+                      <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Payment Paid (₹)</label>
+                      <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" />
                     </div>
                   </div>
-                </div>
 
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Prospect Notes</label>
-                  <textarea name="notes" rows="3" value={leadFormData.notes} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Discussion summary..."></textarea>
-                </div>
-              </div>
-
-              <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white font-semibold py-3.5 rounded-xl transition cursor-pointer disabled:opacity-50 shadow-md">
-                {status.loading ? 'Detecting Live GPS & Saving...' : 'Save Lead & Schedule Follow-up'}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* VIEW 4: INVOICE FORM */}
-        {activeView === 'invoice-form' && (
-          <div>
-            {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-xl mb-6 text-sm">{status.success}</div>}
-            {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-xl mb-6 text-sm">{status.error}</div>}
-
-            <form onSubmit={handleSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-6 md:p-8 space-y-6 shadow-sm">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
-                <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider">1. Client Details for Invoice</h3>
-                <button 
-                  type="button" 
-                  onClick={handleInvoiceAutoDetectLocation}
-                  className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-200 text-xs px-4 py-2.5 rounded-xl font-bold transition cursor-pointer flex items-center gap-2"
-                >
-                  📍 Auto-Detect Current GPS Location & Address
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Institute Name *</label>
-                  <input type="text" name="instituteName" required value={formData.instituteName} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" placeholder="Type or select existing lead institute" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">App Name *</label>
-                  <input type="text" name="appName" required value={formData.appName} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Mobile Number *</label>
-                  <input type="tel" name="mobileNo" required value={formData.mobileNo} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Client Email *</label>
-                  <input type="email" name="email" required value={formData.email} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]" />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Street Address *</label>
-                  <textarea name="address" rows="2" required value={formData.address} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)]"></textarea>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">State *</label>
-                  <select name="state" required value={selectedStateCode} onChange={handleInvoiceStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
-                    <option value="">Select State</option>
-                    {indianStates.map((st) => <option key={st.isoCode} value={st.isoCode}>{st.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">City *</label>
-                  <select name="city" required disabled={!selectedStateCode} value={formData.city} onChange={handleInvoiceCityChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 disabled:opacity-50 font-medium">
-                    <option value="">Select City</option>
-                    {citiesOfSelectedState.map((ct) => <option key={ct.name} value={ct.name}>{ct.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Pincode *</label>
-                  {availablePincodes.length > 0 ? (
-                    <select name="pincode" required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
-                      <option value="">Select Pincode</option>
-                      {availablePincodes.map(pin => <option key={pin} value={pin}>{pin}</option>)}
-                    </select>
-                  ) : (
-                    <input type="text" name="pincode" maxLength={6} required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" placeholder="Pincode" />
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">GST Number</label>
-                  <input type="text" name="gstNo" value={formData.gstNo} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" placeholder="Optional" />
-                </div>
-              </div>
-
-              <hr className="border-[var(--color-border)]" />
-
-              <div>
-                <h3 className="text-md font-semibold text-[var(--color-primary)] uppercase tracking-wider mb-4">2. Billing & Add-on Packages</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Validity</label>
-                    <select name="packageValidity" value={formData.packageValidity} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3 font-medium">
-                      <option value="6 Months">6 Months</option>
-                      <option value="1 Year">1 Year</option>
-                      <option value="2 Years">2 Years</option>
-                    </select>
+                  <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-4">
+                    <label className="block text-xs font-semibold mb-3 text-[var(--color-primary)] uppercase tracking-wider">🎁 Select Add-on Packages</label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-[var(--color-heading)]">
+                      <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
+                        <input type="checkbox" name="testModule" checked={addons.testModule} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
+                        <span>Test Series Module (+₹5,000)</span>
+                      </label>
+                      <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
+                        <input type="checkbox" name="windowApp" checked={addons.windowApp} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
+                        <span>Windows App (+₹5,000)</span>
+                      </label>
+                      <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
+                        <input type="checkbox" name="iosApp" checked={addons.iosApp} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
+                        <span>iOS Mobile App (+₹45,000)</span>
+                      </label>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Base Price (₹)</label>
-                    <input type="number" name="baseAmount" value={formData.baseAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1 text-[var(--color-heading)]">Payment Paid (₹)</label>
-                    <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-3" />
-                  </div>
-                </div>
 
-                <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-4">
-                  <label className="block text-xs font-semibold mb-3 text-[var(--color-primary)] uppercase tracking-wider">🎁 Select Add-on Packages</label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-[var(--color-heading)]">
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
-                      <input type="checkbox" name="testModule" checked={addons.testModule} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
-                      <span>Test Series Module (+₹5,000)</span>
-                    </label>
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
-                      <input type="checkbox" name="windowApp" checked={addons.windowApp} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
-                      <span>Windows App (+₹5,000)</span>
-                    </label>
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
-                      <input type="checkbox" name="iosApp" checked={addons.iosApp} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
-                      <span>iOS Mobile App (+₹45,000)</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-4">
-                  <label className="block text-xs font-semibold mb-2 text-[var(--color-primary)] uppercase tracking-wider">🏷️ Apply Coupon Code</label>
-                  <div className="flex gap-2">
-                    <input type="text" value={couponInput} disabled={isCouponApplied} onChange={(e) => setCouponInput(e.target.value)} placeholder="FLAT50" className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm" />
-                    {!isCouponApplied ? (
-                      <button type="button" onClick={handleApplyCoupon} className="bg-[var(--color-primary)] text-white text-sm px-4 py-2.5 rounded-xl cursor-pointer">Apply</button>
-                    ) : (
-                      <button type="button" onClick={handleRemoveCoupon} className="bg-red-500/10 text-red-600 border border-red-200 text-sm px-4 py-2.5 rounded-xl cursor-pointer">Remove</button>
+                  <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl mb-4">
+                    <label className="block text-xs font-semibold mb-2 text-[var(--color-primary)] uppercase tracking-wider">🏷️ Apply Coupon Code</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={couponInput} disabled={isCouponApplied} onChange={(e) => setCouponInput(e.target.value)} placeholder="FLAT50" className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-sm" />
+                      {!isCouponApplied ? (
+                        <button type="button" onClick={handleApplyCoupon} className="bg-[var(--color-primary)] text-white text-sm px-4 py-2.5 rounded-xl cursor-pointer">Apply</button>
+                      ) : (
+                        <button type="button" onClick={handleRemoveCoupon} className="bg-red-500/10 text-red-600 border border-red-200 text-sm px-4 py-2.5 rounded-xl cursor-pointer">Remove</button>
+                      )}
+                    </div>
+                    {couponError && <p className="text-xs text-red-500 mt-1.5">{couponError}</p>}
+                    {isCouponApplied && couponDetails && (
+                      <p className="text-xs text-emerald-600 font-medium mt-1.5">
+                        🎉 Coupon "{couponDetails.code}" applied! {couponDetails.discountType === 'percentage' ? `${couponDetails.discountValue}%` : `₹${couponDetails.discountValue}`} discount added.
+                      </p>
                     )}
                   </div>
-                  {couponError && <p className="text-xs text-red-500 mt-1.5">{couponError}</p>}
-                  {isCouponApplied && couponDetails && (
-                    <p className="text-xs text-emerald-600 font-medium mt-1.5">
-                      🎉 Coupon "{couponDetails.code}" applied! {couponDetails.discountType === 'percentage' ? `${couponDetails.discountValue}%` : `₹${couponDetails.discountValue}`} discount added.
-                    </p>
-                  )}
-                </div>
 
-                {/* Price Breakdown Banner with 18% GST */}
-                <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] space-y-2 text-sm text-[var(--color-heading)]">
-                  <div className="flex justify-between">
-                    <span className="text-[var(--color-body)]">Subtotal (Base + Add-ons {isCouponApplied ? '- Discount' : ''}):</span>
-                    <span className="font-medium">₹{formData.subtotalAmount.toLocaleString('en-IN')}</span>
+                  {/* Price Breakdown Banner with 18% GST */}
+                  <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] space-y-2 text-sm text-[var(--color-heading)]">
+                    <div className="flex justify-between">
+                      <span className="text-[var(--color-body)]">Subtotal (Base + Add-ons {isCouponApplied ? '- Discount' : ''}):</span>
+                      <span className="font-medium">₹{formData.subtotalAmount.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between border-b border-[var(--color-border)] pb-2">
+                      <span className="text-[var(--color-body)]">GST (18%):</span>
+                      <span className="font-medium">₹{formData.gstAmount.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-1">
+                      <span className="font-semibold text-[var(--color-heading)]">Grand Total (Incl. GST):</span>
+                      <span className="text-lg font-bold text-[var(--color-primary)]">
+                        ₹{formData.totalAmount.toLocaleString('en-IN')}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex justify-between border-b border-[var(--color-border)] pb-2">
-                    <span className="text-[var(--color-body)]">GST (18%):</span>
-                    <span className="font-medium">₹{formData.gstAmount.toLocaleString('en-IN')}</span>
+
+                  <div className="mt-4 p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary-light)] rounded-xl">
+                    <label className="block text-sm font-medium mb-2 text-[var(--color-primary-dark)]">📸 Upload Payment Screenshot / Receipt Proof *</label>
+                    <input type="file" accept="image/*" required onChange={handleFileChange} className="block w-full text-sm text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" />
                   </div>
-                  <div className="flex justify-between items-center pt-1">
-                    <span className="font-semibold text-[var(--color-heading)]">Grand Total (Incl. GST):</span>
-                    <span className="text-lg font-bold text-[var(--color-primary)]">
-                      ₹{formData.totalAmount.toLocaleString('en-IN')}
+
+                  {/* Auto Calculated Due Amount Banner */}
+                  <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] flex justify-between items-center">
+                    <span className="text-[var(--color-body)] text-sm">Calculated Due Amount:</span>
+                    <span className={`text-xl font-bold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      ₹{dueAmount.toLocaleString('en-IN')}
                     </span>
                   </div>
                 </div>
 
-                <div className="mt-4 p-4 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary-light)] rounded-xl">
-                  <label className="block text-sm font-medium mb-2 text-[var(--color-primary-dark)]">📸 Upload Payment Screenshot / Receipt Proof *</label>
-                  <input type="file" accept="image/*" required onChange={handleFileChange} className="block w-full text-sm text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" />
-                </div>
+                <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] text-white font-semibold py-3.5 rounded-xl transition cursor-pointer disabled:opacity-50 shadow-md">
+                  {status.loading ? 'Fetching Live GPS & Submitting...' : 'Submit Request to Accountant'}
+                </button>
+              </form>
+            </div>
+          )}
 
-                {/* Auto Calculated Due Amount Banner */}
-                <div className="mt-4 bg-[var(--color-surface)] p-4 rounded-xl border border-[var(--color-border)] flex justify-between items-center">
-                  <span className="text-[var(--color-body)] text-sm">Calculated Due Amount:</span>
-                  <span className={`text-xl font-bold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                    ₹{dueAmount.toLocaleString('en-IN')}
-                  </span>
-                </div>
-              </div>
-
-              <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] text-white font-semibold py-3.5 rounded-xl transition cursor-pointer disabled:opacity-50 shadow-md">
-                {status.loading ? 'Fetching Live GPS & Submitting...' : 'Submit Request to Accountant'}
-              </button>
-            </form>
-          </div>
-        )}
-
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
