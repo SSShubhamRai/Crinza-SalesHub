@@ -256,8 +256,8 @@ const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
+      port: 587,
+      secure: false,
       family: 4,
       auth: {
         user: process.env.EMAIL_USER,
@@ -414,8 +414,8 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
+      port: 587,
+      secure: false,
       family: 4,
       auth: {
         user: process.env.EMAIL_USER,
