@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Crinza SalesHub</string>
-    <string name="title_activity_main">Crinza SalesHub</string>
+    <string name="app_name">CRINZA ONE</string>
+    <string name="title_activity_main">CRINZA ONE</string>
     <string name="package_name">com.crinza.saleshub</string>
     <string name="custom_url_scheme">com.crinza.saleshub</string>
 </resources>

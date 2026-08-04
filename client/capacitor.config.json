@@ -1,5 +1,8 @@
 {
   "appId": "com.crinza.saleshub",
-  "appName": "Crinza SalesHub",
-  "webDir": "dist"
+  "appName": "CRINZA ONE",
+  "webDir": "dist",
+  "capacitor-assets": {
+    "icon": "src/Assets/newLogo.png"
+  }
 }

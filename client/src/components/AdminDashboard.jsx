@@ -2,11 +2,12 @@
  * =========================================================================
  * 👑 ADMIN DASHBOARD COMPONENT (`AdminDashboard.jsx`)
  * =========================================================================
- * Description: Allows admin to track live salesperson tasks (calls, demos, follow-ups),
- * search team members, view deal records, transfer leads, and manage coupons.
+ * Description: Allows admin to track live tasks, live location, total distance,
+ * manage team, coupons, advanced lead filters, and Excel/CSV data export.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { io } from "socket.io-client";
 import toast from "react-hot-toast";
 
 const AdminDashboard = ({ userId, onLogout }) => {
@@ -20,11 +21,16 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [tasksList, setTasksList] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // 🔍 Search & Tracker Filter States
+  // 🔍 Search & Filter States
   const [directorySearch, setDirectorySearch] = useState("");
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [selectedRoleFilter, setSelectedRoleFilter] = useState("all");
   const [selectedSalespersonTaskFilter, setSelectedSalespersonTaskFilter] = useState("all");
+
+  // 🌟 NEW: Advanced Lead Filter & Export States for Admin
+  const [adminLeadFilter, setAdminLeadFilter] = useState("all");
+  const [allSystemLeads, setAllSystemLeads] = useState([]);
+  const [loadingSystemLeads, setLoadingSystemLeads] = useState(false);
 
   const [selectedEmpLogs, setSelectedEmpLogs] = useState(null);
   const [loadingLogs, setLoadingLoadingLogs] = useState(false);
@@ -33,6 +39,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [transferModalDeal, setTransferModalDeal] = useState(null);
   const [targetSalesperson, setTargetSalesperson] = useState("");
   const [isTransferring, setIsTransferring] = useState(false);
+
+  // 🛰️ LIVE TRACKING & TRAVEL HISTORY STATES
+  const [selectedTrackerEmp, setSelectedTrackerEmp] = useState("");
+  const [travelData, setTravelData] = useState({ totalDistanceKm: 0, routePoints: [] });
+  const [liveLocations, setLiveLocations] = useState({});
+  const socketRef = useRef(null);
 
   // New Employee Form State
   const [newEmp, setNewEmp] = useState({
@@ -67,6 +79,81 @@ const AdminDashboard = ({ userId, onLogout }) => {
     usageLimit: "",
   });
   const [couponStatus, setCouponStatus] = useState({ success: "", error: "" });
+
+  // --- SOCKET.IO & TRAVEL HISTORY FETCH ---
+  useEffect(() => {
+    socketRef.current = io(API_BASE);
+
+    socketRef.current.on('connect', () => {
+      console.log('🔌 Admin connected to Live Tracking Socket');
+    });
+
+    socketRef.current.on('live_location_broadcast', (data) => {
+      setLiveLocations((prev) => ({
+        ...prev,
+        [data.salespersonId]: {
+          latitude: data.latitude,
+          longitude: data.longitude,
+          timestamp: data.timestamp
+        }
+      }));
+    });
+
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "live-tracking" && selectedTrackerEmp) {
+      fetchSalespersonTravelHistory(selectedTrackerEmp);
+    }
+    if (activeTab === "leads-export") {
+      fetchAllSystemLeads();
+    }
+  }, [selectedTrackerEmp, activeTab]);
+
+  const fetchSalespersonTravelHistory = async (empId) => {
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/boss/salesperson-travel/${empId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTravelData(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch travel history:", err);
+    }
+  };
+
+  // Fetch all leads across all salespersons for admin export & filtering
+  const fetchAllSystemLeads = async () => {
+    setLoadingSystemLeads(true);
+    try {
+      const token = localStorage.getItem("token");
+      const headers = { Authorization: `Bearer ${token}` };
+      // Fetch employees first, then gather their leads
+      const empRes = await fetch(`${API_BASE}/api/boss/employees`, { headers });
+      const empList = await empRes.json();
+      
+      let collectedLeads = [];
+      for (let emp of empList.filter(e => e.role === 'salesperson')) {
+        const leadRes = await fetch(`${API_BASE}/api/boss/employee-leads/${emp.userId}`, { headers });
+        if (leadRes.ok) {
+          const lData = await leadRes.json();
+          collectedLeads = [...collectedLeads, ...lData.map(l => ({ ...l, salespersonName: emp.name || emp.userId }))];
+        }
+      }
+      setAllSystemLeads(collectedLeads);
+    } catch (err) {
+      console.error("Failed to fetch system leads:", err);
+      toast.error("Failed to load leads data");
+    } finally {
+      setLoadingSystemLeads(false);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -104,6 +191,38 @@ const AdminDashboard = ({ userId, onLogout }) => {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // --- 🌟 EXCEL / CSV DOWNLOAD HELPER (NEW) ---
+  const downloadCSV = (dataToExport, filename = "Leads_Report.csv") => {
+    if (!dataToExport || dataToExport.length === 0) {
+      toast.error("No data available to export!");
+      return;
+    }
+
+    const headers = ["Institute Name", "Contact Person", "Mobile No", "Email", "City", "State", "Lead Status", "Demo Status", "Follow-up Action", "Salesperson"];
+    const rows = dataToExport.map(l => [
+      `"${l.instituteName || ''}"`,
+      `"${l.contactPerson || ''}"`,
+      `"${l.mobileNo || ''}"`,
+      `"${l.email || ''}"`,
+      `"${l.city || ''}"`,
+      `"${l.state || ''}"`,
+      `"${l.leadStatus || 'Active'}"`,
+      `"${l.demoStatus || 'Not Given'}"`,
+      `"${l.followUpAction || 'N/A'}"`,
+      `"${l.salespersonName || l.salespersonId || ''}"`
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Excel/CSV Report downloaded successfully!");
+  };
 
   const handleViewEmployeeDetails = async (empUserId) => {
     setLoadingLoadingLogs(true);
@@ -150,7 +269,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
       if (!res.ok) throw new Error(data.message || "Failed to transfer deal");
 
       toast.success(data.message || "Deal transferred successfully!");
-      
       setTransferModalDeal(null);
       setTargetSalesperson("");
       handleViewEmployeeDetails(selectedEmpLogs.userId);
@@ -388,6 +506,16 @@ const AdminDashboard = ({ userId, onLogout }) => {
     return task.salespersonId === selectedSalespersonTaskFilter;
   });
 
+  // Filtered system leads based on Admin selection
+  const filteredSystemLeads = allSystemLeads.filter((lead) => {
+    if (adminLeadFilter === "all") return true;
+    if (adminLeadFilter === "call-back") return lead.leadStatus === "Call Back" || lead.followUpAction === "Call Back";
+    if (adminLeadFilter === "next-meeting") return lead.leadStatus === "Next Meeting" || lead.followUpAction === "Next Meeting";
+    if (adminLeadFilter === "not-interested") return lead.leadStatus === "Not Interested";
+    if (adminLeadFilter === "deal-closed") return lead.leadStatus === "Deal Close";
+    return true;
+  });
+
   return (
     <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
@@ -400,7 +528,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
               ADMIN PORTAL
             </span>
             <h1 className="text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1">
-              Company Operations Dashboard
+              CRINZA ONE
             </h1>
             <p className="text-[var(--color-body)] text-xs">
               Logged in as Admin: <strong className="text-[var(--color-primary)]">{userId}</strong>
@@ -423,6 +551,22 @@ const AdminDashboard = ({ userId, onLogout }) => {
             }`}
           >
             📋 Task Tracker
+          </button>
+          <button
+            onClick={() => setActiveTab("live-tracking")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
+              activeTab === "live-tracking" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            🛰️ Live Tracking & Travel
+          </button>
+          <button
+            onClick={() => setActiveTab("leads-export")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
+              activeTab === "leads-export" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            📊 Leads Report & Excel Export
           </button>
           <button
             onClick={() => setActiveTab("directory")}
@@ -469,7 +613,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
           </div>
         ) : (
           <>
-            {/* 🌟 TAB 1: LIVE CALL, DEMO & FOLLOW-UP TASK TRACKER */}
+            {/* TAB 1: TASK TRACKER */}
             {activeTab === "tracker" && (
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3">
@@ -553,7 +697,166 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 2: TEAM DIRECTORY & DEAL RECORDS SEARCH */}
+            {/* TAB 1.5: LIVE TRACKING & TRAVEL HISTORY */}
+            {activeTab === "live-tracking" && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">
+                      🛰️ Salesperson Live Location & Travel History
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">
+                      View real-time location stream and today's total distance traveled calculated via Haversine formula.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-2xl border border-[var(--color-border)] w-full sm:w-auto">
+                    <span className="text-[11px] text-[var(--color-body)] font-medium">Select Salesperson:</span>
+                    <select
+                      value={selectedTrackerEmp}
+                      onChange={(e) => setSelectedTrackerEmp(e.target.value)}
+                      className="bg-transparent text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                    >
+                      <option value="">-- Choose Salesperson --</option>
+                      {employees
+                        .filter((emp) => emp.role === "salesperson")
+                        .map((emp) => (
+                          <option key={emp.userId} value={emp.userId}>
+                            {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                {!selectedTrackerEmp ? (
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
+                    <span className="text-3xl">📍</span>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">No Salesperson Selected</h3>
+                    <p className="text-xs text-[var(--color-body)]">Please choose a salesperson from the dropdown above to view their live GPS status and today's travel report.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4">
+                      <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
+                      {liveLocations[selectedTrackerEmp] ? (
+                        <div className="space-y-3 text-xs text-[var(--color-heading)]">
+                          <p>Lat: <strong className="font-mono">{liveLocations[selectedTrackerEmp].latitude.toFixed(5)}</strong></p>
+                          <p>Lng: <strong className="font-mono">{liveLocations[selectedTrackerEmp].longitude.toFixed(5)}</strong></p>
+                          <p className="text-[var(--color-body)]">Last Ping: {new Date(liveLocations[selectedTrackerEmp].timestamp).toLocaleTimeString('en-IN')}</p>
+                          <a
+                            href={`https://www.google.com/maps?q=${liveLocations[selectedTrackerEmp].latitude},${liveLocations[selectedTrackerEmp].longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm"
+                          >
+                            🗺️ Open Live Position on Map
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+                          Waiting for live GPS ping from app...
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
+                      <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
+                        <h4 className="text-sm font-bold text-[var(--color-heading)]">🛣️ Today's Travel Summary</h4>
+                        <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-xl font-extrabold text-xs">
+                          Total Distance: {travelData.totalDistanceKm || 0} KM
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-[var(--color-body)]">
+                        Route history logged for date: <strong>{travelData.date || new Date().toISOString().split('T')[0]}</strong> ({travelData.routePoints?.length || 0} coordinate pings recorded)
+                      </p>
+
+                      <div className="max-h-64 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)] text-xs">
+                        {travelData.routePoints?.length === 0 ? (
+                          <div className="py-8 text-center text-[var(--color-body)]">No route coordinates logged for today yet.</div>
+                        ) : (
+                          travelData.routePoints?.map((pt, idx) => (
+                            <div key={pt._id || idx} className="flex justify-between items-center bg-[var(--color-card)] p-2.5 rounded-xl border border-[var(--color-border)]">
+                              <span className="font-mono text-[var(--color-heading)]">
+                                #{idx + 1} - Lat: {pt.latitude.toFixed(4)}, Lng: {pt.longitude.toFixed(4)}
+                              </span>
+                              <span className="text-[var(--color-body)]">
+                                ⏰ {new Date(pt.timestamp).toLocaleTimeString('en-IN')}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 🌟 TAB 1.6: LEADS REPORT & EXCEL EXPORT & FILTERS (NEW) */}
+            {activeTab === "leads-export" && (
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--color-heading)]">📊 Leads Report & Excel Export</h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">Filter team leads by status and download spreadsheet reports.</p>
+                  </div>
+                  <button
+                    onClick={() => downloadCSV(filteredSystemLeads, `Leads_Report_${adminLeadFilter}.csv`)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-5 py-3 rounded-2xl font-semibold transition cursor-pointer shadow-sm flex items-center gap-2"
+                  >
+                    📥 Download Excel (.CSV) Report
+                  </button>
+                </div>
+
+                {/* Filter Buttons */}
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => setAdminLeadFilter("all")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "all" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    All Leads ({allSystemLeads.length})
+                  </button>
+                  <button onClick={() => setAdminLeadFilter("call-back")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "call-back" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    📞 Call Back ({allSystemLeads.filter(l => l.leadStatus === "Call Back" || l.followUpAction === "Call Back").length})
+                  </button>
+                  <button onClick={() => setAdminLeadFilter("next-meeting")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "next-meeting" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    🤝 Next Meeting ({allSystemLeads.filter(l => l.leadStatus === "Next Meeting" || l.followUpAction === "Next Meeting").length})
+                  </button>
+                  <button onClick={() => setAdminLeadFilter("not-interested")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "not-interested" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    ❌ Not Interested ({allSystemLeads.filter(l => l.leadStatus === "Not Interested").length})
+                  </button>
+                  <button onClick={() => setAdminLeadFilter("deal-closed")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "deal-closed" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    🎉 Deal Closed ({allSystemLeads.filter(l => l.leadStatus === "Deal Close").length})
+                  </button>
+                </div>
+
+                {loadingSystemLeads ? (
+                  <div className="py-16 text-center text-xs text-[var(--color-body)]">Loading all team leads...</div>
+                ) : filteredSystemLeads.length === 0 ? (
+                  <div className="py-16 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+                    No leads found for this filter category.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredSystemLeads.map((lead) => (
+                      <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <strong className="text-sm text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
+                            <span className="bg-purple-500/10 text-purple-600 border border-purple-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold">👤 {lead.salespersonName}</span>
+                          </div>
+                          <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold">{lead.mobileNo}</a></p>
+                          <p className="text-[var(--color-heading)]">📍 Location: {lead.city || 'N/A'}, {lead.state || 'N/A'}</p>
+                        </div>
+                        <span className="bg-blue-500/10 text-blue-600 border border-blue-500/25 px-3 py-1 rounded-full font-bold text-[10px] uppercase tracking-wider">
+                          {lead.leadStatus || 'Active'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 3: TEAM DIRECTORY */}
             {activeTab === "directory" && (
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3">
@@ -653,7 +956,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 3: MANAGE TEAM */}
+            {/* TAB 4: MANAGE TEAM */}
             {activeTab === "employees" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
@@ -821,7 +1124,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 4: GRANULAR LEAD TRANSFER */}
+            {/* TAB 5: TRANSFER LEADS */}
             {activeTab === "transfer" && (
               <div className="max-w-4xl mx-auto space-y-6">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
@@ -955,7 +1258,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 5: COUPONS */}
+            {/* TAB 6: COUPONS */}
             {activeTab === "coupons" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
@@ -1222,7 +1525,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
           </div>
         )}
 
-        {/* 🌟 SIMPLE CONFIRMATION POPUP FOR SINGLE DEAL TRANSFER */}
+        {/* SINGLE DEAL TRANSFER POPUP */}
         {transferModalDeal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-md w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl">

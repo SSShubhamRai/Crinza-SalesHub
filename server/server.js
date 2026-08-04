@@ -5,6 +5,8 @@
  */
 
 const express = require('express');
+const http = require('http'); // 🌟 Socket.io ke liye HTTP server zaroori hai
+const { Server } = require('socket.io'); // 🌟 Real-time live tracking ke liye
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -30,6 +32,13 @@ const Coupon = require('./models/Coupon');
 const verifyToken = require('./middleware/authMiddleware');
 
 const app = express();
+const server = http.createServer(app); // 🌟 Express app ko HTTP server mein wrap kiya
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 // --- Security & Proxy Setup ---
 app.set('trust proxy', 1); // 🌟 Fixes Render proxy rate limit error
@@ -91,6 +100,81 @@ const taskSchema = new mongoose.Schema({
 const Task = mongoose.model('Task', taskSchema);
 
 // =========================================================================
+// --- 📍 LOCATION TRACKING SCHEMA (NEW) ---
+// =========================================================================
+const locationLogSchema = new mongoose.Schema({
+  salespersonId: { type: String, required: true, index: true },
+  latitude: { type: Number, required: true },
+  longitude: { type: Number, required: true },
+  date: { type: String, required: true, index: true }, // Format: 'YYYY-MM-DD'
+  timestamp: { type: Date, default: Date.now }
+});
+const LocationLog = mongoose.model('LocationLog', locationLogSchema);
+
+// =========================================================================
+// --- 📐 DISTANCE CALCULATION HELPER (Haversine Formula) (NEW) ---
+// =========================================================================
+function calculateTotalDistance(coords) {
+  let totalDistance = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const lat1 = coords[i].latitude;
+    const lon1 = coords[i].longitude;
+    const lat2 = coords[i + 1].latitude;
+    const lon2 = coords[i + 1].longitude;
+
+    const R = 6371; // Radius of Earth in KM
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    totalDistance += R * c;
+  }
+  return Number(totalDistance.toFixed(2)); // Returns distance in Kilometers
+}
+
+// =========================================================================
+// --- 🌐 SOCKET.IO REAL-TIME LOCATION HANDLER (NEW) ---
+// =========================================================================
+io.on('connection', (socket) => {
+  console.log(`🔌 Client Connected: ${socket.id}`);
+
+  // Salesperson sends live location update
+  socket.on('update_location', async (data) => {
+    try {
+      const { salespersonId, latitude, longitude } = data;
+      if (!salespersonId || !latitude || !longitude) return;
+
+      const currentDate = new Date().toISOString().split('T')[0];
+
+      // 1. Save coordinate to database for history & distance calculation
+      await LocationLog.create({
+        salespersonId,
+        latitude,
+        longitude,
+        date: currentDate
+      });
+
+      // 2. Broadcast live location instantly to Admins / Boss dashboard
+      io.emit('live_location_broadcast', {
+        salespersonId,
+        latitude,
+        longitude,
+        timestamp: new Date()
+      });
+    } catch (err) {
+      console.error('🔥 Socket Location Error:', err);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`🔌 Client Disconnected: ${socket.id}`);
+  });
+});
+
+// =========================================================================
 // --- 📄 PDF GENERATOR HELPER (Universal Stable Mode) ---
 // =========================================================================
 const createInvoicePDF = async (data) => {
@@ -109,16 +193,9 @@ const createInvoicePDF = async (data) => {
     }
 
     const puppeteer = require('puppeteer');
-    
     browser = await puppeteer.launch({
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu'
-      ]
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-accelerated-2d-canvas', '--disable-gpu']
     });
 
     const page = await browser.newPage();
@@ -344,13 +421,11 @@ app.post('/api/auth/login', loginLimiter, [
 });
 
 // =========================================================================
-// --- 🔑 FORGOT PASSWORD & OTP ROUTES (NEW ADDITION) ---
+// --- 🔑 FORGOT PASSWORD & OTP ROUTES ---
 // =========================================================================
-
-// 1. Send 6-digit OTP to registered email using Employee ID or Email
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
-    const { identifier } = req.body; // Can be Employee ID (e.g. EMP101) or Email
+    const { identifier } = req.body;
     if (!identifier) {
       return res.status(400).json({ message: 'Please enter your Employee ID or Email!' });
     }
@@ -364,12 +439,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       return res.status(404).json({ message: 'No registered account found with this ID or Email!' });
     }
 
-    // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Hash and store OTP in database with 10 minutes expiry
     user.resetPasswordToken = crypto.createHash('sha256').update(otp).digest('hex');
-    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes valid
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
     await user.save();
 
     const transporter = nodemailer.createTransport({
@@ -397,18 +470,12 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     };
 
     await transporter.sendMail(mailOptions);
-
-    res.json({ 
-      success: true, 
-      message: `OTP sent successfully to the registered email (${user.email.replace(/(.{2})(.*)(@.*)/, "$1***$3")})!` 
-    });
+    res.json({ success: true, message: 'OTP sent successfully!' });
   } catch (err) {
-    console.error('Forgot password error:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
-// 2. Verify OTP, Reset Password & Notify Admin
 app.post('/api/auth/reset-password-otp', async (req, res) => {
   try {
     const { identifier, otp, newPassword } = req.body;
@@ -425,60 +492,20 @@ app.post('/api/auth/reset-password-otp', async (req, res) => {
       : { userId: identifier.trim() };
 
     const user = await User.findOne(query);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found!' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found!' });
 
     const hashedOtp = crypto.createHash('sha256').update(otp).digest('hex');
     if (!user.resetPasswordToken || user.resetPasswordToken !== hashedOtp || user.resetPasswordExpires < Date.now()) {
       return res.status(400).json({ message: 'Invalid or expired OTP!' });
     }
 
-    // Save new password
     user.password = await bcrypt.hash(newPassword, 10);
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
     await user.save();
 
-    // 🌟 ADMIN NOTIFICATION EMAIL (User ID + Updated Password)
-    const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_USER;
-
-    if (adminEmail) {
-      const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        host: 'smtp.gmail.com',
-        port: 465,
-        secure: true,
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-        tls: { rejectUnauthorized: false }
-      });
-
-      const adminMailOptions = {
-        from: `"Crinza Security System" <${process.env.EMAIL_USER}>`,
-        to: adminEmail,
-        subject: `Security Notice: Password Reset for User ID (${user.userId})`,
-        html: `
-          <h3>User Password Update Log</h3>
-          <p>Niche diye gaye user ne apna password successfully reset kar liya hai:</p>
-          <ul style="line-height: 1.6;">
-            <li><strong>Name:</strong> ${user.name || 'N/A'}</li>
-            <li><strong>User ID:</strong> ${user.userId}</li>
-            <li><strong>Registered Email:</strong> ${user.email}</li>
-            <li><strong>New Updated Password:</strong> <span style="color: #059669; font-weight: bold; background: #ecfdf5; padding: 2px 6px; border-radius: 4px;">${newPassword}</span></li>
-          </ul>
-          <p>Yeh automatic security audit notification hai.</p>
-        `,
-      };
-
-      await transporter.sendMail(adminMailOptions);
-    }
-
-    res.json({ success: true, message: 'Password reset successfully! You can now log in.' });
+    res.json({ success: true, message: 'Password reset successfully!' });
   } catch (err) {
-    console.error('Reset password error:', err);
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
@@ -486,6 +513,34 @@ app.post('/api/auth/reset-password-otp', async (req, res) => {
 // =========================================================================
 // --- 👑 BOSS / ADMIN OPERATIONS API ROUTES ---
 // =========================================================================
+
+// 🌟 NEW: Admin gets today's route history & total distance traveled by a salesperson
+app.get('/api/boss/salesperson-travel/:salespersonId', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied!' });
+    }
+
+    const { salespersonId } = req.params;
+    const queryDate = req.query.date || new Date().toISOString().split('T')[0];
+
+    const logs = await LocationLog.find({ 
+      salespersonId, 
+      date: queryDate 
+    }).sort({ timestamp: 1 });
+
+    const totalDistanceKm = calculateTotalDistance(logs);
+
+    res.json({
+      salespersonId,
+      date: queryDate,
+      totalDistanceKm,
+      routePoints: logs
+    });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch travel history', error: err.message });
+  }
+});
 
 app.get('/api/boss/employees', verifyToken, async (req, res) => {
   try {
@@ -541,7 +596,6 @@ app.get('/api/boss/performance', verifyToken, async (req, res) => {
   }
 });
 
-// 🌟 1. For Team Directory & Single Deal Transfer (Invoice Model)
 app.get('/api/boss/employee-details/:salespersonId', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'boss' && req.user.role !== 'admin') {
@@ -555,7 +609,6 @@ app.get('/api/boss/employee-details/:salespersonId', verifyToken, async (req, re
   }
 });
 
-// 🌟 2. For Granular / Checkbox Lead Transfer Tab (Lead Model)
 app.get('/api/boss/employee-leads/:salespersonId', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'boss' && req.user.role !== 'admin') {
@@ -697,69 +750,6 @@ app.post('/api/boss/transfer-leads', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/boss/transfer-selected-leads', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied!' });
-    }
-
-    const { leadIds, toSalesperson } = req.body;
-
-    if (!leadIds || !Array.isArray(leadIds) || leadIds.length === 0) {
-      return res.status(400).json({ message: 'No leads selected for transfer!' });
-    }
-
-    if (!toSalesperson) {
-      return res.status(400).json({ message: 'Target salesperson is required!' });
-    }
-
-    const result = await Lead.updateMany(
-      { _id: { $in: leadIds } },
-      { $set: { salespersonId: toSalesperson } }
-    );
-
-    res.json({ 
-      success: true, 
-      message: `Successfully transferred ${result.modifiedCount || leadIds.length} lead(s) to ${toSalesperson}!` 
-    });
-  } catch (err) {
-    console.error('Granular lead transfer error:', err);
-    res.status(500).json({ message: 'Failed to transfer selected leads', error: err.message });
-  }
-});
-
-app.post('/api/boss/transfer-single-deal', verifyToken, async (req, res) => {
-  try {
-    if (req.user.role !== 'boss' && req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied!' });
-    }
-
-    const { dealId, newSalespersonId } = req.body;
-
-    if (!dealId || !newSalespersonId) {
-      return res.status(400).json({ message: 'Deal ID and New Salesperson ID are required!' });
-    }
-
-    const updatedDeal = await Invoice.findByIdAndUpdate(
-      dealId,
-      { $set: { salespersonId: newSalespersonId } },
-      { new: true }
-    );
-
-    if (!updatedDeal) {
-      return res.status(404).json({ message: 'Deal not found!' });
-    }
-
-    res.json({ 
-      success: true, 
-      message: `Deal for "${updatedDeal.instituteName}" successfully reassigned to ${newSalespersonId}!` 
-    });
-  } catch (err) {
-    console.error('Single deal transfer error:', err);
-    res.status(500).json({ message: 'Failed to transfer deal', error: err.message });
-  }
-});
-
 // =========================================================================
 // --- 🧾 INVOICE & BILLING API ROUTES ---
 // =========================================================================
@@ -885,7 +875,7 @@ app.post('/api/invoices/reject/:id', verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 👤 SALESPERSON SPECIFIC ROUTES ---
+// --- 👤 SALESPERSON SPECIFIC ROUTES (WITH MULTI-VISIT & AUTO TIMESTAMP) ---
 // =========================================================================
 app.get('/api/salesperson/my-deals', verifyToken, async (req, res) => {
   try {
@@ -912,21 +902,59 @@ app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), a
       city, state, notes, latitude, longitude, followUpDate, followUpTime, followUpAction 
     } = req.body;
 
-    if (!instituteName || !contactPerson || !mobileNo || !city || !state) {
-      return res.status(400).json({ message: 'Mandatory fields are missing!' });
+    if (!mobileNo || !city || !state) {
+      return res.status(400).json({ message: 'Mandatory fields (Mobile No, City, State) are missing!' });
     }
 
-    const existing = await Lead.findOne({ salespersonId: req.user.userId, mobileNo });
-    if (existing) {
-      return res.status(400).json({ message: 'This lead with this mobile number already exists!' });
-    }
+    const now = new Date();
+    const currentDate = now.toISOString().split('T')[0];
+    const currentTime = now.toTimeString().substring(0, 5);
 
     const normalizedPath = req.file ? req.file.path.replace(/\\/g, '/') : '';
 
+    const existingLead = await Lead.findOne({ salespersonId: req.user.userId, mobileNo: mobileNo.trim() });
+
+    if (existingLead) {
+      existingLead.visitCount = (existingLead.visitCount || 1) + 1;
+      existingLead.leadDate = currentDate;
+      existingLead.leadTime = currentTime;
+      if (instituteName) existingLead.instituteName = instituteName;
+      if (contactPerson) existingLead.contactPerson = contactPerson;
+      if (notes) {
+        existingLead.notes = existingLead.notes 
+          ? `${existingLead.notes}\n[Visit #${existingLead.visitCount} - ${currentDate} ${currentTime}]: ${notes}` 
+          : `[Visit #${existingLead.visitCount} - ${currentDate} ${currentTime}]: ${notes}`;
+      }
+      if (normalizedPath) existingLead.meetingPhoto = normalizedPath;
+      if (followUpDate) {
+        existingLead.followUpDate = followUpDate;
+        existingLead.followUpTime = followUpTime || '';
+        existingLead.followUpAction = followUpAction || 'Call';
+      }
+
+      await existingLead.save();
+
+      if (followUpDate) {
+        await Task.create({
+          salespersonId: req.user.userId,
+          instituteName: existingLead.instituteName,
+          taskType: followUpAction?.toLowerCase().includes('demo') ? 'demo' : 'call',
+          notes: notes || `Follow-up scheduled (Visit #${existingLead.visitCount})`,
+          dueDate: followUpDate
+        });
+      }
+
+      return res.status(200).json({ 
+        success: true,
+        message: `Visit #${existingLead.visitCount} logged successfully for existing lead!`, 
+        lead: existingLead 
+      });
+    }
+
     const newLead = new Lead({
-      instituteName,
-      contactPerson,
-      mobileNo,
+      instituteName: instituteName || 'Unknown Institute',
+      contactPerson: contactPerson || 'N/A',
+      mobileNo: mobileNo.trim(),
       email: email || '',
       address: address || '',
       pincode: pincode || '',
@@ -936,6 +964,9 @@ app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), a
       meetingPhoto: normalizedPath,
       latitude: latitude ? Number(latitude) : null,
       longitude: longitude ? Number(longitude) : null,
+      leadDate: currentDate,
+      leadTime: currentTime,
+      visitCount: 1,
       followUpDate: followUpDate || null,
       followUpTime: followUpTime || '',
       followUpAction: followUpAction || 'Call',
@@ -947,68 +978,17 @@ app.post('/api/salesperson/leads', verifyToken, upload.single('meetingPhoto'), a
     if (followUpDate) {
       await Task.create({
         salespersonId: req.user.userId,
-        instituteName,
+        instituteName: newLead.instituteName,
         taskType: followUpAction?.toLowerCase().includes('demo') ? 'demo' : 'call',
         notes: notes || `Follow-up scheduled: ${followUpAction}`,
         dueDate: followUpDate
       });
     }
 
-    res.status(201).json({ message: 'Lead & Follow-up saved successfully!', lead: newLead });
+    res.status(201).json({ success: true, message: 'New lead and visit recorded successfully!', lead: newLead });
   } catch (err) {
+    console.error('Lead submission error:', err);
     res.status(500).json({ message: 'Failed to save lead', error: err.message });
-  }
-});
-
-app.post('/api/salesperson/leads/bulk', verifyToken, async (req, res) => {
-  try {
-    const { leads } = req.body;
-    const salespersonId = req.user.userId;
-
-    if (!Array.isArray(leads) || leads.length === 0) {
-      return res.status(400).json({ message: 'No valid lead data provided.' });
-    }
-
-    let importedCount = 0;
-    let duplicateCount = 0;
-
-    for (const lead of leads) {
-      const mobileNo = String(lead.mobileNo || '').trim();
-      if (!mobileNo) continue;
-
-      const existingLead = await Lead.findOne({ salespersonId, mobileNo });
-
-      if (existingLead) {
-        duplicateCount++;
-      } else {
-        await Lead.create({
-          salespersonId,
-          instituteName: lead.instituteName || 'Unknown Institute',
-          contactPerson: lead.contactPerson || 'N/A',
-          mobileNo: mobileNo,
-          email: lead.email || '',
-          address: lead.address || '',
-          city: lead.city || '',
-          state: lead.state || '',
-          pincode: String(lead.pincode || ''),
-          notes: lead.notes || 'Imported via Excel Bulk Upload',
-          leadStatus: 'Active',
-          demoStatus: 'Not Given',
-        });
-        importedCount++;
-      }
-    }
-
-    res.status(200).json({
-      success: true,
-      importedCount,
-      duplicateCount,
-      message: `Successfully imported ${importedCount} new lead(s). Skipped ${duplicateCount} duplicate lead(s).`
-    });
-
-  } catch (err) {
-    console.error('Bulk lead upload error:', err);
-    res.status(500).json({ message: 'Server error during bulk upload', error: err.message });
   }
 });
 
@@ -1038,28 +1018,6 @@ app.get('/api/salesperson/tasks', verifyToken, async (req, res) => {
   }
 });
 
-app.post('/api/salesperson/tasks', verifyToken, async (req, res) => {
-  try {
-    const { instituteName, taskType, notes, dueDate } = req.body;
-    if (!instituteName || !taskType) {
-      return res.status(400).json({ message: 'Institute name and task type are required!' });
-    }
-
-    const newTask = new Task({
-      salespersonId: req.user.userId,
-      instituteName,
-      taskType,
-      notes: notes || '',
-      dueDate: dueDate || ''
-    });
-
-    await newTask.save();
-    res.status(201).json({ message: 'Task created successfully!', task: newTask });
-  } catch (err) {
-    res.status(500).json({ message: 'Failed to create task', error: err.message });
-  }
-});
-
 app.post('/api/coupons/verify', verifyToken, async (req, res) => {
   try {
     const { code } = req.body;
@@ -1084,7 +1042,9 @@ app.post('/api/coupons/verify', verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 🌐 SERVER LISTENER ---
+// --- 🌐 SERVER LISTENER (Using HTTP Server for Socket.io) ---
 // =========================================================================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT} with Socket.io Live Tracking Enabled`);
+});

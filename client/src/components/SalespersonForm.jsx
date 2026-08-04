@@ -3,12 +3,13 @@
  * 👤 SALESPERSON PORTAL COMPONENT (`SalespersonForm.jsx`)
  * =========================================================================
  * Description: Allows salesperson to manage performance, track deals, create/update 
- * leads with live GPS coordinates, schedule follow-ups, and submit invoices with 
- * database-verified coupon discounts, 18% GST calculation, and payment proofs.
+ * leads with live GPS coordinates, schedule follow-ups, submit invoices with 
+ * database-verified coupon discounts, 18% GST calculation, and multi-visit tracking.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { State, City } from 'country-state-city';
+import { io } from 'socket.io-client'; // 🌟 Socket.io client for real-time live tracking
 import { submitInvoiceRequest } from '../api/api';
 
 const SalespersonForm = ({ userId, onLogout }) => {
@@ -22,8 +23,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const [myLeads, setMyLeads] = useState([]);
   const [loadingLeads, setLoadingLeads] = useState(true);
 
-  // --- 🔍 Leads Filter State ---
+  // --- 🔍 Leads Filter & Search States ---
   const [leadFilter, setLeadFilter] = useState('all');
+  const [leadSearchQuery, setLeadSearchQuery] = useState('');
 
   // --- Modal & Reminder States ---
   const [selectedLead, setSelectedLead] = useState(null);
@@ -42,6 +44,45 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const API_BASE = import.meta.env.PROD
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
+
+  // --- 🌟 SOCKET.IO LIVE LOCATION TRACKING REF (NEW) ---
+  const socketRef = useRef(null);
+
+  useEffect(() => {
+    // Connect to Socket.io backend
+    socketRef.current = io(API_BASE);
+
+    socketRef.current.on('connect', () => {
+      console.log('🔌 Connected to Live Tracking Server');
+    });
+
+    // Start background live location streaming if geolocation is available
+    let watchId = null;
+    if (navigator.geolocation && userId) {
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          // Emit live location to backend every time position updates
+          socketRef.current.emit('update_location', {
+            salespersonId: userId,
+            latitude,
+            longitude
+          });
+        },
+        (err) => console.error('Live tracking geolocation error:', err),
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+      );
+    }
+
+    return () => {
+      if (watchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [userId]);
 
   // --- Initial Form States ---
   const initialFormData = {
@@ -196,8 +237,16 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const pendingDealsCount = myDeals.filter(d => d.status === 'pending').length;
   const totalPaidCollected = myDeals.reduce((sum, d) => sum + (d.paidAmount || 0), 0);
 
-  // --- 🔍 Filter Leads based on Selected Filter Button ---
+  // --- 🔍 Filter & Search Leads ---
   const filteredLeads = activeLeadsList.filter(lead => {
+    const matchesSearch = leadSearchQuery.trim() === '' || 
+      lead.instituteName?.toLowerCase().includes(leadSearchQuery.toLowerCase()) ||
+      lead.contactPerson?.toLowerCase().includes(leadSearchQuery.toLowerCase()) ||
+      lead.mobileNo?.includes(leadSearchQuery) ||
+      lead.city?.toLowerCase().includes(leadSearchQuery.toLowerCase());
+
+    if (!matchesSearch) return false;
+
     if (leadFilter === 'all') return true;
     if (leadFilter === 'call') return lead.followUpAction === 'Call' || lead.leadStatus === 'Call Back';
     if (leadFilter === 'meeting') return lead.followUpAction === 'Next Meeting';
@@ -353,6 +402,25 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const handleLeadChange = (e) => {
     const { name, value } = e.target;
     setLeadFormData((prev) => ({ ...prev, [name]: value }));
+    
+    if (name === 'mobileNo' && value.length >= 10) {
+      const existingLead = myLeads.find(l => l.mobileNo.trim() === value.trim());
+      if (existingLead) {
+        const matchedState = indianStates.find(s => s.name.toLowerCase() === (existingLead.state || '').toLowerCase());
+        if (matchedState) setLeadStateCode(matchedState.isoCode);
+        setLeadFormData(prev => ({
+          ...prev,
+          instituteName: existingLead.instituteName || '',
+          contactPerson: existingLead.contactPerson || '',
+          email: existingLead.email || '',
+          address: existingLead.address || '',
+          city: existingLead.city || '',
+          state: matchedState ? matchedState.name : existingLead.state || '',
+          pincode: existingLead.pincode || '',
+        }));
+      }
+    }
+
     if (name === 'pincode') {
       fetchLeadByPincode(value);
     }
@@ -590,7 +658,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- Submit New Prospect Lead with Duplicate Check ---
+  // --- Submit New Prospect Lead ---
   const handleLeadSubmit = async (e) => {
     e.preventDefault();
     if (!meetingPhotoFile) {
@@ -598,20 +666,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
       return;
     }
 
-    const isDuplicate = myLeads.some(
-      lead => lead.mobileNo.trim() === leadFormData.mobileNo.trim()
-    );
-
-    if (isDuplicate) {
-      setStatus({ 
-        loading: false, 
-        success: '', 
-        error: `Duplicate Lead Error: A lead with mobile number "${leadFormData.mobileNo}" already exists in your directory!` 
-      });
-      return;
-    }
-
-    setStatus({ loading: true, success: 'Saving lead with follow-up...', error: '' });
+    setStatus({ loading: true, success: 'Saving lead visit & follow-up...', error: '' });
 
     const processLeadSubmission = async (lat = null, lng = null) => {
       const data = new FormData();
@@ -620,6 +675,11 @@ const SalespersonForm = ({ userId, onLogout }) => {
           data.append(key, leadFormData[key]);
         }
       });
+      
+      const now = new Date();
+      data.append('leadDate', now.toISOString().split('T')[0]);
+      data.append('leadTime', now.toTimeString().substring(0, 5));
+
       data.append('meetingPhoto', meetingPhotoFile);
       if (lat && lng) {
         data.append('latitude', lat);
@@ -637,7 +697,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
         if (!res.ok) throw new Error(resData.message || 'Failed to save lead');
 
-        setStatus({ loading: false, success: 'Lead & Follow-up scheduled successfully!', error: '' });
+        setStatus({ loading: false, success: resData.message || 'Lead visit saved successfully!', error: '' });
         setLeadFormData(initialLeadFormData);
         setLeadStateCode('');
         setMeetingPhotoFile(null);
@@ -735,7 +795,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
               {activeView === 'dashboard' && 'My Dashboard & Performance'}
               {activeView === 'leads' && 'My Generated Leads'}
               {activeView === 'calendar' && '📅 Follow-up & Meeting Calendar'}
-              {activeView === 'lead-form' && 'Create New Lead & Schedule Follow-up'}
+              {activeView === 'lead-form' && 'Create New Lead / Record Client Visit'}
               {activeView === 'invoice-form' && 'Create Invoice Request'}
             </h1>
             <p className="text-[var(--color-body)] text-xs">Signed in as <strong className="text-[var(--color-primary)]">{userId}</strong></p>
@@ -785,7 +845,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 activeView === 'lead-form' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
               }`}
             >
-              ➕ New Lead
+              ➕ Record Visit / New Lead
             </button>
             <button
               onClick={() => setActiveView('invoice-form')}
@@ -804,8 +864,8 @@ const SalespersonForm = ({ userId, onLogout }) => {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div onClick={() => setActiveView('lead-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
                 <div>
-                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">➕ Create Lead</h3>
-                  <p className="text-xs text-[var(--color-body)] mt-1">Record prospect details & meeting photo.</p>
+                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">➕ Create / Visit Lead</h3>
+                  <p className="text-xs text-[var(--color-body)] mt-1">Record client visit & meeting photo.</p>
                 </div>
                 <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">🎯</span>
               </div>
@@ -905,44 +965,69 @@ const SalespersonForm = ({ userId, onLogout }) => {
         {activeView === 'leads' && (
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
-              <h3 className="text-base font-bold text-[var(--color-heading)]">📋 My Generated Leads Directory</h3>
+              <h3 className="text-base font-bold text-[var(--color-heading)]">📋 My Generated Leads & Visit Records</h3>
               <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm">
-                ➕ Add New Lead
+                ➕ Record Visit / Add Lead
               </button>
             </div>
 
-            {/* 🔍 Leads Filter Action Bar */}
-            <div className="flex gap-2 flex-wrap pt-2">
-              <button onClick={() => setLeadFilter('all')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'all' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-                All Active ({activeLeadsList.length})
-              </button>
-              <button onClick={() => setLeadFilter('call')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'call' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-                📞 To Call / Call Back
-              </button>
-              <button onClick={() => setLeadFilter('meeting')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'meeting' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-                🤝 Meetings
-              </button>
-              <button onClick={() => setLeadFilter('demo-done')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'demo-done' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-                ✅ Demo Done
-              </button>
-              <button onClick={() => setLeadFilter('demo-pending')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
-                ⏳ Demo Pending
-              </button>
+            {/* 🔍 Search Bar & Filters */}
+            <div className="space-y-3">
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-[var(--color-body)]">🔍</span>
+                <input
+                  type="text"
+                  value={leadSearchQuery}
+                  onChange={(e) => setLeadSearchQuery(e.target.value)}
+                  placeholder="Search by institute name, contact person, mobile number, or city..."
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3 pl-10 pr-4 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                />
+                {leadSearchQuery && (
+                  <button onClick={() => setLeadSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-4 text-xs text-[var(--color-body)] hover:text-[var(--color-heading)]">
+                    ✕ Clear
+                  </button>
+                )}
+              </div>
+
+              <div className="flex gap-2 flex-wrap pt-1">
+                <button onClick={() => setLeadFilter('all')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'all' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  All Active ({activeLeadsList.length})
+                </button>
+                <button onClick={() => setLeadFilter('call')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'call' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  📞 To Call / Call Back
+                </button>
+                <button onClick={() => setLeadFilter('meeting')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'meeting' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  🤝 Meetings
+                </button>
+                <button onClick={() => setLeadFilter('demo-done')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'demo-done' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  ✅ Demo Done
+                </button>
+                <button onClick={() => setLeadFilter('demo-pending')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                  ⏳ Demo Pending
+                </button>
+              </div>
             </div>
 
             {loadingLeads ? (
               <div className="text-center py-12 text-xs text-[var(--color-body)]">Loading your leads...</div>
             ) : filteredLeads.length === 0 ? (
               <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
-                <p>No leads found matching this filter.</p>
-                <button onClick={() => setLeadFilter('all')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl">View All Leads</button>
+                <p>No leads found matching your search or filter.</p>
+                <button onClick={() => { setLeadFilter('all'); setLeadSearchQuery(''); }} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl">Reset Search & Filters</button>
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredLeads.map((lead) => (
                   <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-5 rounded-2xl space-y-2.5 text-xs transition shadow-sm">
                     <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                      <strong onClick={() => setSelectedLead(lead)} className="text-sm text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)]">{lead.instituteName}</strong>
+                      <div className="flex items-center gap-2">
+                        <strong onClick={() => setSelectedLead(lead)} className="text-sm text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)]">{lead.instituteName}</strong>
+                        {lead.visitCount > 1 && (
+                          <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold text-[10px]">
+                            🔄 {lead.visitCount} Visits
+                          </span>
+                        )}
+                      </div>
                       <span className="bg-blue-500/10 text-blue-600 border border-blue-500/20 px-3 py-1 rounded-full font-bold text-[10px] uppercase tracking-wider">
                         {lead.leadStatus || 'Active Lead'}
                       </span>
@@ -953,6 +1038,11 @@ const SalespersonForm = ({ userId, onLogout }) => {
                       </div>
                       <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">📍 <strong>Location:</strong> {lead.address || 'N/A'}, {lead.city}, {lead.state} ({lead.pincode})</div>
                       <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">🎯 <strong>Demo Status:</strong> <span className="text-amber-600 font-semibold">{lead.demoStatus || 'Not Given'}</span></div>
+                      {lead.leadDate && (
+                        <div onClick={() => setSelectedLead(lead)} className="cursor-pointer text-[var(--color-body)]">
+                          📅 <strong>Created / Last Visit:</strong> {new Date(lead.leadDate).toLocaleDateString('en-IN')} {lead.leadTime ? `at ${lead.leadTime}` : ''}
+                        </div>
+                      )}
                       {lead.followUpDate && (
                         <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 cursor-pointer">
                           🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}
@@ -969,7 +1059,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
               <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
                   <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                    <h3 className="text-base font-bold text-[var(--color-heading)]">{selectedLead.instituteName}</h3>
+                    <div>
+                      <h3 className="text-base font-bold text-[var(--color-heading)]">{selectedLead.instituteName}</h3>
+                      {selectedLead.visitCount > 1 && (
+                        <span className="text-[11px] text-emerald-600 font-semibold">Total Visits / Interactions: {selectedLead.visitCount}</span>
+                      )}
+                    </div>
                     <button onClick={() => { setSelectedLead(null); setFollowUpModalAction(null); }} className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs cursor-pointer">✕</button>
                   </div>
 
@@ -1091,7 +1186,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
           </div>
         )}
 
-        {/* VIEW 3: NEW LEAD FORM */}
+        {/* VIEW 3: NEW LEAD / VISIT RECORD FORM */}
         {activeView === 'lead-form' && (
           <div>
             {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.success}</div>}
@@ -1099,7 +1194,10 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
             <form onSubmit={handleLeadSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 space-y-6 shadow-sm">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
-                <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">New Lead & Follow-up Schedule</h3>
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">Record Visit / New Lead</h3>
+                  <p className="text-[11px] text-[var(--color-body)] mt-0.5">Date and time are automatically recorded upon submission.</p>
+                </div>
                 <button type="button" onClick={handleAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2">
                   📍 Auto-Detect Current GPS Location & Address
                 </button>
@@ -1107,16 +1205,16 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div>
+                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Mobile Number (Auto-detects previous lead) *</label>
+                  <input type="tel" name="mobileNo" required value={leadFormData.mobileNo} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-semibold" placeholder="9876543210" />
+                </div>
+                <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Institute Name *</label>
                   <input type="text" name="instituteName" required value={leadFormData.instituteName} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Global Public School" />
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Contact Person Name *</label>
                   <input type="text" name="contactPerson" required value={leadFormData.contactPerson} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Mr. Rajesh Kumar" />
-                </div>
-                <div>
-                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Mobile Number *</label>
-                  <input type="tel" name="mobileNo" required value={leadFormData.mobileNo} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="9876543210" />
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Email Address (Optional)</label>
@@ -1171,10 +1269,10 @@ const SalespersonForm = ({ userId, onLogout }) => {
                     <div>
                       <label className="block font-medium mb-1 text-[var(--color-heading)]">Follow-up Action</label>
                       <select name="followUpAction" value={leadFormData.followUpAction} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs font-medium">
-                        <option value="Call">Phone Call</option>
-                        <option value="Next Meeting">Next Meeting</option>
-                        <option value="Demo">Software Demo</option>
-                        <option value="Closed">Deal Closing</option>
+                        <option value="Call">Call Back</option>
+                        <option value="Next Meeting">Meeting Reschedule</option>
+                        <option value="Demo">Demo</option>
+                        <option value="Closed">Deal Closed</option>
                       </select>
                     </div>
                     <div>
@@ -1189,13 +1287,13 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 </div>
 
                 <div className="md:col-span-2">
-                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Prospect Notes</label>
-                  <textarea name="notes" rows="3" value={leadFormData.notes} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Discussion summary..."></textarea>
+                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Visit / Discussion Notes</label>
+                  <textarea name="notes" rows="3" value={leadFormData.notes} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Summary of this visit..."></textarea>
                 </div>
               </div>
 
               <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer disabled:opacity-50 shadow-sm text-xs">
-                {status.loading ? 'Detecting Live GPS & Saving...' : 'Save Lead & Schedule Follow-up'}
+                {status.loading ? 'Detecting Live GPS & Saving Visit...' : 'Save Lead Visit & Follow-up'}
               </button>
             </form>
           </div>
