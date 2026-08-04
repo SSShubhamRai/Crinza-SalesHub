@@ -186,47 +186,35 @@ io.on("connection", (socket) => {
 // =========================================================================
 // --- 📄 PDF GENERATOR HELPER (Universal Stable Mode) ---
 // =========================================================================
+const htmlPdf = require('html-pdf-node'); 
+
 const createInvoicePDF = async (data) => {
-  let browser;
   try {
-    const logoPngPath = path.join(__dirname, "uploads", "logo.png");
-    const logoJpgPath = path.join(__dirname, "uploads", "logo.jpg");
-    let logoBase64 = "";
+    const logoPngPath = path.join(__dirname, 'uploads', 'logo.png');
+    const logoJpgPath = path.join(__dirname, 'uploads', 'logo.jpg');
+    let logoBase64 = '';
 
     if (fs.existsSync(logoPngPath)) {
       const logoBuffer = fs.readFileSync(logoPngPath);
-      logoBase64 = `data:image/png;base64,${logoBuffer.toString("base64")}`;
+      logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
     } else if (fs.existsSync(logoJpgPath)) {
       const logoBuffer = fs.readFileSync(logoJpgPath);
-      logoBase64 = `data:image/jpeg;base64,${logoBuffer.toString("base64")}`;
+      logoBase64 = `data:image/jpeg;base64,${logoBuffer.toString('base64')}`;
     }
 
-    const puppeteer = require("puppeteer");
-    browser = await puppeteer.launch({
-  headless: true,
-  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/opt/render/.cache/puppeteer/chrome/linux-121.0.6167.85/chrome-linux64/chrome',
-  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
-});
- 
-
-    const page = await browser.newPage();
-
-    let addonRows = "";
+    let addonRows = '';
     if (data.addons) {
-      if (data.addons.testModule)
-        addonRows += `<tr><td>Add-on: Test Series Module</td><td>Included</td><td>₹5,000</td></tr>`;
-      if (data.addons.windowApp)
-        addonRows += `<tr><td>Add-on: Windows Desktop App</td><td>Included</td><td>₹5,000</td></tr>`;
-      if (data.addons.iosApp)
-        addonRows += `<tr><td>Add-on: iOS Mobile App</td><td>Included</td><td>₹45,000</td></tr>`;
+      if (data.addons.testModule) addonRows += `<tr><td>Add-on: Test Series Module</td><td>Included</td><td>₹5,000</td></tr>`;
+      if (data.addons.windowApp) addonRows += `<tr><td>Add-on: Windows Desktop App</td><td>Included</td><td>₹5,000</td></tr>`;
+      if (data.addons.iosApp) addonRows += `<tr><td>Add-on: iOS Mobile App</td><td>Included</td><td>₹45,000</td></tr>`;
     }
 
-    let discountRow = "";
+    let discountRow = '';
     if (data.discountAmount && data.discountAmount > 0) {
-      discountRow = `<tr style="color: #059669;"><td>Discount (Coupon: ${data.couponCode || "PROMO"})</td><td>-</td><td>-₹${data.discountAmount.toLocaleString("en-IN")}</td></tr>`;
+      discountRow = `<tr style="color: #059669;"><td>Discount (Coupon: ${data.couponCode || 'PROMO'})</td><td>-</td><td>-₹${data.discountAmount.toLocaleString('en-IN')}</td></tr>`;
     }
 
-    const headerLogoHtml = logoBase64
+    const headerLogoHtml = logoBase64 
       ? `<img src="${logoBase64}" style="max-height: 60px; width: auto; max-width: 220px; display: block;" alt="Crinza Logo" />`
       : `<h2 style="color:#4f46e5; margin:0;">Crinza Technologies</h2>`;
 
@@ -257,7 +245,7 @@ const createInvoicePDF = async (data) => {
           <div class="invoice-details">
             <h2 style="margin:0; color:#334155;">TAX INVOICE</h2>
             <p style="margin:3px 0;">Invoice #: <strong>${data.invoiceId}</strong></p>
-            <p style="margin:3px 0;">Date: ${new Date().toLocaleDateString("en-IN")}</p>
+            <p style="margin:3px 0;">Date: ${new Date().toLocaleDateString('en-IN')}</p>
           </div>
         </div>
 
@@ -268,13 +256,13 @@ const createInvoicePDF = async (data) => {
             <p style="margin:3px 0;"><strong>App Name:</strong> ${data.appName}</p>
             <p style="margin:3px 0;"><strong>Mobile:</strong> ${data.mobileNo}</p>
             <p style="margin:3px 0;"><strong>Email:</strong> ${data.email}</p>
-            ${data.gstNo ? `<p style="margin:3px 0;"><strong>GSTIN:</strong> ${data.gstNo}</p>` : ""}
+            ${data.gstNo ? `<p style="margin:3px 0;"><strong>GSTIN:</strong> ${data.gstNo}</p>` : ''}
           </div>
           <div class="box">
             <h4 style="margin-top:0; color:#4f46e5;">Address Details:</h4>
-            <p style="margin:3px 0;">${data.address || "N/A"}</p>
-            <p style="margin:3px 0;"><strong>City:</strong> ${data.city || ""}, <strong>State:</strong> ${data.state || ""}</p>
-            <p style="margin:3px 0;"><strong>Pincode:</strong> ${data.pincode || ""}</p>
+            <p style="margin:3px 0;">${data.address || 'N/A'}</p>
+            <p style="margin:3px 0;"><strong>City:</strong> ${data.city || ''}, <strong>State:</strong> ${data.state || ''}</p>
+            <p style="margin:3px 0;"><strong>Pincode:</strong> ${data.pincode || ''}</p>
           </div>
         </div>
 
@@ -290,7 +278,7 @@ const createInvoicePDF = async (data) => {
             <tr>
               <td>${data.appName} License (Base Price)</td>
               <td>${data.packageValidity}</td>
-              <td>₹${(data.baseAmount || data.totalAmount || 0).toLocaleString("en-IN")}</td>
+              <td>₹${(data.baseAmount || data.totalAmount || 0).toLocaleString('en-IN')}</td>
             </tr>
             ${addonRows}
             ${discountRow}
@@ -298,9 +286,9 @@ const createInvoicePDF = async (data) => {
         </table>
 
         <div class="total-box">
-          <p>Total Amount: <strong>₹${data.totalAmount ? data.totalAmount.toLocaleString("en-IN") : 0}</strong></p>
-          <p>Paid Amount: <strong style="color: green;">₹${data.paidAmount ? data.paidAmount.toLocaleString("en-IN") : 0}</strong></p>
-          <p>Due Amount: <strong style="color: red;">₹${data.dueAmount ? data.dueAmount.toLocaleString("en-IN") : 0}</strong></p>
+          <p>Total Amount: <strong>₹${data.totalAmount ? data.totalAmount.toLocaleString('en-IN') : 0}</strong></p>
+          <p>Paid Amount: <strong style="color: green;">₹${data.paidAmount ? data.paidAmount.toLocaleString('en-IN') : 0}</strong></p>
+          <p>Due Amount: <strong style="color: red;">₹${data.dueAmount ? data.dueAmount.toLocaleString('en-IN') : 0}</strong></p>
         </div>
 
         <div class="terms">
@@ -311,19 +299,16 @@ const createInvoicePDF = async (data) => {
       </html>
     `;
 
-    await page.setContent(htmlContent, { waitUntil: "domcontentloaded" });
-    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
-    await page.close();
+    // 🌟 html-pdf-node options & generation
+    let options = { format: 'A4', printBackground: true };
+    let file = { content: htmlContent };
+    
+    const pdfBuffer = await htmlPdf.generatePdf(file, options);
     return pdfBuffer;
+
   } catch (err) {
     console.error("🔥 [PDF Error]:", err);
     throw err;
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-      } catch (e) {}
-    }
   }
 };
 
