@@ -186,135 +186,66 @@ io.on("connection", (socket) => {
 // =========================================================================
 // --- 📄 PDF GENERATOR HELPER (Universal Stable Mode) ---
 // =========================================================================
-const htmlPdf = require('html-pdf-node'); 
+const PDFDocument = require('pdfkit');
 
 const createInvoicePDF = async (data) => {
-  try {
-    const logoPngPath = path.join(__dirname, 'uploads', 'logo.png');
-    const logoJpgPath = path.join(__dirname, 'uploads', 'logo.jpg');
-    let logoBase64 = '';
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50, size: 'A4' });
+      let buffers = [];
 
-    if (fs.existsSync(logoPngPath)) {
-      const logoBuffer = fs.readFileSync(logoPngPath);
-      logoBase64 = `data:image/png;base64,${logoBuffer.toString('base64')}`;
-    } else if (fs.existsSync(logoJpgPath)) {
-      const logoBuffer = fs.readFileSync(logoJpgPath);
-      logoBase64 = `data:image/jpeg;base64,${logoBuffer.toString('base64')}`;
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => {
+        let pdfBuffer = Buffer.concat(buffers);
+        resolve(pdfBuffer);
+      });
+
+      // --- PDF Design & Content ---
+      doc.fontSize(20).fillColor('#4f46e5').text('CRINZA TECHNOLOGIES', { align: 'left' });
+      doc.fontSize(10.5).fillColor('#64748b').text('Tax Invoice / Bill of Supply');
+      doc.moveDown();
+
+      doc.fontSize(12).fillColor('#1e293b').text(`Invoice #: ${data.invoiceId}`);
+      doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`);
+      doc.moveDown();
+
+      // Billed To Box
+      doc.fontSize(12).fillColor('#4f46e5').text('Billed To:');
+      doc.fontSize(10).fillColor('#1e293b')
+         .text(`Institute: ${data.instituteName || 'N/A'}`)
+         .text(`App Name: ${data.appName || 'N/A'}`)
+         .text(`Mobile: ${data.mobileNo || 'N/A'}`)
+         .text(`Email: ${data.email || 'N/A'}`);
+      doc.moveDown();
+
+      // Table / Items
+      doc.fontSize(10).fillColor('#4f46e5').text('Description', { continued: true });
+      doc.text('Validity', { align: 'right', continued: true });
+      doc.text('Cost', { align: 'right' });
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+      doc.moveDown(0.5);
+
+      doc.fillColor('#1e293b').text(`${data.appName} License`, { continued: true });
+      doc.text(`${data.packageValidity || '1 Year'}`, { align: 'right', continued: true });
+      doc.text(`Rs. ${(data.baseAmount || data.totalAmount || 0).toLocaleString('en-IN')}`, { align: 'right' });
+
+      doc.moveDown();
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+      doc.moveDown();
+
+      // Totals
+      doc.fontSize(11).text(`Total Amount: Rs. ${data.totalAmount ? data.totalAmount.toLocaleString('en-IN') : 0}`, { align: 'right' });
+      doc.text(`Paid Amount: Rs. ${data.paidAmount ? data.paidAmount.toLocaleString('en-IN') : 0}`, { align: 'right' });
+      doc.text(`Due Amount: Rs. ${data.dueAmount ? data.dueAmount.toLocaleString('en-IN') : 0}`, { align: 'right' });
+
+      doc.moveDown(2);
+      doc.fontSize(9).fillColor('#64748b').text('Terms & Conditions: Software once sold will not be refunded. Support valid as per package agreement.');
+
+      doc.end();
+    } catch (err) {
+      reject(err);
     }
-
-    let addonRows = '';
-    if (data.addons) {
-      if (data.addons.testModule) addonRows += `<tr><td>Add-on: Test Series Module</td><td>Included</td><td>₹5,000</td></tr>`;
-      if (data.addons.windowApp) addonRows += `<tr><td>Add-on: Windows Desktop App</td><td>Included</td><td>₹5,000</td></tr>`;
-      if (data.addons.iosApp) addonRows += `<tr><td>Add-on: iOS Mobile App</td><td>Included</td><td>₹45,000</td></tr>`;
-    }
-
-    let discountRow = '';
-    if (data.discountAmount && data.discountAmount > 0) {
-      discountRow = `<tr style="color: #059669;"><td>Discount (Coupon: ${data.couponCode || 'PROMO'})</td><td>-</td><td>-₹${data.discountAmount.toLocaleString('en-IN')}</td></tr>`;
-    }
-
-    const headerLogoHtml = logoBase64 
-      ? `<img src="${logoBase64}" style="max-height: 60px; width: auto; max-width: 220px; display: block;" alt="Crinza Logo" />`
-      : `<h2 style="color:#4f46e5; margin:0;">Crinza Technologies</h2>`;
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: Arial, sans-serif; padding: 30px; color: #1e293b; }
-          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #4f46e5; padding-bottom: 15px; }
-          .invoice-details { text-align: right; }
-          .details-grid { display: flex; justify-content: space-between; margin-top: 25px; }
-          .box { width: 48%; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 25px; }
-          th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
-          th { background-color: #4f46e5; color: white; }
-          .total-box { margin-top: 20px; text-align: right; }
-          .terms { margin-top: 30px; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div>
-            ${headerLogoHtml}
-            <p style="margin:4px 0 0 0; font-size: 11px; color: #64748b;">Crinza Technologies Pvt Ltd</p>
-          </div>
-          <div class="invoice-details">
-            <h2 style="margin:0; color:#334155;">TAX INVOICE</h2>
-            <p style="margin:3px 0;">Invoice #: <strong>${data.invoiceId}</strong></p>
-            <p style="margin:3px 0;">Date: ${new Date().toLocaleDateString('en-IN')}</p>
-          </div>
-        </div>
-
-        <div class="details-grid">
-          <div class="box">
-            <h4 style="margin-top:0; color:#4f46e5;">Billed To:</h4>
-            <p style="margin:3px 0;"><strong>Institute:</strong> ${data.instituteName}</p>
-            <p style="margin:3px 0;"><strong>App Name:</strong> ${data.appName}</p>
-            <p style="margin:3px 0;"><strong>Mobile:</strong> ${data.mobileNo}</p>
-            <p style="margin:3px 0;"><strong>Email:</strong> ${data.email}</p>
-            ${data.gstNo ? `<p style="margin:3px 0;"><strong>GSTIN:</strong> ${data.gstNo}</p>` : ''}
-          </div>
-          <div class="box">
-            <h4 style="margin-top:0; color:#4f46e5;">Address Details:</h4>
-            <p style="margin:3px 0;">${data.address || 'N/A'}</p>
-            <p style="margin:3px 0;"><strong>City:</strong> ${data.city || ''}, <strong>State:</strong> ${data.state || ''}</p>
-            <p style="margin:3px 0;"><strong>Pincode:</strong> ${data.pincode || ''}</p>
-          </div>
-        </div>
-
-        <table>
-          <thead>
-            <tr>
-              <th>Description / Items</th>
-              <th>Validity</th>
-              <th>Cost</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>${data.appName} License (Base Price)</td>
-              <td>${data.packageValidity}</td>
-              <td>₹${(data.baseAmount || data.totalAmount || 0).toLocaleString('en-IN')}</td>
-            </tr>
-            ${addonRows}
-            ${discountRow}
-          </tbody>
-        </table>
-
-        <div class="total-box">
-          <p>Total Amount: <strong>₹${data.totalAmount ? data.totalAmount.toLocaleString('en-IN') : 0}</strong></p>
-          <p>Paid Amount: <strong style="color: green;">₹${data.paidAmount ? data.paidAmount.toLocaleString('en-IN') : 0}</strong></p>
-          <p>Due Amount: <strong style="color: red;">₹${data.dueAmount ? data.dueAmount.toLocaleString('en-IN') : 0}</strong></p>
-        </div>
-
-        <div class="terms">
-          <h4>Terms & Conditions:</h4>
-          <p style="white-space: pre-line;">${data.termsAndConditions}</p>
-        </div>
-      </body>
-      </html>
-    `;
-
-    // 🌟 html-pdf-node options & generation
-    let options = { 
-      format: 'A4', 
-      printBackground: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
-    };
-    let file = { content: htmlContent };
-    
-    const pdfBuffer = await htmlPdf.generatePdf(file, options);
-    return pdfBuffer;
-
-
-  } catch (err) {
-    console.error("🔥 [PDF Error]:", err);
-    throw err;
-  }
+  });
 };
 
 // =========================================================================
