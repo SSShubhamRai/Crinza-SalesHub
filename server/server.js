@@ -258,6 +258,7 @@ const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
+      family: 4,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -415,6 +416,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
+      family: 4,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
