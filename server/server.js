@@ -300,11 +300,16 @@ const createInvoicePDF = async (data) => {
     `;
 
     // 🌟 html-pdf-node options & generation
-    let options = { format: 'A4', printBackground: true };
+    let options = { 
+      format: 'A4', 
+      printBackground: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'] 
+    };
     let file = { content: htmlContent };
     
     const pdfBuffer = await htmlPdf.generatePdf(file, options);
     return pdfBuffer;
+
 
   } catch (err) {
     console.error("🔥 [PDF Error]:", err);
