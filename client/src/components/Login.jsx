@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { loginUser } from '../api/api';
 import logoImage from '../Assets/logo.png'; 
 import { Preferences } from '@capacitor/preferences';
+import { io } from 'socket.io-client'; // 🌟 Socket.io for single session force logout tracking
 
 const Login = ({ onLoginSuccess }) => {
   const [credentials, setCredentials] = useState({ userId: '', password: '' });
@@ -22,10 +23,43 @@ const Login = ({ onLoginSuccess }) => {
   // 🖱️ Mouse Parallax Position State
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
+  const socketRef = useRef(null);
+
+  const API_BASE = import.meta.env.PROD
+    ? "https://crinza-saleshub.onrender.com"
+    : "http://localhost:5000";
+
+  // 🌟 Listen to Global Force Logout / Concurrent Login Event via Socket.io
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    const userId = localStorage.getItem('userId');
+
+    if (token && userId) {
+      socketRef.current = io(API_BASE, { auth: { token } });
+
+      socketRef.current.on('connect', () => {
+        socketRef.current.emit('register_user', { userId });
+      });
+
+      // 🚨 If another device logs in, force logout this session instantly
+      socketRef.current.on('force_logout', (data) => {
+        toast.error(data.message || "Session expired: Logged in from another device.");
+        localStorage.clear();
+        Preferences.clear();
+        window.location.reload(); // Reset state and return to login view
+      });
+    }
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, [API_BASE]);
+
   useEffect(() => {
     const handleMouseMove = (e) => {
       const { innerWidth, innerHeight } = window;
-      // Normalize mouse position between -1 and 1
       const x = (e.clientX / innerWidth - 0.5) * 20;
       const y = (e.clientY / innerHeight - 0.5) * 20;
       setMousePos({ x, y });
@@ -34,10 +68,6 @@ const Login = ({ onLoginSuccess }) => {
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, []);
-
-  const API_BASE = import.meta.env.PROD
-    ? "https://crinza-saleshub.onrender.com"
-    : "http://localhost:5000";
 
   const handleChange = (e) => {
     setCredentials({ ...credentials, [e.target.name]: e.target.value });
@@ -57,6 +87,13 @@ const Login = ({ onLoginSuccess }) => {
       // 🌟 Native SharedPreferences (Background Service ke liye)
       await Preferences.set({ key: 'isLoggedIn', value: 'true' });
       await Preferences.set({ key: 'salespersonId', value: data.userId });
+
+      // 🌟 Establish Socket connection and register session to kick out other active devices
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+      socketRef.current = io(API_BASE, { auth: { token: data.token } });
+      socketRef.current.emit('register_user', { userId: data.userId });
 
       toast.success(`Welcome back, ${data.userId}!`);
       onLoginSuccess(data.token, data.role, data.userId);
