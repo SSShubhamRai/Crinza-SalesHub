@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { loginUser } from '../api/api';
 import logoImage from '../Assets/logo.png'; 
+import { Preferences } from '@capacitor/preferences';
 
 const Login = ({ onLoginSuccess }) => {
   const [credentials, setCredentials] = useState({ userId: '', password: '' });
@@ -53,6 +54,10 @@ const Login = ({ onLoginSuccess }) => {
       localStorage.setItem('role', data.role);
       localStorage.setItem('userId', data.userId);
       
+      // 🌟 Native SharedPreferences (Background Service ke liye)
+      await Preferences.set({ key: 'isLoggedIn', value: 'true' });
+      await Preferences.set({ key: 'salespersonId', value: data.userId });
+
       toast.success(`Welcome back, ${data.userId}!`);
       onLoginSuccess(data.token, data.role, data.userId);
     } catch (err) {

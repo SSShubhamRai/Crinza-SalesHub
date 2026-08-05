@@ -3,7 +3,8 @@
  * 👑 ADMIN DASHBOARD COMPONENT (`AdminDashboard.jsx`)
  * =========================================================================
  * Description: Allows admin to track live tasks, live location, total distance,
- * manage team, coupons, advanced lead filters, and Excel/CSV data export.
+ * manage team, coupons, advanced lead filters, Excel/CSV data export, and 
+ * real-time Mock Location / Spoofing Security Alerts.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -46,6 +47,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [travelData, setTravelData] = useState({ totalDistanceKm: 0, routePoints: [] });
   const [liveLocations, setLiveLocations] = useState({});
   const [resolvedAddresses, setResolvedAddresses] = useState({}); // 🏷️ Cache for Place Names
+
+  // 🚨 Security & Spoofing Alerts State
+  const [spoofingAlerts, setSpoofingAlerts] = useState([]);
+
   const socketRef = useRef(null);
 
   // New Employee Form State
@@ -101,6 +106,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
           timestamp: data.timestamp
         }
       }));
+    });
+
+    // 🌟 Real-time Spoofing Alert Listener
+    socketRef.current.on('spoofing_alert', (data) => {
+      toast.error(`🚨 Security Alert: ${data.salespersonId} used Mock Location / Fake GPS!`, { duration: 6000 });
+      setSpoofingAlerts((prev) => [data, ...prev]);
     });
 
     return () => {
@@ -592,6 +603,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
             🛰️ Live Tracking & Travel
           </button>
           <button
+            onClick={() => setActiveTab("security-alerts")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap relative ${
+              activeTab === "security-alerts" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            🚨 Security & Spoofing {spoofingAlerts.length > 0 && <span className="ml-1 bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px] font-extrabold animate-pulse">{spoofingAlerts.length}</span>}
+          </button>
+          <button
             onClick={() => setActiveTab("leads-export")}
             className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
               activeTab === "leads-export" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
@@ -848,6 +867,53 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         )}
                       </div>
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB: SECURITY ALERTS & SPOOFING LOGS */}
+            {activeTab === "security-alerts" && (
+              <div className="bg-[var(--color-card)] border border-red-500/30 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-red-600 flex items-center gap-2">
+                      <span>🚨</span> Live Mock Location / Spoofing Security Logs
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">Real-time flags triggered when salespersons attempt to bypass location restrictions using fake GPS.</p>
+                  </div>
+                  <span className="bg-red-500/10 text-red-600 border border-red-500/20 px-3 py-1.5 rounded-xl font-extrabold text-xs">
+                    Total Flags: {spoofingAlerts.length}
+                  </span>
+                </div>
+
+                {spoofingAlerts.length === 0 ? (
+                  <div className="py-16 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] space-y-2">
+                    <span className="text-2xl">🛡️</span>
+                    <p>No spoofing or fake GPS attempts detected in the current active session.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {spoofingAlerts.map((alert, idx) => (
+                      <div key={idx} className="bg-red-500/5 border border-red-500/30 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <strong className="text-sm text-red-600 font-bold">Salesperson ID: {alert.salespersonId}</strong>
+                            <span className="bg-red-500 text-white px-2 py-0.5 rounded-md text-[10px] font-bold">Mock Detected</span>
+                          </div>
+                          <p className="text-[var(--color-heading)]">📍 Coordinates flagged: <span className="font-mono">{alert.latitude?.toFixed(4)}, {alert.longitude?.toFixed(4)}</span></p>
+                          <p className="text-[var(--color-body)]">⏰ Timestamp: {new Date(alert.timestamp || Date.now()).toLocaleString('en-IN')}</p>
+                        </div>
+                        <a
+                          href={`https://www.google.com/maps?q=${alert.latitude},${alert.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold transition shadow-sm text-center"
+                        >
+                          🗺️ View Flagged Location
+                        </a>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

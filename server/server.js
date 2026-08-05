@@ -120,13 +120,14 @@ const taskSchema = new mongoose.Schema({
 const Task = mongoose.model("Task", taskSchema);
 
 // =========================================================================
-// --- 📍 LOCATION TRACKING SCHEMA ---
+// --- 📍 LOCATION TRACKING SCHEMA (WITH SECURITY SPOOF FLAG) ---
 // =========================================================================
 const locationLogSchema = new mongoose.Schema({
   salespersonId: { type: String, required: true, index: true },
   latitude: { type: Number, required: true },
   longitude: { type: Number, required: true },
   date: { type: String, required: true, index: true }, // Format: 'YYYY-MM-DD'
+  isMocked: { type: Boolean, default: false },         // 👈 Anti-Bypass Security Flag
   timestamp: { type: Date, default: Date.now },
 });
 const LocationLog = mongoose.model("LocationLog", locationLogSchema);
@@ -158,7 +159,7 @@ async function calculateOSRMRouteDistance(coords) {
 }
 
 // =========================================================================
-// --- 🌐 SOCKET.IO REAL-TIME LOCATION HANDLER WITH JWT AUTH ---
+// --- 🌐 SOCKET.IO REAL-TIME LOCATION & SINGLE SESSION HANDLER ---
 // =========================================================================
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
@@ -174,10 +175,28 @@ io.use((socket, next) => {
   });
 });
 
+// 🌟 Track active sessions across all roles (Admin, Salesperson, Accountant): { userId: socketId }
+const activeUserSessions = {};
+
 io.on("connection", (socket) => {
   console.log(`🔌 Authenticated Client Connected: ${socket.id} (${socket.user.userId})`);
 
-  // Salesperson sends continuous live location updates with Smart Drift Filter
+  // 🌟 Register user session to enforce single device login per ID
+  socket.on("register_user", ({ userId }) => {
+    if (!userId) return;
+
+    // Agar is userId ka pehle se koi active session hai, toh purane device ko force logout bhej do
+    if (activeUserSessions[userId] && activeUserSessions[userId] !== socket.id) {
+      io.to(activeUserSessions[userId]).emit("force_logout", {
+        message: "Aapne yeh ID kisi doosre device par login kar li hai, isliye yahan se session expire ho gaya hai.",
+      });
+    }
+
+    activeUserSessions[userId] = socket.id;
+    console.log(`👤 Active Session Registered for: ${userId} (${socket.id})`);
+  });
+
+  // Salesperson sends continuous live location updates with Smart Drift & Teleportation Anti-Bypass Filter
   socket.on("update_location", async (data) => {
     try {
       const { salespersonId, latitude, longitude } = data;
@@ -189,28 +208,43 @@ io.on("connection", (socket) => {
       }
 
       const currentDate = new Date().toISOString().split("T")[0];
+      const currentTime = new Date();
 
-      // 🌟 Check last logged location today to filter out stationary GPS jitter spam
+      // 🌟 Check last logged location today to filter out jitter and detect fake teleportation
       const lastLog = await LocationLog.findOne({ salespersonId, date: currentDate }).sort({ timestamp: -1 });
 
+      let isMockedByTeleport = false;
+
       if (lastLog) {
-        const R = 6371;
+        const R = 6371; // Earth radius in KM
         const dLat = (latitude - lastLog.latitude) * (Math.PI / 180);
         const dLon = (longitude - lastLog.longitude) * (Math.PI / 180);
         const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
                   Math.cos(lastLog.latitude * (Math.PI / 180)) * Math.cos(latitude * (Math.PI / 180)) *
                   Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const distanceSinceLast = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-        // Agar user 15 meters (0.015 KM) ke daayre mein hi baitha hai, toh naya point save mat karo
-        if (distanceSinceLast < 0.015) {
+        const timeDiffHours = (currentTime - new Date(lastLog.timestamp)) / (1000 * 60 * 60);
+
+        // 1. Jitter Filter: Agar user 15 meters (0.015 KM) ke daayre mein hi baitha hai
+        if (distanceKm < 0.015) {
           io.emit("live_location_broadcast", {
             salespersonId,
             latitude,
             longitude,
-            timestamp: new Date(),
+            isMocked: false,
+            timestamp: currentTime,
           });
           return; 
+        }
+
+        // 2. 🛡️ Impossible Speed / Teleportation Check (e.g., speed > 150 km/h)
+        if (timeDiffHours > 0) {
+          const speedKmh = distanceKm / timeDiffHours;
+          if (speedKmh > 150) {
+            isMockedByTeleport = true;
+            console.warn(`🚨 SECURITY ALERT: Possible Fake GPS / Teleportation detected for ${salespersonId}! Calculated Speed: ${speedKmh.toFixed(2)} km/h`);
+          }
         }
       }
 
@@ -219,13 +253,15 @@ io.on("connection", (socket) => {
         latitude,
         longitude,
         date: currentDate,
+        isMocked: isMockedByTeleport,
       });
 
       io.emit("live_location_broadcast", {
         salespersonId,
         latitude,
         longitude,
-        timestamp: new Date(),
+        isMocked: isMockedByTeleport,
+        timestamp: currentTime,
       });
     } catch (err) {
       console.error("🔥 Socket Location Error:", err);
@@ -233,6 +269,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    for (const [userId, socketId] of Object.entries(activeUserSessions)) {
+      if (socketId === socket.id) {
+        delete activeUserSessions[userId];
+        break;
+      }
+    }
     console.log(`🔌 Client Disconnected: ${socket.id}`);
   });
 });
@@ -1158,8 +1200,6 @@ app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
       const currentDealPaid = Number(deal.paidAmount) || 0;
 
       // 🌟 FIXED LEDGER CALCULATION:
-      // Agar yeh installment payment hai (baseAmount 0 hai aur previousDueBalance hai), 
-      // toh totalAmount mein dobara addition nahi hogi, sirf paidAmount accumulate hoga.
       if (deal.baseAmount === 0 && deal.previousDueBalance > 0) {
         consolidatedMap[key].paidAmount += currentDealPaid;
       } else {
@@ -1167,7 +1207,6 @@ app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
         consolidatedMap[key].paidAmount += currentDealPaid;
       }
 
-      // Sahi due calculation: Total Bill Amount - Total Paid So Far
       consolidatedMap[key].dueAmount = Math.max(
         0,
         consolidatedMap[key].totalAmount - consolidatedMap[key].paidAmount
@@ -1410,6 +1449,6 @@ app.post("/api/coupons/verify", verifyToken, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(
-    `🚀 Server running on port ${PORT} with Socket.io Live Tracking & Consolidated Ledger Enabled`,
+    `🚀 Server running on port ${PORT} with Socket.io Live Tracking & Single Session Control Enabled`,
   );
 });

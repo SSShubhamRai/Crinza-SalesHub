@@ -5,13 +5,17 @@
  * Description: Allows salesperson to manage performance, track deals, create/update 
  * leads with live GPS coordinates, schedule follow-ups, submit invoices with 
  * database-verified coupon discounts, 18% GST calculation, add-on packages, 
- * multi-visit tracking, and true partial installment due ledger system.
+ * multi-visit tracking, true partial installment due ledger system, 
+ * Capacitor native Mock Location / Anti-Bypass security, Kanban Pipeline View, 
+ * WhatsApp Quick Reminders with Logo, and 🔔 Real-time In-App Notifications.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { State, City } from 'country-state-city';
 import { io } from 'socket.io-client'; // 🌟 Socket.io client for real-time live tracking
+import { Geolocation } from '@capacitor/geolocation'; // 🌟 Capacitor Geolocation for Native Mock Detection
 import { submitInvoiceRequest } from '../api/api';
+import toast from 'react-hot-toast';
 
 const SalespersonForm = ({ userId, onLogout }) => {
   // --- Navigation & View States ---
@@ -37,6 +41,10 @@ const SalespersonForm = ({ userId, onLogout }) => {
   // --- 🌟 Settlement Success Popup State ---
   const [settledAlert, setSettledAlert] = useState(null);
 
+  // --- 🔔 In-App Notifications States ---
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
   // --- Add-on Package Pricing Constants ---
   const ADDON_PRICES = {
     testModule: 5000,
@@ -49,7 +57,84 @@ const SalespersonForm = ({ userId, onLogout }) => {
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
 
-  // --- 🌟 CONTINUOUS SOCKET.IO LIVE LOCATION TRACKING WITH BACKGROUND INTERVAL ---
+  // --- 🌟 FETCH NOTIFICATIONS HOOK ---
+  const fetchSalespersonNotifications = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/api/salesperson/notifications`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNotifications(data);
+      }
+    } catch (err) {
+      console.error("Failed to load notifications:", err);
+    }
+  }, [API_BASE]);
+
+  // --- 🌟 WHATSAPP QUICK REMINDER HELPER ---
+  const handleWhatsAppReminder = (lead, type = 'followup') => {
+    if (!lead.mobileNo) {
+      alert('Mobile number not available!');
+      return;
+    }
+    let phone = lead.mobileNo.replace(/\D/g, '');
+    if (phone.length === 10) {
+      phone = '91' + phone; // Default India country code
+    }
+
+    let message = '';
+    if (type === 'followup') {
+      message = `Hello *${lead.contactPerson || 'Sir/Ma\'am'}*, greetings from Crinza Technologies! This is a quick reminder regarding our scheduled ${lead.followUpAction || 'discussion'} for *${lead.instituteName}*. Looking forward to connecting with you.`;
+    } else {
+      message = `Hello *${lead.contactPerson || 'Sir/Ma\'am'}*, greetings from Crinza Technologies regarding *${lead.instituteName}*.`;
+    }
+
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/${phone}?text=${encodedMessage}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
+  // --- 🌟 SECURE NATIVE LOCATION FETCH WITH MOCK DETECTION ---
+  const getSecureLocation = async () => {
+    try {
+      await Geolocation.requestPermissions();
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000
+      });
+
+      // 🛡️ Native Mock Location Check via Capacitor Geolocation
+      const isMocked = position.coords.mocked || position.coords.isFromMockProvider;
+      if (isMocked) {
+        alert("⚠️ Security Warning: Mock Location (Fake GPS) app detected! Please disable fake GPS tools to record visits or submit invoices.");
+        return { lat: null, lng: null, isMocked: true };
+      }
+
+      return {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        isMocked: false
+      };
+    } catch (err) {
+      console.warn("Capacitor geolocation fallback to browser navigator:", err.message);
+      // Fallback for standard browser web view
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) {
+          resolve({ lat: null, lng: null, isMocked: false });
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, isMocked: false }),
+          () => resolve({ lat: null, lng: null, isMocked: false }),
+          { enableHighAccuracy: true, timeout: 8000 }
+        );
+      });
+    }
+  };
+
+  // --- 🌟 CONTINUOUS SOCKET.IO LIVE LOCATION TRACKING WITH NOTIFICATION LISTENER ---
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -64,6 +149,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
     socketRef.current.on('connect_error', (err) => {
       console.error('Socket connection error:', err.message);
+    });
+
+    // 🔔 Real-time Notification Socket Listener
+    socketRef.current.on('new_notification', (notif) => {
+      setNotifications((prev) => [notif, ...prev]);
+      toast.success(notif.message, { icon: '🔔', duration: 5000 });
     });
 
     let watchId = null;
@@ -84,7 +175,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
       );
 
-      // 2. Fallback / Active Background Interval (Har 30 seconds mein ensure karne ke liye ki pings ja rahe hain)
+      // 2. Fallback / Active Background Interval
       intervalId = setInterval(() => {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -227,7 +318,8 @@ const SalespersonForm = ({ userId, onLogout }) => {
   useEffect(() => {
     fetchMyDeals();
     fetchMyLeads();
-  }, [fetchMyDeals, fetchMyLeads]);
+    fetchSalespersonNotifications();
+  }, [fetchMyDeals, fetchMyLeads, fetchSalespersonNotifications]);
 
   // --- Location Utility Constants ---
   const indianStates = State.getStatesOfCountry('IN');
@@ -255,7 +347,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     const discountedSubtotal = Math.max(0, baseSubtotal - discount);
     const gst = discountedSubtotal * 0.18;
     
-    // Grand Total = Current Package Calculation + Past Unpaid Due Balance
     const calculatedTotal = discountedSubtotal + gst + (formData.previousDueBalance || 0);
 
     setFormData((prev) => ({
@@ -267,8 +358,8 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }));
   }, [addons, formData.baseAmount, formData.previousDueBalance, isCouponApplied, couponDetails]);
 
-  // --- Auto-calculated Remaining Due Amount After This Payment ---
   const dueAmount = Math.max(0, formData.totalAmount - formData.paidAmount);
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
   // --- Performance Dashboard Metrics Calculations ---
   const totalDealsCount = myDeals.length;
@@ -278,7 +369,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const pendingDealsCount = myDeals.filter(d => d.status === 'pending').length;
   const totalPaidCollected = myDeals.reduce((sum, d) => sum + (d.paidAmount || 0), 0);
 
-  // --- 🔍 Filter & Search Leads (Updated & Robust) ---
+  // --- 🔍 Filter & Search Leads ---
   const filteredLeads = activeLeadsList.filter(lead => {
     const query = leadSearchQuery.toLowerCase().trim();
     
@@ -289,7 +380,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
       lead.city?.toLowerCase().includes(query);
 
     if (!matchesSearch) return false;
-
     if (leadFilter === 'all') return true;
     
     if (leadFilter === 'call') {
@@ -322,7 +412,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     return true;
   });
 
-  // --- Verify & Apply Discount Coupon via Database API ---
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) {
       setCouponError('Please enter a coupon code.');
@@ -349,7 +438,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- Remove Applied Coupon ---
   const handleRemoveCoupon = () => {
     setIsCouponApplied(false);
     setCouponInput('');
@@ -369,7 +457,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
           const details = data[0].PostOffice[0];
           const matchedState = indianStates.find((s) => s.name.toLowerCase() === details.State.toLowerCase());
           
-          if (matchedState) setSelectedStateCode(matchedState.isoCode);
+          if (matchedState) {
+            setSelectedStateCode(matchedState.isoCode);
+          }
           
           if (details.District) {
             const poRes = await fetch(`https://api.postalpincode.in/postoffice/${details.District}`);
@@ -405,7 +495,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
           const details = data[0].PostOffice[0];
           const matchedState = indianStates.find((s) => s.name.toLowerCase() === details.State.toLowerCase());
           
-          if (matchedState) setLeadStateCode(matchedState.isoCode);
+          if (matchedState) {
+            setLeadStateCode(matchedState.isoCode);
+          }
 
           if (details.District) {
             const poRes = await fetch(`https://api.postalpincode.in/postoffice/${details.District}`);
@@ -443,8 +535,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }));
   };
 
-  const handleLeadCityChange = async (e) => {
-    const cityName = e.target.value;
+  const handleLeadCityChange = async (cityName) => {
     setLeadFormData((prev) => ({ ...prev, city: cityName, pincode: '' }));
     if (!cityName) return;
     try {
@@ -492,8 +583,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
     setFormData(prev => ({ ...prev, state: stObj ? stObj.name : '', city: '', pincode: '' }));
   };
 
-  const handleInvoiceCityChange = async (e) => {
-    const cName = e.target.value;
+  const handleInvoiceCityChange = async (cName) => {
     setFormData(prev => ({ ...prev, city: cName, pincode: '' }));
     if (!cName) return;
     try {
@@ -507,7 +597,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- 🌟 SMART AUTO-FILL & INSTALLMENT DUE BALANCE LOOKUP ---
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -593,119 +682,117 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const handleFileChange = (e) => setFile(e.target.files[0]);
   const handleMeetingPhotoChange = (e) => setMeetingPhotoFile(e.target.files[0]);
 
-  const handleAutoDetectLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
+  const handleAutoDetectLocation = async () => {
+    setStatus({ loading: true, success: '', error: '' });
+    const { lat, lng, isMocked } = await getSecureLocation();
+    
+    if (isMocked) {
+      setStatus({ loading: false, success: '', error: 'Mock location detected! Operation blocked.' });
       return;
     }
 
-    setStatus({ loading: true, success: '', error: '' });
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-          const data = await res.json();
-          if (data && data.address) {
-            const addr = data.address;
-            const fetchedStateName = addr.state || '';
-            const fetchedCityName = addr.city || addr.town || addr.village || addr.district || '';
-            const fetchedPincode = addr.postcode || '';
-            const fullRoadAddress = data.display_name || '';
+    if (!lat || !lng) {
+      setStatus({ loading: false, success: '', error: 'Failed to retrieve GPS location or permission denied.' });
+      return;
+    }
 
-            const matchedState = indianStates.find((s) => s.name.toLowerCase() === fetchedStateName.toLowerCase());
-            if (matchedState) setLeadStateCode(matchedState.isoCode);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      if (data && data.address) {
+        const addr = data.address;
+        const fetchedStateName = addr.state || '';
+        const fetchedCityName = addr.city || addr.town || addr.village || addr.district || '';
+        const fetchedPincode = addr.postcode || '';
+        const fullRoadAddress = data.display_name || '';
 
-            if (fetchedCityName) {
-              const poRes = await fetch(`https://api.postalpincode.in/postoffice/${fetchedCityName}`);
-              const poData = await poRes.json();
-              if (poData[0] && poData[0].Status === 'Success') {
-                const pincodes = Array.from(new Set(poData[0].PostOffice.map((po) => po.Pincode)));
-                setLeadAvailablePincodes(pincodes);
-              }
-            }
+        const matchedState = indianStates.find((s) => s.name.toLowerCase() === fetchedStateName.toLowerCase());
+        if (matchedState) setLeadStateCode(matchedState.isoCode);
 
-            setLeadFormData((prev) => ({
-              ...prev,
-              address: fullRoadAddress,
-              state: matchedState ? matchedState.name : fetchedStateName,
-              city: fetchedCityName,
-              pincode: fetchedPincode
-            }));
-
-            setStatus({ loading: false, success: 'Location auto-detected and address filled successfully!', error: '' });
+        if (fetchedCityName) {
+          const poRes = await fetch(`https://api.postalpincode.in/postoffice/${fetchedCityName}`);
+          const poData = await poRes.json();
+          if (poData[0] && poData[0].Status === 'Success') {
+            const pincodes = Array.from(new Set(poData[0].PostOffice.map((po) => po.Pincode)));
+            setLeadAvailablePincodes(pincodes);
           }
-        } catch (err) {
-          setStatus({ loading: false, success: '', error: 'Failed to fetch address from coordinates.' });
         }
-      },
-      () => setStatus({ loading: false, success: '', error: 'GPS permission denied or failed.' }),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+
+        setLeadFormData((prev) => ({
+          ...prev,
+          address: fullRoadAddress,
+          state: matchedState ? matchedState.name : fetchedStateName,
+          city: fetchedCityName,
+          pincode: fetchedPincode
+        }));
+
+        setStatus({ loading: false, success: 'Location auto-detected securely and address filled!', error: '' });
+      }
+    } catch (err) {
+      setStatus({ loading: false, success: '', error: 'Failed to fetch address from coordinates.' });
+    }
   };
 
-  const handleInvoiceAutoDetectLocation = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser');
+  const handleInvoiceAutoDetectLocation = async () => {
+    setStatus({ loading: true, success: '', error: '' });
+    const { lat, lng, isMocked } = await getSecureLocation();
+
+    if (isMocked) {
+      setStatus({ loading: false, success: '', error: 'Mock location detected! Operation blocked.' });
       return;
     }
 
-    setStatus({ loading: true, success: '', error: '' });
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
-          const data = await res.json();
-          if (data && data.address) {
-            const addr = data.address;
-            const fetchedStateName = addr.state || '';
-            const fetchedCityName = addr.city || addr.town || addr.village || addr.district || '';
-            const fetchedPincode = addr.postcode || '';
-            const fullRoadAddress = data.display_name || '';
+    if (!lat || !lng) {
+      setStatus({ loading: false, success: '', error: 'Failed to retrieve GPS location or permission denied.' });
+      return;
+    }
 
-            const matchedState = indianStates.find((s) => s.name.toLowerCase() === fetchedStateName.toLowerCase());
-            if (matchedState) setSelectedStateCode(matchedState.isoCode);
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+      const data = await res.json();
+      if (data && data.address) {
+        const addr = data.address;
+        const fetchedStateName = addr.state || '';
+        const fetchedCityName = addr.city || addr.town || addr.village || addr.district || '';
+        const fetchedPincode = addr.postcode || '';
+        const fullRoadAddress = data.display_name || '';
 
-            if (fetchedCityName) {
-              const poRes = await fetch(`https://api.postalpincode.in/postoffice/${fetchedCityName}`);
-              const poData = await poRes.json();
-              if (poData[0] && poData[0].Status === 'Success') {
-                const pincodes = Array.from(new Set(poData[0].PostOffice.map((po) => po.Pincode)));
-                setAvailablePincodes(pincodes);
-              }
-            }
+        const matchedState = indianStates.find((s) => s.name.toLowerCase() === fetchedStateName.toLowerCase());
+        if (matchedState) setSelectedStateCode(matchedState.isoCode);
 
-            setFormData((prev) => ({
-              ...prev,
-              address: fullRoadAddress,
-              state: matchedState ? matchedState.name : fetchedStateName,
-              city: fetchedCityName,
-              pincode: fetchedPincode
-            }));
-
-            setStatus({ loading: false, success: 'Location auto-detected and invoice address filled!', error: '' });
+        if (fetchedCityName) {
+          const poRes = await fetch(`https://api.postalpincode.in/postoffice/${fetchedCityName}`);
+          const poData = await poRes.json();
+          if (poData[0] && poData[0].Status === 'Success') {
+            const pincodes = Array.from(new Set(poData[0].PostOffice.map((po) => po.Pincode)));
+            setAvailablePincodes(pincodes);
           }
-        } catch (err) {
-          setStatus({ loading: false, success: '', error: 'Failed to fetch invoice address.' });
         }
-      },
-      () => setStatus({ loading: false, success: '', error: 'GPS permission denied or failed.' }),
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
+
+        setFormData((prev) => ({
+          ...prev,
+          address: fullRoadAddress,
+          state: matchedState ? matchedState.name : fetchedStateName,
+          city: fetchedCityName,
+          pincode: fetchedPincode
+        }));
+
+        setStatus({ loading: false, success: 'Location auto-detected securely and invoice address filled!', error: '' });
+      }
+    } catch (err) {
+      setStatus({ loading: false, success: '', error: 'Failed to fetch invoice address.' });
+    }
   };
 
   const handleUpdateLeadStatus = async (leadId, newLeadStatus, newDemoStatus, followUpDateVal = null, followUpTimeVal = null) => {
     try {
       const token = localStorage.getItem('token');
       const payload = { 
-        leadStatus: newLeadStatus || selectedLead.leadStatus, 
-        demoStatus: newDemoStatus || selectedLead.demoStatus 
+        leadStatus: newLeadStatus || selectedLead?.leadStatus || 'Active', 
+        demoStatus: newDemoStatus || selectedLead?.demoStatus || 'Not Given' 
       };
 
-      if (newDemoStatus === 'Completed') {
+      if (newDemoStatus === 'Completed' && selectedLead) {
         const timestampStr = `[Demo Completed on: ${new Date().toLocaleString('en-IN')}]`;
         payload.notes = selectedLead.notes ? `${selectedLead.notes}\n${timestampStr}` : timestampStr;
       }
@@ -723,9 +810,8 @@ const SalespersonForm = ({ userId, onLogout }) => {
       });
       const data = await res.json();
       if (res.ok) {
-        alert('Lead status updated successfully!');
         fetchMyLeads();
-        setSelectedLead(null);
+        if (selectedLead) setSelectedLead(null);
         setFollowUpModalAction(null);
         setModalDate('');
         setModalTime('');
@@ -744,9 +830,16 @@ const SalespersonForm = ({ userId, onLogout }) => {
       return;
     }
 
-    setStatus({ loading: true, success: 'Saving lead visit & follow-up...', error: '' });
+    setStatus({ loading: true, success: 'Validating secure GPS & saving lead visit...', error: '' });
 
-    const processLeadSubmission = async (lat = null, lng = null) => {
+    // 🛡️ Secure GPS Check with Mock Prevention
+    const { lat, lng, isMocked } = await getSecureLocation();
+    if (isMocked) {
+      setStatus({ loading: false, success: '', error: 'Action Blocked: Mock Location / Fake GPS detected!' });
+      return;
+    }
+
+    const processLeadSubmission = async (latitude = null, longitude = null) => {
       const data = new FormData();
       Object.keys(leadFormData).forEach((key) => {
         if (leadFormData[key] !== undefined && leadFormData[key] !== null) {
@@ -759,9 +852,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
       data.append('leadTime', now.toTimeString().substring(0, 5));
 
       data.append('meetingPhoto', meetingPhotoFile);
-      if (lat && lng) {
-        data.append('latitude', lat);
-        data.append('longitude', lng);
+      if (latitude && longitude) {
+        data.append('latitude', latitude);
+        data.append('longitude', longitude);
       }
 
       try {
@@ -790,15 +883,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
       }
     };
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => processLeadSubmission(position.coords.latitude, position.coords.longitude),
-        () => processLeadSubmission(null, null),
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    } else {
-      processLeadSubmission(null, null);
-    }
+    await processLeadSubmission(lat, lng);
   };
 
   const handleSubmit = async (e) => {
@@ -808,18 +893,25 @@ const SalespersonForm = ({ userId, onLogout }) => {
       return;
     }
 
-    setStatus({ loading: true, success: 'Fetching live GPS verification & submitting installment...', error: '' });
+    setStatus({ loading: true, success: 'Verifying secure GPS & submitting installment...', error: '' });
 
-    const processSubmission = async (lat = null, lng = null) => {
+    // 🛡️ Secure GPS Check with Mock Prevention
+    const { lat, lng, isMocked } = await getSecureLocation();
+    if (isMocked) {
+      setStatus({ loading: false, success: '', error: 'Action Blocked: Mock Location / Fake GPS detected!' });
+      return;
+    }
+
+    const processSubmission = async (latitude = null, longitude = null) => {
       const data = new FormData();
       Object.keys(formData).forEach((key) => data.append(key, formData[key]));
       data.append('dueAmount', dueAmount);
       data.append('paymentProof', file);
       data.append('addons', JSON.stringify(addons));
 
-      if (lat && lng) {
-        data.append('latitude', lat);
-        data.append('longitude', lng);
+      if (latitude && longitude) {
+        data.append('latitude', latitude);
+        data.append('longitude', longitude);
       }
 
       try {
@@ -858,15 +950,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
       }
     };
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => processSubmission(position.coords.latitude, position.coords.longitude),
-        () => processSubmission(null, null),
-        { enableHighAccuracy: true, timeout: 8000 }
-      );
-    } else {
-      processSubmission(null, null);
-    }
+    await processSubmission(lat, lng);
   };
 
   return (
@@ -895,11 +979,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
           <div className="space-y-1">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              SALESPERSON PORTAL WITH INSTALLMENT LEDGER
+              SALESPERSON PORTAL WITH KANBAN PIPELINE & WHATSAPP REMINDERS
             </span>
             <h1 className="text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1">
               {activeView === 'dashboard' && 'My Dashboard & Performance'}
               {activeView === 'leads' && 'My Generated Leads'}
+              {activeView === 'kanban' && '📌 Sales Pipeline (Kanban Board)'}
               {activeView === 'calendar' && '📅 Follow-up & Meeting Calendar'}
               {activeView === 'lead-form' && 'Create New Lead / Record Client Visit'}
               {activeView === 'invoice-form' && 'Create Invoice Request & Installment Ledger'}
@@ -907,12 +992,68 @@ const SalespersonForm = ({ userId, onLogout }) => {
             <p className="text-[var(--color-body)] text-xs">Signed in as <strong className="text-[var(--color-primary)]">{userId}</strong></p>
           </div>
 
-          <button
-            onClick={onLogout}
-            className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2"
-          >
-            Logout
-          </button>
+          {/* Header Action Controls: Notification Bell & Logout */}
+          <div className="flex items-center gap-3">
+            {/* 🔔 Notification Bell & Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(!showNotifications)}
+                className="p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] relative cursor-pointer hover:bg-[var(--color-border)]/50 transition flex items-center justify-center text-sm shadow-sm"
+                title="View Follow-up & Demo Alerts"
+              >
+                🔔
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-extrabold w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {showNotifications && (
+                <div className="absolute right-0 top-14 w-80 sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-3 max-h-[450px] overflow-y-auto text-xs">
+                  <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2.5">
+                    <strong className="text-[var(--color-heading)] font-bold">🔔 Today's Follow-up & Demo Alerts</strong>
+                    <span className="text-[10px] text-[var(--color-body)]">{notifications.length} Total</span>
+                  </div>
+
+                  {notifications.length === 0 ? (
+                    <div className="py-8 text-center text-[var(--color-body)] space-y-1">
+                      <p>☕ All caught up!</p>
+                      <p className="text-[10px]">No pending reminders scheduled for today.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {notifications.map((n) => (
+                        <div 
+                          key={n._id || Math.random()} 
+                          className={`p-3 rounded-2xl border space-y-1 transition ${
+                            n.isRead 
+                              ? 'bg-[var(--color-surface)] border-[var(--color-border)] opacity-70' 
+                              : 'bg-emerald-500/10 border-emerald-500/30'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <strong className="text-[var(--color-heading)] font-bold">{n.title}</strong>
+                            <span className="text-[9px] text-[var(--color-body)]">
+                              {new Date(n.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <p className="text-[var(--color-body)] font-medium">{n.message}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={onLogout}
+              className="px-4 py-3 rounded-2xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2 shadow-sm"
+            >
+              Logout
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm">
@@ -932,6 +1073,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
               }`}
             >
               📋 My Leads ({totalLeadsCount})
+            </button>
+            <button
+              onClick={() => setActiveView('kanban')}
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                activeView === 'kanban' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
+              }`}
+            >
+              📌 Kanban Pipeline
             </button>
             <button
               onClick={() => setActiveView('calendar')}
@@ -973,12 +1122,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 </div>
                 <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">🎯</span>
               </div>
-              <div onClick={() => setActiveView('calendar')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+              <div onClick={() => setActiveView('kanban')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
                 <div>
-                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">📅 View Calendar</h3>
-                  <p className="text-xs text-[var(--color-body)] mt-1">Check upcoming calls & meetings.</p>
+                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">📌 Pipeline Kanban</h3>
+                  <p className="text-xs text-[var(--color-body)] mt-1">Manage leads across sales stages.</p>
                 </div>
-                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">🗓️</span>
+                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">📋</span>
               </div>
               <div onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
                 <div>
@@ -1150,8 +1299,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
                       <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">📍 <strong>Location:</strong> {lead.address || 'N/A'}, {lead.city}, {lead.state}</div>
                       <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">🎯 <strong>Demo Status:</strong> <span className="text-amber-600 font-semibold">{lead.demoStatus || 'Not Given'}</span></div>
                       {lead.followUpDate && (
-                        <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 cursor-pointer">
-                          🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}
+                        <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 cursor-pointer flex justify-between items-center">
+                          <span>🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}</span>
+                          <button onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(lead, 'followup'); }} className="bg-[#25D366] text-white px-3.5 py-2 rounded-xl font-bold text-[10px] hover:opacity-90 cursor-pointer flex items-center gap-1.5 shadow-sm">
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                            WhatsApp
+                          </button>
                         </div>
                       )}
                     </div>
@@ -1250,6 +1403,169 @@ const SalespersonForm = ({ userId, onLogout }) => {
           </div>
         )}
 
+        {activeView === 'kanban' && (
+          <div className="space-y-6">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h3 className="text-base font-bold text-[var(--color-heading)]">📌 Sales Pipeline (Kanban Board)</h3>
+                <p className="text-xs text-[var(--color-body)] mt-0.5">Visualize and move your leads smoothly across different stages of conversion.</p>
+              </div>
+              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm">
+                ➕ Record Visit / Add Lead
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+              
+              {/* --- COLUMN 1: NEW / ACTIVE LEADS --- */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
+                <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
+                  <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">📥 New Leads</span>
+                  <span className="text-xs bg-[var(--color-card)] px-2.5 py-0.5 rounded-full border border-[var(--color-border)] font-semibold">
+                    {activeLeadsList.filter(l => l.leadStatus === 'Active').length}
+                  </span>
+                </div>
+                <div className="space-y-3 min-h-[300px]">
+                  {activeLeadsList.filter(l => l.leadStatus === 'Active').length === 0 ? (
+                    <p className="text-xs text-[var(--color-body)] text-center py-8">No new leads</p>
+                  ) : (
+                    activeLeadsList
+                      .filter(l => l.leadStatus === 'Active')
+                      .map(lead => (
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm">
+                          <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
+                          <p className="text-[var(--color-body)]">👤 {lead.contactPerson} | 📞 {lead.mobileNo}</p>
+                          <p className="text-[var(--color-body)]">📍 {lead.city}, {lead.state}</p>
+                          <div className="pt-2 flex justify-between items-center border-t border-[var(--color-border)] gap-2">
+                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition">
+                              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                              WhatsApp
+                            </button>
+                            <button onClick={() => handleUpdateLeadStatus(lead._id, 'Call Back', null)} className="text-[10px] bg-amber-500/10 text-amber-600 px-2.5 py-1 rounded-xl font-semibold hover:bg-amber-500/20 cursor-pointer">
+                              Move ➔
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              {/* --- COLUMN 2: CALL BACK / FOLLOW UP --- */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
+                <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
+                  <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">📞 Call Back / Follow Up</span>
+                  <span className="text-xs bg-[var(--color-card)] px-2.5 py-0.5 rounded-full border border-[var(--color-border)] font-semibold">
+                    {activeLeadsList.filter(l => l.leadStatus === 'Call Back' || l.leadStatus === 'Follow Up').length}
+                  </span>
+                </div>
+                <div className="space-y-3 min-h-[300px]">
+                  {activeLeadsList.filter(l => l.leadStatus === 'Call Back' || l.leadStatus === 'Follow Up').length === 0 ? (
+                    <p className="text-xs text-[var(--color-body)] text-center py-8">No follow-ups</p>
+                  ) : (
+                    activeLeadsList
+                      .filter(l => l.leadStatus === 'Call Back' || l.leadStatus === 'Follow Up')
+                      .map(lead => (
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm">
+                          <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
+                          <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
+                          {lead.followUpDate && (
+                            <p className="text-amber-600 font-semibold bg-amber-500/10 p-1.5 rounded-lg">
+                              📅 {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `@ ${lead.followUpTime}` : ''}
+                            </p>
+                          )}
+                          <div className="pt-2 flex justify-between items-center border-t border-[var(--color-border)] gap-2">
+                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition">
+                              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                              WhatsApp
+                            </button>
+                            <button onClick={() => handleUpdateLeadStatus(lead._id, lead.leadStatus, 'Completed')} className="text-[10px] bg-blue-500/10 text-blue-600 px-2.5 py-1 rounded-xl font-semibold hover:bg-blue-500/20 cursor-pointer">
+                              Demo Done ➔
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              {/* --- COLUMN 3: DEMO COMPLETED --- */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
+                <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
+                  <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">💻 Demo Completed</span>
+                  <span className="text-xs bg-[var(--color-card)] px-2.5 py-0.5 rounded-full border border-[var(--color-border)] font-semibold">
+                    {activeLeadsList.filter(l => l.demoStatus === 'Completed').length}
+                  </span>
+                </div>
+                <div className="space-y-3 min-h-[300px]">
+                  {activeLeadsList.filter(l => l.demoStatus === 'Completed').length === 0 ? (
+                    <p className="text-xs text-[var(--color-body)] text-center py-8">No completed demos</p>
+                  ) : (
+                    activeLeadsList
+                      .filter(l => l.demoStatus === 'Completed')
+                      .map(lead => (
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm">
+                          <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
+                          <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
+                          <span className="inline-block bg-indigo-500/10 text-indigo-600 px-2 py-0.5 rounded-md font-semibold text-[10px]">Demo Successful</span>
+                          <div className="pt-2 flex flex-col gap-2 border-t border-[var(--color-border)]">
+                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer text-center flex items-center justify-center gap-1.5 transition">
+                              <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                              WhatsApp Remind
+                            </button>
+                            <button onClick={async () => {
+                              await handleUpdateLeadStatus(lead._id, 'Deal Close', null);
+                              setFormData((prev) => ({
+                                ...prev,
+                                instituteName: lead.instituteName,
+                                mobileNo: lead.mobileNo,
+                                email: lead.email || '',
+                                address: lead.address || '',
+                                city: lead.city,
+                                state: lead.state,
+                                pincode: lead.pincode
+                              }));
+                              setActiveView('invoice-form');
+                            }} className="w-full text-center text-[10px] bg-emerald-600 text-white py-1.5 rounded-xl font-semibold hover:bg-emerald-700 cursor-pointer shadow-sm">
+                              🚀 Convert to Deal (Invoice)
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </div>
+
+              {/* --- COLUMN 4: DEAL CLOSED --- */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
+                <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
+                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">🎉 Deal Closed</span>
+                  <span className="text-xs bg-[var(--color-card)] px-2.5 py-0.5 rounded-full border border-[var(--color-border)] font-semibold">
+                    {myDeals.length}
+                  </span>
+                </div>
+                <div className="space-y-3 min-h-[300px]">
+                  {myDeals.length === 0 ? (
+                    <p className="text-xs text-[var(--color-body)] text-center py-8">No closed deals yet</p>
+                  ) : (
+                    myDeals.map(deal => (
+                      <div key={deal._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm">
+                        <strong className="text-sm text-[var(--color-heading)] block">{deal.instituteName}</strong>
+                        <p className="text-[var(--color-body)]">📱 {deal.appName}</p>
+                        <p className="text-emerald-600 font-extrabold">₹{deal.totalAmount?.toLocaleString('en-IN')}</p>
+                        <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-[10px] ${deal.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                          Status: {deal.status.toUpperCase()}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
         {activeView === 'calendar' && (
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
             <div className="border-b border-[var(--color-border)] pb-4">
@@ -1276,10 +1592,20 @@ const SalespersonForm = ({ userId, onLogout }) => {
                       </div>
                       <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{lead.mobileNo}</a></p>
                     </div>
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-3.5 rounded-2xl text-right sm:min-w-[200px]">
-                      <span className="text-[var(--color-body)] block text-[10px] font-medium uppercase">Scheduled For:</span>
-                      <strong className="text-emerald-600 text-xs font-bold">📅 {new Date(lead.followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong>
-                      {lead.followUpTime && <span className="block text-[var(--color-heading)] font-semibold mt-0.5">⏰ {lead.followUpTime}</span>}
+                    
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                      <button
+                        onClick={() => handleWhatsAppReminder(lead, 'followup')}
+                        className="bg-[#25D366] hover:opacity-90 text-white px-4 py-2.5 rounded-xl font-bold text-[10px] cursor-pointer transition shadow-sm flex items-center gap-1.5"
+                      >
+                        <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
+                        WhatsApp Remind
+                      </button>
+                      <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-3.5 rounded-2xl text-right sm:min-w-[180px]">
+                        <span className="text-[var(--color-body)] block text-[10px] font-medium uppercase">Scheduled For:</span>
+                        <strong className="text-emerald-600 text-xs font-bold">📅 {new Date(lead.followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong>
+                        {lead.followUpTime && <span className="block text-[var(--color-heading)] font-semibold mt-0.5">⏰ {lead.followUpTime}</span>}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1337,14 +1663,25 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   </select>
                 </div>
 
+                {/* 🌟 Single Clean Autocomplete Input for City using datalist */}
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City / District *</label>
-                  <select name="city" required disabled={!leadStateCode} value={leadFormData.city} onChange={handleLeadCityChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] disabled:opacity-50 font-medium">
-                    <option value="">Select City</option>
+                  <input
+                    type="text"
+                    name="city"
+                    list="leadCityList"
+                    required
+                    disabled={!leadStateCode}
+                    value={leadFormData.city}
+                    onChange={(e) => handleLeadCityChange(e.target.value)}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium disabled:opacity-50"
+                    placeholder="Type or select city..."
+                  />
+                  <datalist id="leadCityList">
                     {citiesOfLeadState.map((ct) => (
-                      <option key={ct.name} value={ct.name}>{ct.name}</option>
+                      <option key={ct.name} value={ct.name} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
 
                 <div>
@@ -1394,7 +1731,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
               </div>
 
               <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer disabled:opacity-50 shadow-sm text-xs">
-                {status.loading ? 'Detecting Live GPS & Saving Visit...' : 'Save Lead Visit & Follow-up'}
+                {status.loading ? 'Detecting Secure GPS & Saving Visit...' : 'Save Lead Visit & Follow-up'}
               </button>
             </form>
           </div>
@@ -1457,13 +1794,28 @@ const SalespersonForm = ({ userId, onLogout }) => {
                     {indianStates.map((st) => <option key={st.isoCode} value={st.isoCode}>{st.name}</option>)}
                   </select>
                 </div>
+
+                {/* 🌟 Single Clean Autocomplete Input for Invoice City using datalist */}
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City *</label>
-                  <select name="city" required disabled={!selectedStateCode} value={formData.city} onChange={handleInvoiceCityChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 disabled:opacity-50 font-medium">
-                    <option value="">Select City</option>
-                    {citiesOfSelectedState.map((ct) => <option key={ct.name} value={ct.name}>{ct.name}</option>)}
-                  </select>
+                  <input
+                    type="text"
+                    name="city"
+                    list="invoiceCityList"
+                    required
+                    disabled={!selectedStateCode}
+                    value={formData.city}
+                    onChange={(e) => handleInvoiceCityChange(e.target.value)}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium disabled:opacity-50"
+                    placeholder="Type or select city..."
+                  />
+                  <datalist id="invoiceCityList">
+                    {citiesOfSelectedState.map((ct) => (
+                      <option key={ct.name} value={ct.name} />
+                    ))}
+                  </datalist>
                 </div>
+
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode *</label>
                   {availablePincodes.length > 0 ? (
