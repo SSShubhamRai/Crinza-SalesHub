@@ -16,6 +16,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto"); // 🌟 Token & OTP hashing ke liye zaroori
+const axios = require("axios"); // 🌟 OSRM API call ke liye axios zaroori hai
 require("dotenv").config();
 
 // --- Security & Validation Package Imports ---
@@ -33,6 +34,7 @@ const verifyToken = require("./middleware/authMiddleware");
 
 const app = express();
 const server = http.createServer(app); // 🌟 Express app ko HTTP server mein wrap kiya
+
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -69,12 +71,23 @@ if (!fs.existsSync("./uploads")) {
 }
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// --- Multer Storage Engine Configuration ---
+// --- Multer Storage Engine Configuration with Security Limits ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
 });
-const upload = multer({ storage });
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB Limit restriction
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed for uploads!"), false);
+    }
+  },
+});
 
 // --- Rate Limiter Configuration (Brute Force Protection for Login) ---
 const loginLimiter = rateLimit({
@@ -107,7 +120,7 @@ const taskSchema = new mongoose.Schema({
 const Task = mongoose.model("Task", taskSchema);
 
 // =========================================================================
-// --- 📍 LOCATION TRACKING SCHEMA (NEW) ---
+// --- 📍 LOCATION TRACKING SCHEMA ---
 // =========================================================================
 const locationLogSchema = new mongoose.Schema({
   salespersonId: { type: String, required: true, index: true },
@@ -119,46 +132,88 @@ const locationLogSchema = new mongoose.Schema({
 const LocationLog = mongoose.model("LocationLog", locationLogSchema);
 
 // =========================================================================
-// --- 📐 DISTANCE CALCULATION HELPER (Haversine Formula) (NEW) ---
+// --- 📐 OSRM ACTUAL ROAD DISTANCE HELPER ---
 // =========================================================================
-function calculateTotalDistance(coords) {
-  let totalDistance = 0;
-  for (let i = 0; i < coords.length - 1; i++) {
-    const lat1 = coords[i].latitude;
-    const lon1 = coords[i].longitude;
-    const lat2 = coords[i + 1].latitude;
-    const lon2 = coords[i + 1].longitude;
+async function calculateOSRMRouteDistance(coords) {
+  if (!coords || coords.length < 2) return 0;
 
-    const R = 6371; // Radius of Earth in KM
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * (Math.PI / 180)) *
-        Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    totalDistance += R * c;
+  try {
+    // OSRM expects coordinates in "longitude,latitude" format separated by semicolons
+    const coordinatesString = coords
+      .map(pt => `${pt.longitude},${pt.latitude}`)
+      .join(';');
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${coordinatesString}?overview=false`;
+    
+    const response = await axios.get(url);
+    if (response.data && response.data.routes && response.data.routes.length > 0) {
+      // OSRM returns distance in meters, convert to Kilometers and round to 2 decimals
+      const distanceMeters = response.data.routes[0].distance;
+      return Number((distanceMeters / 1000).toFixed(2));
+    }
+  } catch (err) {
+    console.error("🔥 OSRM Routing Error:", err.message);
   }
-  return Number(totalDistance.toFixed(2)); // Returns distance in Kilometers
+  return 0;
 }
 
 // =========================================================================
-// --- 🌐 SOCKET.IO REAL-TIME LOCATION HANDLER (NEW) ---
+// --- 🌐 SOCKET.IO REAL-TIME LOCATION HANDLER WITH JWT AUTH ---
 // =========================================================================
-io.on("connection", (socket) => {
-  console.log(`🔌 Client Connected: ${socket.id}`);
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  if (!token) {
+    return next(new Error("Authentication error: Token missing"));
+  }
+  jwt.verify(token, process.env.JWT_SECRET || "secret", (err, decoded) => {
+    if (err) {
+      return next(new Error("Authentication error: Invalid token"));
+    }
+    socket.user = decoded;
+    next();
+  });
+});
 
-  // Salesperson sends live location update
+io.on("connection", (socket) => {
+  console.log(`🔌 Authenticated Client Connected: ${socket.id} (${socket.user.userId})`);
+
+  // Salesperson sends continuous live location updates with Smart Drift Filter
   socket.on("update_location", async (data) => {
     try {
       const { salespersonId, latitude, longitude } = data;
       if (!salespersonId || !latitude || !longitude) return;
 
+      // Security check: ensure socket user matches reporting ID
+      if (socket.user.userId !== salespersonId && socket.user.role !== 'admin' && socket.user.role !== 'boss') {
+        return;
+      }
+
       const currentDate = new Date().toISOString().split("T")[0];
 
-      // 1. Save coordinate to database for history & distance calculation
+      // 🌟 Check last logged location today to filter out stationary GPS jitter spam
+      const lastLog = await LocationLog.findOne({ salespersonId, date: currentDate }).sort({ timestamp: -1 });
+
+      if (lastLog) {
+        const R = 6371;
+        const dLat = (latitude - lastLog.latitude) * (Math.PI / 180);
+        const dLon = (longitude - lastLog.longitude) * (Math.PI / 180);
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(lastLog.latitude * (Math.PI / 180)) * Math.cos(latitude * (Math.PI / 180)) *
+                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const distanceSinceLast = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        // Agar user 15 meters (0.015 KM) ke daayre mein hi baitha hai, toh naya point save mat karo
+        if (distanceSinceLast < 0.015) {
+          io.emit("live_location_broadcast", {
+            salespersonId,
+            latitude,
+            longitude,
+            timestamp: new Date(),
+          });
+          return; 
+        }
+      }
+
       await LocationLog.create({
         salespersonId,
         latitude,
@@ -166,7 +221,6 @@ io.on("connection", (socket) => {
         date: currentDate,
       });
 
-      // 2. Broadcast live location instantly to Admins / Boss dashboard
       io.emit("live_location_broadcast", {
         salespersonId,
         latitude,
@@ -184,68 +238,152 @@ io.on("connection", (socket) => {
 });
 
 // =========================================================================
-// --- 📄 PDF GENERATOR HELPER (Universal Stable Mode) ---
+// --- 📄 PDF GENERATOR HELPER ---
 // =========================================================================
-const PDFDocument = require('pdfkit');
-
 const createInvoicePDF = async (data) => {
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ margin: 50, size: 'A4' });
-      let buffers = [];
+  let browser;
+  try {
+    const logoPngPath = path.join(__dirname, "uploads", "logo.png");
+    const logoJpgPath = path.join(__dirname, "uploads", "logo.jpg");
+    let logoBase64 = "";
 
-      doc.on('data', buffers.push.bind(buffers));
-      doc.on('end', () => {
-        let pdfBuffer = Buffer.concat(buffers);
-        resolve(pdfBuffer);
-      });
-
-      // --- PDF Design & Content ---
-      doc.fontSize(20).fillColor('#4f46e5').text('CRINZA TECHNOLOGIES', { align: 'left' });
-      doc.fontSize(10.5).fillColor('#64748b').text('Tax Invoice / Bill of Supply');
-      doc.moveDown();
-
-      doc.fontSize(12).fillColor('#1e293b').text(`Invoice #: ${data.invoiceId}`);
-      doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`);
-      doc.moveDown();
-
-      // Billed To Box
-      doc.fontSize(12).fillColor('#4f46e5').text('Billed To:');
-      doc.fontSize(10).fillColor('#1e293b')
-         .text(`Institute: ${data.instituteName || 'N/A'}`)
-         .text(`App Name: ${data.appName || 'N/A'}`)
-         .text(`Mobile: ${data.mobileNo || 'N/A'}`)
-         .text(`Email: ${data.email || 'N/A'}`);
-      doc.moveDown();
-
-      // Table / Items
-      doc.fontSize(10).fillColor('#4f46e5').text('Description', { continued: true });
-      doc.text('Validity', { align: 'right', continued: true });
-      doc.text('Cost', { align: 'right' });
-      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-      doc.moveDown(0.5);
-
-      doc.fillColor('#1e293b').text(`${data.appName} License`, { continued: true });
-      doc.text(`${data.packageValidity || '1 Year'}`, { align: 'right', continued: true });
-      doc.text(`Rs. ${(data.baseAmount || data.totalAmount || 0).toLocaleString('en-IN')}`, { align: 'right' });
-
-      doc.moveDown();
-      doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
-      doc.moveDown();
-
-      // Totals
-      doc.fontSize(11).text(`Total Amount: Rs. ${data.totalAmount ? data.totalAmount.toLocaleString('en-IN') : 0}`, { align: 'right' });
-      doc.text(`Paid Amount: Rs. ${data.paidAmount ? data.paidAmount.toLocaleString('en-IN') : 0}`, { align: 'right' });
-      doc.text(`Due Amount: Rs. ${data.dueAmount ? data.dueAmount.toLocaleString('en-IN') : 0}`, { align: 'right' });
-
-      doc.moveDown(2);
-      doc.fontSize(9).fillColor('#64748b').text('Terms & Conditions: Software once sold will not be refunded. Support valid as per package agreement.');
-
-      doc.end();
-    } catch (err) {
-      reject(err);
+    if (fs.existsSync(logoPngPath)) {
+      const logoBuffer = fs.readFileSync(logoPngPath);
+      logoBase64 = `data:image/png;base64,${logoBuffer.toString("base64")}`;
+    } else if (fs.existsSync(logoJpgPath)) {
+      const logoBuffer = fs.readFileSync(logoJpgPath);
+      logoBase64 = `data:image/jpeg;base64,${logoBuffer.toString("base64")}`;
     }
-  });
+
+    const puppeteer = require("puppeteer");
+    browser = await puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    });
+
+    const page = await browser.newPage();
+
+    let addonRows = "";
+    if (data.addons) {
+      if (data.addons.testModule)
+        addonRows += `<tr><td>Add-on: Test Series Module</td><td>Included</td><td>₹5,000</td></tr>`;
+      if (data.addons.windowApp)
+        addonRows += `<tr><td>Add-on: Windows Desktop App</td><td>Included</td><td>₹5,000</td></tr>`;
+      if (data.addons.iosApp)
+        addonRows += `<tr><td>Add-on: iOS Mobile App</td><td>Included</td><td>₹45,000</td></tr>`;
+    }
+
+    let discountRow = "";
+    if (data.discountAmount && data.discountAmount > 0) {
+      discountRow = `<tr style="color: #059669;"><td>Discount (Coupon: ${data.couponCode || "PROMO"})</td><td>-</td><td>-₹${data.discountAmount.toLocaleString("en-IN")}</td></tr>`;
+    }
+
+    let pastDueRow = "";
+    if (data.previousDueBalance && data.previousDueBalance > 0) {
+      pastDueRow = `<tr style="color: #d97706;"><td>Previous Unpaid Due Balance Added</td><td>-</td><td>₹${data.previousDueBalance.toLocaleString("en-IN")}</td></tr>`;
+    }
+
+    const headerLogoHtml = logoBase64
+      ? `<img src="${logoBase64}" style="max-height: 60px; width: auto; max-width: 220px; display: block;" alt="Crinza Logo" />`
+      : `<h2 style="color:#4f46e5; margin:0;">Crinza Technologies</h2>`;
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; padding: 30px; color: #1e293b; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #4f46e5; padding-bottom: 15px; }
+          .invoice-details { text-align: right; }
+          .details-grid { display: flex; justify-content: space-between; margin-top: 25px; }
+          .box { width: 48%; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; }
+          table { width: 100%; border-collapse: collapse; margin-top: 25px; }
+          th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
+          th { background-color: #4f46e5; color: white; }
+          .total-box { margin-top: 20px; text-align: right; }
+          .terms { margin-top: 30px; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            ${headerLogoHtml}
+            <p style="margin:4px 0 0 0; font-size: 11px; color: #64748b;">Crinza Technologies Pvt Ltd</p>
+          </div>
+          <div class="invoice-details">
+            <h2 style="margin:0; color:#334155;">TAX INVOICE / LEDGER</h2>
+            <p style="margin:3px 0;">Invoice #: <strong>${data.invoiceId}</strong></p>
+            <p style="margin:3px 0;">Date: ${new Date().toLocaleDateString("en-IN")}</p>
+          </div>
+        </div>
+
+        <div class="details-grid">
+          <div class="box">
+            <h4 style="margin-top:0; color:#4f46e5;">Billed To:</h4>
+            <p style="margin:3px 0;"><strong>Institute:</strong> ${data.instituteName}</p>
+            <p style="margin:3px 0;"><strong>App Name:</strong> ${data.appName}</p>
+            <p style="margin:3px 0;"><strong>Mobile:</strong> ${data.mobileNo}</p>
+            <p style="margin:3px 0;"><strong>Email:</strong> ${data.email}</p>
+            ${data.gstNo ? `<p style="margin:3px 0;"><strong>GSTIN:</strong> ${data.gstNo}</p>` : ""}
+          </div>
+          <div class="box">
+            <h4 style="margin-top:0; color:#4f46e5;">Address Details:</h4>
+            <p style="margin:3px 0;">${data.address || "N/A"}</p>
+            <p style="margin:3px 0;"><strong>City:</strong> ${data.city || ""}, <strong>State:</strong> ${data.state || ""}</p>
+            <p style="margin:3px 0;"><strong>Pincode:</strong> ${data.pincode || ""}</p>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Description / Items</th>
+              <th>Validity</th>
+              <th>Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${data.appName} License (Base Price)</td>
+              <td>${data.packageValidity}</td>
+              <td>₹${(data.baseAmount || data.totalAmount || 0).toLocaleString("en-IN")}</td>
+            </tr>
+            ${addonRows}
+            ${discountRow}
+            ${pastDueRow}
+          </tbody>
+        </table>
+
+        <div class="total-box">
+          <p>Grand Total (Incl. Past Due & GST): <strong>₹${data.totalAmount ? data.totalAmount.toLocaleString("en-IN") : 0}</strong></p>
+          <p>Paid Amount: <strong style="color: green;">₹${data.paidAmount ? data.paidAmount.toLocaleString("en-IN") : 0}</strong></p>
+          <p>Due Balance: <strong style="color: ${data.dueAmount > 0 ? 'red' : 'green'};">₹${data.dueAmount ? data.dueAmount.toLocaleString("en-IN") : 0} ${data.dueAmount === 0 ? '(Fully Paid & Settled)' : ''}</strong></p>
+        </div>
+
+        <div class="terms">
+          <h4>Terms & Conditions:</h4>
+          <p style="white-space: pre-line;">${data.termsAndConditions}</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await page.setContent(htmlContent, { waitUntil: "domcontentloaded" });
+    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+    await page.close();
+    return pdfBuffer;
+  } catch (err) {
+    console.error("🔥 [PDF Error]:", err);
+    throw err;
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (e) {}
+    }
+  }
 };
 
 // =========================================================================
@@ -256,9 +394,8 @@ const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      family: 4,
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -269,8 +406,8 @@ const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
     const mailOptions = {
       from: `"Crinza Billing Dept" <${process.env.EMAIL_USER}>`,
       to: clientEmail,
-      subject: `Crinza Invoice #${invoiceId} for Your Service`,
-      text: `Hello,\n\nPlease find attached the official invoice (#${invoiceId}) for your subscription.\n\nThank you!\nCrinza Technologies`,
+      subject: `Crinza Invoice/Ledger #${invoiceId} for Your Service`,
+      text: `Hello,\n\nPlease find attached the official invoice & ledger statement (#${invoiceId}) for your subscription.\n\nThank you!\nCrinza Technologies`,
       attachments: [
         {
           filename: `Invoice_${invoiceId}.pdf`,
@@ -414,9 +551,8 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      family: 4,
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -486,8 +622,6 @@ app.post("/api/auth/reset-password-otp", async (req, res) => {
 // =========================================================================
 // --- 👑 BOSS / ADMIN OPERATIONS API ROUTES ---
 // =========================================================================
-
-// 🌟 NEW: Admin gets today's route history & total distance traveled by a salesperson
 app.get(
   "/api/boss/salesperson-travel/:salespersonId",
   verifyToken,
@@ -506,7 +640,8 @@ app.get(
         date: queryDate,
       }).sort({ timestamp: 1 });
 
-      const totalDistanceKm = calculateTotalDistance(logs);
+      // 🌟 OSRM API call for actual road-mapped distance calculation
+      const totalDistanceKm = await calculateOSRMRouteDistance(logs);
 
       res.json({
         salespersonId,
@@ -804,59 +939,63 @@ app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 🧾 INVOICE & BILLING API ROUTES ---
+// --- 🧾 INVOICE & BILLING API ROUTES (WITH DUE LEDGER & ALIAS) ---
 // =========================================================================
-app.post(
-  "/api/invoices/request",
-  verifyToken,
-  upload.single("paymentProof"),
-  async (req, res) => {
-    try {
-      const invoiceId = "CRINZA-" + Date.now().toString().slice(-6);
+const handleInvoiceSubmission = async (req, res) => {
+  try {
+    const invoiceId = "CRINZA-" + Date.now().toString().slice(-6);
 
-      let parsedAddons = { testModule: false, windowApp: false, iosApp: false };
-      if (req.body.addons) {
-        try {
-          parsedAddons =
-            typeof req.body.addons === "string"
-              ? JSON.parse(req.body.addons)
-              : req.body.addons;
-        } catch (e) {}
-      }
-
-      const normalizedPath = req.file ? req.file.path.replace(/\\/g, "/") : "";
-
-      const newInvoice = new Invoice({
-        ...req.body,
-        baseAmount:
-          Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
-        totalAmount: Number(req.body.totalAmount) || 0,
-        paidAmount: Number(req.body.paidAmount) || 0,
-        dueAmount: Number(req.body.dueAmount) || 0,
-        discountAmount: Number(req.body.discountAmount) || 0,
-        latitude: req.body.latitude ? Number(req.body.latitude) : null,
-        longitude: req.body.longitude ? Number(req.body.longitude) : null,
-        invoiceId,
-        salespersonId: req.user.userId,
-        paymentProof: normalizedPath,
-        addons: parsedAddons,
-        status: "pending",
-      });
-
-      await newInvoice.save();
-      res
-        .status(201)
-        .json({
-          message: "Invoice request submitted to Accountant!",
-          invoiceId,
-        });
-    } catch (err) {
-      res
-        .status(500)
-        .json({ message: "Failed to submit request", error: err.message });
+    let parsedAddons = { testModule: false, windowApp: false, iosApp: false };
+    if (req.body.addons) {
+      try {
+        parsedAddons =
+          typeof req.body.addons === "string"
+            ? JSON.parse(req.body.addons)
+            : req.body.addons;
+      } catch (e) {}
     }
-  },
-);
+
+    const normalizedPath = req.file ? req.file.path.replace(/\\/g, "/") : "";
+
+    const newInvoice = new Invoice({
+      ...req.body,
+      baseAmount:
+        Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
+      totalAmount: Number(req.body.totalAmount) || 0,
+      paidAmount: Number(req.body.paidAmount) || 0,
+      dueAmount: Number(req.body.dueAmount) || 0,
+      previousDueBalance: Number(req.body.previousDueBalance) || 0,
+      discountAmount: Number(req.body.discountAmount) || 0,
+      latitude: req.body.latitude ? Number(req.body.latitude) : null,
+      longitude: req.body.longitude ? Number(req.body.longitude) : null,
+      invoiceId,
+      salespersonId: req.user.userId,
+      paymentProof: normalizedPath,
+      addons: parsedAddons,
+      status: "pending",
+    });
+
+    await newInvoice.save();
+
+    if (Number(req.body.dueAmount) === 0) {
+      console.log(`🎉 Deal Fully Settled for Institute: ${req.body.instituteName}`);
+    }
+
+    res
+      .status(201)
+      .json({
+        message: "Invoice request & installment ledger submitted to Accountant!",
+        invoiceId,
+      });
+  } catch (err) {
+    res
+      .status(500)
+      .json({ message: "Failed to submit request", error: err.message });
+  }
+};
+
+app.post("/api/invoices/request", verifyToken, upload.single("paymentProof"), handleInvoiceSubmission);
+app.post("/api/salesperson/invoice-request", verifyToken, upload.single("paymentProof"), handleInvoiceSubmission);
 
 app.get("/api/invoices/pending", verifyToken, async (req, res) => {
   try {
@@ -979,18 +1118,66 @@ app.post("/api/invoices/reject/:id", verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 👤 SALESPERSON SPECIFIC ROUTES (WITH MULTI-VISIT & AUTO TIMESTAMP) ---
+// --- 👤 SALESPERSON SPECIFIC ROUTES (FIXED CONSOLIDATED DEALS LEDGER) ---
 // =========================================================================
 app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
   try {
-    const deals = await Invoice.find({ salespersonId: req.user.userId }).sort({
-      createdAt: -1,
+    const rawDeals = await Invoice.find({ salespersonId: req.user.userId }).sort({
+      createdAt: 1, // Chronological order (purane se naye) taaki calculations sahi chalein
     });
-    res.json(deals);
+
+    const consolidatedMap = {};
+
+    rawDeals.forEach((deal) => {
+      const key = (deal.instituteName || "Unknown").trim().toLowerCase();
+
+      if (!consolidatedMap[key]) {
+        consolidatedMap[key] = {
+          _id: deal._id,
+          invoiceId: deal.invoiceId,
+          instituteName: deal.instituteName,
+          appName: deal.appName,
+          mobileNo: deal.mobileNo,
+          email: deal.email,
+          address: deal.address,
+          city: deal.city,
+          state: deal.state,
+          pincode: deal.pincode,
+          gstNo: deal.gstNo,
+          packageValidity: deal.packageValidity,
+          status: deal.status,
+          totalAmount: 0,
+          paidAmount: 0,
+          dueAmount: 0,
+          previousDueBalance: 0,
+          createdAt: deal.createdAt,
+        };
+      }
+
+      const currentDealTotal = Number(deal.totalAmount) || 0;
+      const currentDealPaid = Number(deal.paidAmount) || 0;
+
+      // 🌟 FIXED LEDGER CALCULATION:
+      // Agar yeh installment payment hai (baseAmount 0 hai aur previousDueBalance hai), 
+      // toh totalAmount mein dobara addition nahi hogi, sirf paidAmount accumulate hoga.
+      if (deal.baseAmount === 0 && deal.previousDueBalance > 0) {
+        consolidatedMap[key].paidAmount += currentDealPaid;
+      } else {
+        consolidatedMap[key].totalAmount = currentDealTotal;
+        consolidatedMap[key].paidAmount += currentDealPaid;
+      }
+
+      // Sahi due calculation: Total Bill Amount - Total Paid So Far
+      consolidatedMap[key].dueAmount = Math.max(
+        0,
+        consolidatedMap[key].totalAmount - consolidatedMap[key].paidAmount
+      );
+    });
+
+    const finalConsolidatedDeals = Object.values(consolidatedMap);
+    res.json(finalConsolidatedDeals);
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to fetch deals history", error: err.message });
+    res.status(500).json({ message: "Failed to fetch deals history", error: err.message });
   }
 });
 
@@ -1218,11 +1405,11 @@ app.post("/api/coupons/verify", verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 🌐 SERVER LISTENER (Using HTTP Server for Socket.io) ---
+// --- 🌐 SERVER LISTENER ---
 // =========================================================================
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(
-    `🚀 Server running on port ${PORT} with Socket.io Live Tracking Enabled`,
+    `🚀 Server running on port ${PORT} with Socket.io Live Tracking & Consolidated Ledger Enabled`,
   );
 });

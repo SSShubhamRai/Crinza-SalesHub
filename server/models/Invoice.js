@@ -33,6 +33,7 @@ const invoiceSchema = new mongoose.Schema({
   baseAmount: { type: Number, default: 0 },
   couponCode: { type: String, default: '' },
   discountAmount: { type: Number, default: 0 },
+  previousDueBalance: { type: Number, default: 0 }, // 👈 CRITICAL FIX: Added this field to properly track carried-forward dues
   totalAmount: { type: Number, required: true },
   paidAmount: { type: Number, required: true },
   dueAmount: { type: Number, required: true },

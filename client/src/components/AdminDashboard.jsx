@@ -6,7 +6,7 @@
  * manage team, coupons, advanced lead filters, and Excel/CSV data export.
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import toast from "react-hot-toast";
 
@@ -27,7 +27,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [selectedRoleFilter, setSelectedRoleFilter] = useState("all");
   const [selectedSalespersonTaskFilter, setSelectedSalespersonTaskFilter] = useState("all");
 
-  // 🌟 NEW: Advanced Lead Filter & Export States for Admin
+  // 🌟 Advanced Lead Filter & Export States for Admin
   const [adminLeadFilter, setAdminLeadFilter] = useState("all");
   const [allSystemLeads, setAllSystemLeads] = useState([]);
   const [loadingSystemLeads, setLoadingSystemLeads] = useState(false);
@@ -42,8 +42,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
   // 🛰️ LIVE TRACKING & TRAVEL HISTORY STATES
   const [selectedTrackerEmp, setSelectedTrackerEmp] = useState("");
+  const [trackerDate, setTrackerDate] = useState(new Date().toISOString().split('T')[0]); // 📅 Date picker state for past days
   const [travelData, setTravelData] = useState({ totalDistanceKm: 0, routePoints: [] });
   const [liveLocations, setLiveLocations] = useState({});
+  const [resolvedAddresses, setResolvedAddresses] = useState({}); // 🏷️ Cache for Place Names
   const socketRef = useRef(null);
 
   // New Employee Form State
@@ -80,9 +82,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
   });
   const [couponStatus, setCouponStatus] = useState({ success: "", error: "" });
 
-  // --- SOCKET.IO & TRAVEL HISTORY FETCH ---
+  // --- SOCKET.IO CONNECTION ---
   useEffect(() => {
-    socketRef.current = io(API_BASE);
+    socketRef.current = io(API_BASE, {
+      auth: { token: localStorage.getItem("token") }
+    });
 
     socketRef.current.on('connect', () => {
       console.log('🔌 Admin connected to Live Tracking Socket');
@@ -102,21 +106,15 @@ const AdminDashboard = ({ userId, onLogout }) => {
     return () => {
       if (socketRef.current) socketRef.current.disconnect();
     };
-  }, []);
+  }, [API_BASE]);
 
-  useEffect(() => {
-    if (activeTab === "live-tracking" && selectedTrackerEmp) {
-      fetchSalespersonTravelHistory(selectedTrackerEmp);
-    }
-    if (activeTab === "leads-export") {
-      fetchAllSystemLeads();
-    }
-  }, [selectedTrackerEmp, activeTab]);
-
-  const fetchSalespersonTravelHistory = async (empId) => {
+  // --- FETCH TRAVEL HISTORY WITH DATE SUPPORT ---
+  const fetchSalespersonTravelHistory = useCallback(async (empId, dateVal) => {
+    if (!empId) return;
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/api/boss/salesperson-travel/${empId}`, {
+      const targetDate = dateVal || trackerDate;
+      const res = await fetch(`${API_BASE}/api/boss/salesperson-travel/${empId}?date=${targetDate}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -126,15 +124,13 @@ const AdminDashboard = ({ userId, onLogout }) => {
     } catch (err) {
       console.error("Failed to fetch travel history:", err);
     }
-  };
+  }, [API_BASE, trackerDate]);
 
-  // Fetch all leads across all salespersons for admin export & filtering
-  const fetchAllSystemLeads = async () => {
+  const fetchAllSystemLeads = useCallback(async () => {
     setLoadingSystemLeads(true);
     try {
       const token = localStorage.getItem("token");
       const headers = { Authorization: `Bearer ${token}` };
-      // Fetch employees first, then gather their leads
       const empRes = await fetch(`${API_BASE}/api/boss/employees`, { headers });
       const empList = await empRes.json();
       
@@ -153,9 +149,35 @@ const AdminDashboard = ({ userId, onLogout }) => {
     } finally {
       setLoadingSystemLeads(false);
     }
+  }, [API_BASE]);
+
+  useEffect(() => {
+    if (activeTab === "live-tracking" && selectedTrackerEmp) {
+      fetchSalespersonTravelHistory(selectedTrackerEmp, trackerDate);
+    }
+    if (activeTab === "leads-export") {
+      fetchAllSystemLeads();
+    }
+  }, [selectedTrackerEmp, trackerDate, activeTab, fetchSalespersonTravelHistory, fetchAllSystemLeads]);
+
+  // 🗺️ Helper to convert Lat/Lng to Place Name with safe Fallback
+  const resolvePlaceName = async (lat, lon, pointKey) => {
+    if (resolvedAddresses[pointKey]) return; 
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+      const data = await res.json();
+      if (data && data.display_name) {
+        const shortAddr = data.display_name.split(',').slice(0, 3).join(',');
+        setResolvedAddresses((prev) => ({ ...prev, [pointKey]: shortAddr }));
+      } else {
+        setResolvedAddresses((prev) => ({ ...prev, [pointKey]: `GPS Point (${lat.toFixed(3)}, ${lon.toFixed(3)})` }));
+      }
+    } catch (err) {
+      setResolvedAddresses((prev) => ({ ...prev, [pointKey]: `GPS Point (${lat.toFixed(3)}, ${lon.toFixed(3)})` }));
+    }
   };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
@@ -186,13 +208,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_BASE]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
-  // --- 🌟 EXCEL / CSV DOWNLOAD HELPER (NEW) ---
   const downloadCSV = (dataToExport, filename = "Leads_Report.csv") => {
     if (!dataToExport || dataToExport.length === 0) {
       toast.error("No data available to export!");
@@ -506,13 +527,23 @@ const AdminDashboard = ({ userId, onLogout }) => {
     return task.salespersonId === selectedSalespersonTaskFilter;
   });
 
-  // Filtered system leads based on Admin selection
   const filteredSystemLeads = allSystemLeads.filter((lead) => {
+    const lStatus = lead.leadStatus?.toLowerCase() || "";
+    const fAction = lead.followUpAction?.toLowerCase() || "";
+
     if (adminLeadFilter === "all") return true;
-    if (adminLeadFilter === "call-back") return lead.leadStatus === "Call Back" || lead.followUpAction === "Call Back";
-    if (adminLeadFilter === "next-meeting") return lead.leadStatus === "Next Meeting" || lead.followUpAction === "Next Meeting";
-    if (adminLeadFilter === "not-interested") return lead.leadStatus === "Not Interested";
-    if (adminLeadFilter === "deal-closed") return lead.leadStatus === "Deal Close";
+    if (adminLeadFilter === "call-back") {
+      return lStatus.includes("call") || fAction.includes("call");
+    }
+    if (adminLeadFilter === "next-meeting") {
+      return lStatus.includes("meeting") || fAction.includes("meeting") || fAction.includes("next meeting");
+    }
+    if (adminLeadFilter === "not-interested") {
+      return lStatus.includes("not interested");
+    }
+    if (adminLeadFilter === "deal-closed") {
+      return lStatus.includes("deal close") || lStatus.includes("closed");
+    }
     return true;
   });
 
@@ -706,15 +737,34 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       🛰️ Salesperson Live Location & Travel History
                     </h3>
                     <p className="text-xs text-[var(--color-body)] mt-0.5">
-                      View real-time location stream and today's total distance traveled calculated via Haversine formula.
+                      View live position, select past dates, total distance, and exact place names.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 bg-[var(--color-surface)] px-3 py-1.5 rounded-2xl border border-[var(--color-border)] w-full sm:w-auto">
-                    <span className="text-[11px] text-[var(--color-body)] font-medium">Select Salesperson:</span>
+
+                  {/* Controls: Date Picker & Employee Selector */}
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <input
+                      type="date"
+                      value={trackerDate}
+                      max={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        setTrackerDate(e.target.value);
+                        if (selectedTrackerEmp) {
+                          fetchSalespersonTravelHistory(selectedTrackerEmp, e.target.value);
+                        }
+                      }}
+                      className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                    />
+
                     <select
                       value={selectedTrackerEmp}
-                      onChange={(e) => setSelectedTrackerEmp(e.target.value)}
-                      className="bg-transparent text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                      onChange={(e) => {
+                        setSelectedTrackerEmp(e.target.value);
+                        if (e.target.value) {
+                          fetchSalespersonTravelHistory(e.target.value, trackerDate);
+                        }
+                      }}
+                      className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
                     >
                       <option value="">-- Choose Salesperson --</option>
                       {employees
@@ -732,7 +782,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
                     <span className="text-3xl">📍</span>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">No Salesperson Selected</h3>
-                    <p className="text-xs text-[var(--color-body)]">Please choose a salesperson from the dropdown above to view their live GPS status and today's travel report.</p>
+                    <p className="text-xs text-[var(--color-body)]">Please choose a salesperson from the dropdown above to view their live GPS status and travel report.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -740,8 +790,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
                       {liveLocations[selectedTrackerEmp] ? (
                         <div className="space-y-3 text-xs text-[var(--color-heading)]">
-                          <p>Lat: <strong className="font-mono">{liveLocations[selectedTrackerEmp].latitude.toFixed(5)}</strong></p>
-                          <p>Lng: <strong className="font-mono">{liveLocations[selectedTrackerEmp].longitude.toFixed(5)}</strong></p>
+                          <p>Lat/Lng: <strong className="font-mono">{liveLocations[selectedTrackerEmp].latitude.toFixed(4)}, {liveLocations[selectedTrackerEmp].longitude.toFixed(4)}</strong></p>
                           <p className="text-[var(--color-body)]">Last Ping: {new Date(liveLocations[selectedTrackerEmp].timestamp).toLocaleTimeString('en-IN')}</p>
                           <a
                             href={`https://www.google.com/maps?q=${liveLocations[selectedTrackerEmp].latitude},${liveLocations[selectedTrackerEmp].longitude}`}
@@ -754,37 +803,48 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         </div>
                       ) : (
                         <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
-                          Waiting for live GPS ping from app...
+                          Waiting for continuous live GPS ping from app...
                         </div>
                       )}
                     </div>
 
                     <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
                       <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                        <h4 className="text-sm font-bold text-[var(--color-heading)]">🛣️ Today's Travel Summary</h4>
+                        <h4 className="text-sm font-bold text-[var(--color-heading)]">🛣️ Travel Summary for {trackerDate}</h4>
                         <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-xl font-extrabold text-xs">
                           Total Distance: {travelData.totalDistanceKm || 0} KM
                         </span>
                       </div>
 
                       <p className="text-xs text-[var(--color-body)]">
-                        Route history logged for date: <strong>{travelData.date || new Date().toISOString().split('T')[0]}</strong> ({travelData.routePoints?.length || 0} coordinate pings recorded)
+                        Route history logged: <strong>{travelData.routePoints?.length || 0}</strong> coordinate pings recorded.
                       </p>
 
                       <div className="max-h-64 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)] text-xs">
                         {travelData.routePoints?.length === 0 ? (
-                          <div className="py-8 text-center text-[var(--color-body)]">No route coordinates logged for today yet.</div>
+                          <div className="py-8 text-center text-[var(--color-body)]">No route coordinates logged for this date.</div>
                         ) : (
-                          travelData.routePoints?.map((pt, idx) => (
-                            <div key={pt._id || idx} className="flex justify-between items-center bg-[var(--color-card)] p-2.5 rounded-xl border border-[var(--color-border)]">
-                              <span className="font-mono text-[var(--color-heading)]">
-                                #{idx + 1} - Lat: {pt.latitude.toFixed(4)}, Lng: {pt.longitude.toFixed(4)}
-                              </span>
-                              <span className="text-[var(--color-body)]">
-                                ⏰ {new Date(pt.timestamp).toLocaleTimeString('en-IN')}
-                              </span>
-                            </div>
-                          ))
+                          travelData.routePoints?.map((pt, idx) => {
+                            const pointKey = pt._id || `${pt.latitude}-${pt.longitude}-${idx}`;
+                            if (!resolvedAddresses[pointKey]) {
+                              resolvePlaceName(pt.latitude, pt.longitude, pointKey);
+                            }
+                            return (
+                              <div key={pointKey} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] gap-2">
+                                <div className="space-y-0.5">
+                                  <span className="font-bold text-[var(--color-heading)] flex items-center gap-1">
+                                    📍 {resolvedAddresses[pointKey] || `GPS Point (${pt.latitude.toFixed(3)}, ${pt.longitude.toFixed(3)})`}
+                                  </span>
+                                  <span className="text-[10px] text-[var(--color-body)] font-mono">
+                                    Lat: {pt.latitude.toFixed(5)}, Lng: {pt.longitude.toFixed(5)}
+                                  </span>
+                                </div>
+                                <span className="text-[var(--color-body)] whitespace-nowrap">
+                                  ⏰ {new Date(pt.timestamp).toLocaleTimeString('en-IN')}
+                                </span>
+                              </div>
+                            );
+                          })
                         )}
                       </div>
                     </div>
@@ -793,7 +853,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* 🌟 TAB 1.6: LEADS REPORT & EXCEL EXPORT & FILTERS (NEW) */}
+            {/* TAB 1.6: LEADS REPORT & EXCEL EXPORT */}
             {activeTab === "leads-export" && (
               <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
@@ -815,16 +875,16 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     All Leads ({allSystemLeads.length})
                   </button>
                   <button onClick={() => setAdminLeadFilter("call-back")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "call-back" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    📞 Call Back ({allSystemLeads.filter(l => l.leadStatus === "Call Back" || l.followUpAction === "Call Back").length})
+                    📞 Call Back ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("call") || l.followUpAction?.toLowerCase().includes("call")).length})
                   </button>
                   <button onClick={() => setAdminLeadFilter("next-meeting")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "next-meeting" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    🤝 Next Meeting ({allSystemLeads.filter(l => l.leadStatus === "Next Meeting" || l.followUpAction === "Next Meeting").length})
+                    🤝 Next Meeting ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("meeting") || l.followUpAction?.toLowerCase().includes("meeting")).length})
                   </button>
                   <button onClick={() => setAdminLeadFilter("not-interested")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "not-interested" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    ❌ Not Interested ({allSystemLeads.filter(l => l.leadStatus === "Not Interested").length})
+                    ❌ Not Interested ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("not interested")).length})
                   </button>
                   <button onClick={() => setAdminLeadFilter("deal-closed")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "deal-closed" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    🎉 Deal Closed ({allSystemLeads.filter(l => l.leadStatus === "Deal Close").length})
+                    🎉 Deal Closed ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("deal close") || l.leadStatus?.toLowerCase().includes("closed")).length})
                   </button>
                 </div>
 

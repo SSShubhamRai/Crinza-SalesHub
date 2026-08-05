@@ -14,6 +14,7 @@
   "type": "commonjs",
   "dependencies": {
     "@sparticuz/chromium": "119.0.2",
+    "axios": "^1.19.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -27,6 +28,7 @@
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
     "pdfkit": "^0.19.1",
+    "puppeteer": "^25.5.0",
     "socket.io": "^4.8.3",
     "xss-clean": "^0.1.4"
   },

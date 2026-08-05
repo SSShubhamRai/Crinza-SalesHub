@@ -4,10 +4,11 @@
  * =========================================================================
  * Description: Allows salesperson to manage performance, track deals, create/update 
  * leads with live GPS coordinates, schedule follow-ups, submit invoices with 
- * database-verified coupon discounts, 18% GST calculation, and multi-visit tracking.
+ * database-verified coupon discounts, 18% GST calculation, add-on packages, 
+ * multi-visit tracking, and true partial installment due ledger system.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { State, City } from 'country-state-city';
 import { io } from 'socket.io-client'; // 🌟 Socket.io client for real-time live tracking
 import { submitInvoiceRequest } from '../api/api';
@@ -33,6 +34,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const [modalDate, setModalDate] = useState('');
   const [modalTime, setModalTime] = useState('');
 
+  // --- 🌟 Settlement Success Popup State ---
+  const [settledAlert, setSettledAlert] = useState(null);
+
   // --- Add-on Package Pricing Constants ---
   const ADDON_PRICES = {
     testModule: 5000,
@@ -45,25 +49,32 @@ const SalespersonForm = ({ userId, onLogout }) => {
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
 
-  // --- 🌟 SOCKET.IO LIVE LOCATION TRACKING REF (NEW) ---
+  // --- 🌟 CONTINUOUS SOCKET.IO LIVE LOCATION TRACKING WITH BACKGROUND INTERVAL ---
   const socketRef = useRef(null);
 
   useEffect(() => {
-    // Connect to Socket.io backend
-    socketRef.current = io(API_BASE);
+    const token = localStorage.getItem('token');
+    socketRef.current = io(API_BASE, {
+      auth: { token }
+    });
 
     socketRef.current.on('connect', () => {
       console.log('🔌 Connected to Live Tracking Server');
     });
 
-    // Start background live location streaming if geolocation is available
+    socketRef.current.on('connect_error', (err) => {
+      console.error('Socket connection error:', err.message);
+    });
+
     let watchId = null;
+    let intervalId = null;
+
     if (navigator.geolocation && userId) {
+      // 1. Continuous WatchPosition for instant movement tracking
       watchId = navigator.geolocation.watchPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          // Emit live location to backend every time position updates
-          socketRef.current.emit('update_location', {
+          socketRef.current?.emit('update_location', {
             salespersonId: userId,
             latitude,
             longitude
@@ -72,17 +83,36 @@ const SalespersonForm = ({ userId, onLogout }) => {
         (err) => console.error('Live tracking geolocation error:', err),
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
       );
+
+      // 2. Fallback / Active Background Interval (Har 30 seconds mein ensure karne ke liye ki pings ja rahe hain)
+      intervalId = setInterval(() => {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { latitude, longitude } = position.coords;
+            socketRef.current?.emit('update_location', {
+              salespersonId: userId,
+              latitude,
+              longitude
+            });
+          },
+          (err) => console.error('Background interval GPS error:', err),
+          { enableHighAccuracy: true, timeout: 10000 }
+        );
+      }, 30000);
     }
 
     return () => {
       if (watchId !== null && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchId);
       }
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+      }
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
     };
-  }, [userId]);
+  }, [userId, API_BASE]);
 
   // --- Initial Form States ---
   const initialFormData = {
@@ -101,6 +131,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
     gstAmount: 2700,
     totalAmount: 17700,
     paidAmount: 0,
+    previousDueBalance: 0, 
     couponCode: '',
     discountAmount: 0,
     termsAndConditions: '1. Payment once made is non-refundable.\n2. Validity counts from application activation date.',
@@ -151,13 +182,17 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const [leadAvailablePincodes, setLeadAvailablePincodes] = useState([]);
 
   // --- Fetch Logged-in Salesperson's Deals History ---
-  const fetchMyDeals = async () => {
+  const fetchMyDeals = useCallback(async () => {
     setLoadingDeals(true);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/api/salesperson/my-deals`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (res.status === 401) {
+        onLogout();
+        return;
+      }
       const data = await res.json();
       if (res.ok) setMyDeals(data);
     } catch (err) {
@@ -165,16 +200,20 @@ const SalespersonForm = ({ userId, onLogout }) => {
     } finally {
       setLoadingDeals(false);
     }
-  };
+  }, [API_BASE, onLogout]);
 
   // --- Fetch Logged-in Salesperson's Generated Leads ---
-  const fetchMyLeads = async () => {
+  const fetchMyLeads = useCallback(async () => {
     setLoadingLeads(true);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_BASE}/api/salesperson/my-leads`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (res.status === 401) {
+        onLogout();
+        return;
+      }
       const data = await res.json();
       if (res.ok) setMyLeads(data);
     } catch (err) {
@@ -182,20 +221,20 @@ const SalespersonForm = ({ userId, onLogout }) => {
     } finally {
       setLoadingLeads(false);
     }
-  };
+  }, [API_BASE, onLogout]);
 
   // --- Initial Data Load on Component Mount ---
   useEffect(() => {
     fetchMyDeals();
     fetchMyLeads();
-  }, []);
+  }, [fetchMyDeals, fetchMyLeads]);
 
   // --- Location Utility Constants ---
   const indianStates = State.getStatesOfCountry('IN');
   const citiesOfSelectedState = selectedStateCode ? City.getCitiesOfState('IN', selectedStateCode) : [];
   const citiesOfLeadState = leadStateCode ? City.getCitiesOfState('IN', leadStateCode) : [];
 
-  // --- Dynamic Subtotal, 18% GST, & Grand Total Calculation ---
+  // --- Dynamic Subtotal, 18% GST, Grand Total, & Due Balance Calculation ---
   useEffect(() => {
     let totalAddonCost = 0;
     if (addons.testModule) totalAddonCost += ADDON_PRICES.testModule;
@@ -215,7 +254,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
     const discountedSubtotal = Math.max(0, baseSubtotal - discount);
     const gst = discountedSubtotal * 0.18;
-    const calculatedTotal = discountedSubtotal + gst;
+    
+    // Grand Total = Current Package Calculation + Past Unpaid Due Balance
+    const calculatedTotal = discountedSubtotal + gst + (formData.previousDueBalance || 0);
 
     setFormData((prev) => ({
       ...prev,
@@ -224,9 +265,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
       totalAmount: Math.round(calculatedTotal * 100) / 100,
       discountAmount: discount
     }));
-  }, [addons, formData.baseAmount, isCouponApplied, couponDetails]);
+  }, [addons, formData.baseAmount, formData.previousDueBalance, isCouponApplied, couponDetails]);
 
-  // --- Auto-calculated Due Amount ---
+  // --- Auto-calculated Remaining Due Amount After This Payment ---
   const dueAmount = Math.max(0, formData.totalAmount - formData.paidAmount);
 
   // --- Performance Dashboard Metrics Calculations ---
@@ -237,21 +278,47 @@ const SalespersonForm = ({ userId, onLogout }) => {
   const pendingDealsCount = myDeals.filter(d => d.status === 'pending').length;
   const totalPaidCollected = myDeals.reduce((sum, d) => sum + (d.paidAmount || 0), 0);
 
-  // --- 🔍 Filter & Search Leads ---
+  // --- 🔍 Filter & Search Leads (Updated & Robust) ---
   const filteredLeads = activeLeadsList.filter(lead => {
-    const matchesSearch = leadSearchQuery.trim() === '' || 
-      lead.instituteName?.toLowerCase().includes(leadSearchQuery.toLowerCase()) ||
-      lead.contactPerson?.toLowerCase().includes(leadSearchQuery.toLowerCase()) ||
-      lead.mobileNo?.includes(leadSearchQuery) ||
-      lead.city?.toLowerCase().includes(leadSearchQuery.toLowerCase());
+    const query = leadSearchQuery.toLowerCase().trim();
+    
+    const matchesSearch = query === '' || 
+      lead.instituteName?.toLowerCase().includes(query) ||
+      lead.contactPerson?.toLowerCase().includes(query) ||
+      lead.mobileNo?.includes(query) ||
+      lead.city?.toLowerCase().includes(query);
 
     if (!matchesSearch) return false;
 
     if (leadFilter === 'all') return true;
-    if (leadFilter === 'call') return lead.followUpAction === 'Call' || lead.leadStatus === 'Call Back';
-    if (leadFilter === 'meeting') return lead.followUpAction === 'Next Meeting';
-    if (leadFilter === 'demo-done') return lead.demoStatus === 'Completed';
-    if (leadFilter === 'demo-pending') return lead.demoStatus === 'Not Given' || lead.demoStatus === 'Scheduled';
+    
+    if (leadFilter === 'call') {
+      return (
+        lead.followUpAction?.toLowerCase() === 'call' || 
+        lead.followUpAction?.toLowerCase() === 'call back' || 
+        lead.leadStatus?.toLowerCase() === 'call back'
+      );
+    }
+    
+    if (leadFilter === 'meeting') {
+      return (
+        lead.followUpAction?.toLowerCase() === 'next meeting' || 
+        lead.followUpAction?.toLowerCase() === 'meeting'
+      );
+    }
+    
+    if (leadFilter === 'demo-done') {
+      return lead.demoStatus?.toLowerCase() === 'completed';
+    }
+    
+    if (leadFilter === 'demo-pending') {
+      return (
+        !lead.demoStatus || 
+        lead.demoStatus?.toLowerCase() === 'not given' || 
+        lead.demoStatus?.toLowerCase() === 'scheduled'
+      );
+    }
+
     return true;
   });
 
@@ -302,9 +369,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
           const details = data[0].PostOffice[0];
           const matchedState = indianStates.find((s) => s.name.toLowerCase() === details.State.toLowerCase());
           
-          if (matchedState) {
-            setSelectedStateCode(matchedState.isoCode);
-          }
+          if (matchedState) setSelectedStateCode(matchedState.isoCode);
           
           if (details.District) {
             const poRes = await fetch(`https://api.postalpincode.in/postoffice/${details.District}`);
@@ -340,9 +405,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
           const details = data[0].PostOffice[0];
           const matchedState = indianStates.find((s) => s.name.toLowerCase() === details.State.toLowerCase());
           
-          if (matchedState) {
-            setLeadStateCode(matchedState.isoCode);
-          }
+          if (matchedState) setLeadStateCode(matchedState.isoCode);
 
           if (details.District) {
             const poRes = await fetch(`https://api.postalpincode.in/postoffice/${details.District}`);
@@ -367,7 +430,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- Handle State Selection Change for Leads ---
   const handleLeadStateChange = (e) => {
     const isoCode = e.target.value;
     const stateObj = indianStates.find((s) => s.isoCode === isoCode);
@@ -381,7 +443,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }));
   };
 
-  // --- Handle City Selection Change & Fetch Pincodes for Leads ---
   const handleLeadCityChange = async (e) => {
     const cityName = e.target.value;
     setLeadFormData((prev) => ({ ...prev, city: cityName, pincode: '' }));
@@ -398,13 +459,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- Handle Input Changes in Lead Form ---
   const handleLeadChange = (e) => {
     const { name, value } = e.target;
     setLeadFormData((prev) => ({ ...prev, [name]: value }));
     
     if (name === 'mobileNo' && value.length >= 10) {
-      const existingLead = myLeads.find(l => l.mobileNo.trim() === value.trim());
+      const existingLead = myDeals.find(l => l.mobileNo.trim() === value.trim()) || myLeads.find(l => l.mobileNo.trim() === value.trim());
       if (existingLead) {
         const matchedState = indianStates.find(s => s.name.toLowerCase() === (existingLead.state || '').toLowerCase());
         if (matchedState) setLeadStateCode(matchedState.isoCode);
@@ -421,12 +481,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
       }
     }
 
-    if (name === 'pincode') {
-      fetchLeadByPincode(value);
-    }
+    if (name === 'pincode') fetchLeadByPincode(value);
   };
 
-  // --- Handle State Selection Change for Invoice Form ---
   const handleInvoiceStateChange = (e) => {
     const iso = e.target.value;
     const stObj = indianStates.find(s => s.isoCode === iso);
@@ -435,7 +492,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     setFormData(prev => ({ ...prev, state: stObj ? stObj.name : '', city: '', pincode: '' }));
   };
 
-  // --- Handle City Selection Change & Fetch Pincodes for Invoice Form ---
   const handleInvoiceCityChange = async (e) => {
     const cName = e.target.value;
     setFormData(prev => ({ ...prev, city: cName, pincode: '' }));
@@ -451,54 +507,92 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- Handle Input Changes in Invoice Form & Auto-fill from Existing Leads ---
+  // --- 🌟 SMART AUTO-FILL & INSTALLMENT DUE BALANCE LOOKUP ---
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'baseAmount' || name === 'paidAmount' ? Number(value) : value,
+      [name]: name === 'baseAmount' || name === 'paidAmount' || name === 'previousDueBalance' ? Number(value) : value,
     }));
 
     if (name === 'instituteName') {
-      const matchedLead = activeLeadsList.find(
-        (l) => l.instituteName.toLowerCase() === value.toLowerCase()
+      const searchVal = value.trim().toLowerCase();
+
+      const matchingDeal = myDeals.find(
+        (d) => d.instituteName && d.instituteName.trim().toLowerCase() === searchVal
       );
-      if (matchedLead) {
+
+      let pastDue = 0;
+      if (matchingDeal) {
+        pastDue = matchingDeal.dueAmount || 0; 
+      }
+
+      const matchedLead = activeLeadsList.find(
+        (l) => l.instituteName && l.instituteName.trim().toLowerCase() === searchVal
+      );
+
+      const targetData = matchingDeal || matchedLead;
+      if (targetData) {
         const matchedState = indianStates.find(
-          (s) => s.name.toLowerCase() === (matchedLead.state || '').toLowerCase()
+          (s) => s.name.toLowerCase() === (targetData.state || '').toLowerCase()
         );
-        if (matchedState) {
-          setSelectedStateCode(matchedState.isoCode);
-        }
+        if (matchedState) setSelectedStateCode(matchedState.isoCode);
+        
+        const isExistingDealWithDue = Boolean(matchingDeal && matchingDeal.dueAmount > 0);
+
         setFormData((prev) => ({
           ...prev,
-          instituteName: matchedLead.instituteName,
-          mobileNo: matchedLead.mobileNo || '',
-          email: matchedLead.email || '',
-          address: matchedLead.address || '',
-          city: matchedLead.city || '',
-          state: matchedState ? matchedState.name : matchedLead.state || '',
-          pincode: matchedLead.pincode || ''
+          instituteName: targetData.instituteName,
+          appName: targetData.appName || prev.appName,
+          mobileNo: targetData.mobileNo || '',
+          email: targetData.email || '',
+          address: targetData.address || '',
+          city: targetData.city || '',
+          state: matchedState ? matchedState.name : targetData.state || '',
+          pincode: targetData.pincode || '',
+          previousDueBalance: pastDue,
+          baseAmount: isExistingDealWithDue ? 0 : 15000
         }));
       }
     }
 
-    if (name === 'pincode') {
-      fetchByPincode(value);
-    }
+    if (name === 'pincode') fetchByPincode(value);
   };
 
-  // --- Handle Add-on Package Selection ---
+  const handlePayDueFromLedger = (deal) => {
+    const matchedState = indianStates.find(
+      (s) => s.name.toLowerCase() === (deal.state || '').toLowerCase()
+    );
+    if (matchedState) setSelectedStateCode(matchedState.isoCode);
+
+    setFormData({
+      ...initialFormData,
+      instituteName: deal.instituteName || '',
+      appName: deal.appName || '',
+      mobileNo: deal.mobileNo || '',
+      email: deal.email || '',
+      address: deal.address || '',
+      city: deal.city || '',
+      state: matchedState ? matchedState.name : deal.state || '',
+      pincode: deal.pincode || '',
+      gstNo: deal.gstNo || '',
+      packageValidity: deal.packageValidity || '1 Year',
+      baseAmount: 0, 
+      previousDueBalance: deal.dueAmount || 0, 
+      paidAmount: deal.dueAmount || 0, 
+    });
+
+    setActiveView('invoice-form');
+  };
+
   const handleAddonChange = (e) => {
     const { name, checked } = e.target;
     setAddons((prev) => ({ ...prev, [name]: checked }));
   };
 
-  // --- File Upload Handlers ---
   const handleFileChange = (e) => setFile(e.target.files[0]);
   const handleMeetingPhotoChange = (e) => setMeetingPhotoFile(e.target.files[0]);
 
-  // --- Auto-detect GPS Location for Lead Form ---
   const handleAutoDetectLocation = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser');
@@ -521,9 +615,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
             const fullRoadAddress = data.display_name || '';
 
             const matchedState = indianStates.find((s) => s.name.toLowerCase() === fetchedStateName.toLowerCase());
-            if (matchedState) {
-              setLeadStateCode(matchedState.isoCode);
-            }
+            if (matchedState) setLeadStateCode(matchedState.isoCode);
 
             if (fetchedCityName) {
               const poRes = await fetch(`https://api.postalpincode.in/postoffice/${fetchedCityName}`);
@@ -545,18 +637,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
             setStatus({ loading: false, success: 'Location auto-detected and address filled successfully!', error: '' });
           }
         } catch (err) {
-          console.error("Reverse geocoding error:", err);
           setStatus({ loading: false, success: '', error: 'Failed to fetch address from coordinates.' });
         }
       },
-      () => {
-        setStatus({ loading: false, success: '', error: 'GPS permission denied or failed.' });
-      },
+      () => setStatus({ loading: false, success: '', error: 'GPS permission denied or failed.' }),
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
-  // --- Auto-detect GPS Location for Invoice Form ---
   const handleInvoiceAutoDetectLocation = () => {
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser');
@@ -579,9 +667,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
             const fullRoadAddress = data.display_name || '';
 
             const matchedState = indianStates.find((s) => s.name.toLowerCase() === fetchedStateName.toLowerCase());
-            if (matchedState) {
-              setSelectedStateCode(matchedState.isoCode);
-            }
+            if (matchedState) setSelectedStateCode(matchedState.isoCode);
 
             if (fetchedCityName) {
               const poRes = await fetch(`https://api.postalpincode.in/postoffice/${fetchedCityName}`);
@@ -603,18 +689,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
             setStatus({ loading: false, success: 'Location auto-detected and invoice address filled!', error: '' });
           }
         } catch (err) {
-          console.error("Invoice reverse geocoding error:", err);
           setStatus({ loading: false, success: '', error: 'Failed to fetch invoice address.' });
         }
       },
-      () => {
-        setStatus({ loading: false, success: '', error: 'GPS permission denied or failed.' });
-      },
+      () => setStatus({ loading: false, success: '', error: 'GPS permission denied or failed.' }),
       { enableHighAccuracy: true, timeout: 10000 }
     );
   };
 
-  // --- Update Lead Stage, Demo Status, and Follow-up Schedule ---
   const handleUpdateLeadStatus = async (leadId, newLeadStatus, newDemoStatus, followUpDateVal = null, followUpTimeVal = null) => {
     try {
       const token = localStorage.getItem('token');
@@ -636,10 +718,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
       const res = await fetch(`${API_BASE}/api/salesperson/leads/${leadId}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -658,7 +737,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- Submit New Prospect Lead ---
   const handleLeadSubmit = async (e) => {
     e.preventDefault();
     if (!meetingPhotoFile) {
@@ -723,7 +801,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
     }
   };
 
-  // --- Submit Invoice Request with GPS Verification ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) {
@@ -731,7 +808,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
       return;
     }
 
-    setStatus({ loading: true, success: 'Fetching live GPS verification & submitting...', error: '' });
+    setStatus({ loading: true, success: 'Fetching live GPS verification & submitting installment...', error: '' });
 
     const processSubmission = async (lat = null, lng = null) => {
       const data = new FormData();
@@ -747,11 +824,20 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
       try {
         const resData = await submitInvoiceRequest(data);
+        
+        if (dueAmount === 0) {
+          setSettledAlert({
+            institute: formData.instituteName,
+            invoiceId: resData.invoiceId || 'New'
+          });
+        }
+
         setStatus({
           loading: false,
-          success: `Invoice Request #${resData.invoiceId} submitted with Live GPS Verification!`,
+          success: `Installment submitted successfully! Remaining Due Balance: ₹${dueAmount}`,
           error: '',
         });
+
         setFormData(initialFormData);
         setSelectedStateCode('');
         setAddons(initialAddons);
@@ -760,10 +846,13 @@ const SalespersonForm = ({ userId, onLogout }) => {
         setCouponInput('');
         setCouponDetails(null);
         fetchMyDeals();
+
         setTimeout(() => {
-          setActiveView('dashboard');
+          if (dueAmount > 0) {
+            setActiveView('dashboard');
+          }
           setStatus({ loading: false, success: '', error: '' });
-        }, 2000);
+        }, 2500);
       } catch (err) {
         setStatus({ loading: false, success: '', error: err.response?.data?.message || 'Submission failed' });
       }
@@ -784,19 +873,36 @@ const SalespersonForm = ({ userId, onLogout }) => {
     <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* Header Bar */}
+        {settledAlert && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[var(--color-card)] border border-emerald-500/50 rounded-3xl p-6 md:p-8 max-w-md w-full space-y-4 shadow-2xl text-center">
+              <span className="text-4xl">🎉</span>
+              <h3 className="text-lg font-extrabold text-emerald-600">Deal Fully Settled & Cleared!</h3>
+              <p className="text-xs text-[var(--color-heading)]">
+                All outstanding dues for <strong>{settledAlert.institute}</strong> have been paid in full. Balance is now <strong>₹0 (Zero Due)</strong>. Both salesperson and account team have been notified successfully.
+              </p>
+              <button
+                onClick={() => { setSettledAlert(null); setActiveView('dashboard'); }}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer shadow-sm"
+              >
+                Okay, Return to Dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm gap-4">
           <div className="space-y-1">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              SALESPERSON PORTAL
+              SALESPERSON PORTAL WITH INSTALLMENT LEDGER
             </span>
             <h1 className="text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1">
               {activeView === 'dashboard' && 'My Dashboard & Performance'}
               {activeView === 'leads' && 'My Generated Leads'}
               {activeView === 'calendar' && '📅 Follow-up & Meeting Calendar'}
               {activeView === 'lead-form' && 'Create New Lead / Record Client Visit'}
-              {activeView === 'invoice-form' && 'Create Invoice Request'}
+              {activeView === 'invoice-form' && 'Create Invoice Request & Installment Ledger'}
             </h1>
             <p className="text-[var(--color-body)] text-xs">Signed in as <strong className="text-[var(--color-primary)]">{userId}</strong></p>
           </div>
@@ -809,7 +915,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
           </button>
         </div>
 
-        {/* Navigation Tabs Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm">
           <div className="flex gap-2 overflow-x-auto w-full sm:w-auto">
             <button
@@ -818,7 +923,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 activeView === 'dashboard' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
-              📊 Dashboard
+              📊 Dashboard & Dues
             </button>
             <button
               onClick={() => setActiveView('leads')}
@@ -853,12 +958,11 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 activeView === 'invoice-form' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
               }`}
             >
-              🧾 New Invoice
+              🧾 New Invoice / Installment
             </button>
           </div>
         </div>
 
-        {/* VIEW 1: DASHBOARD */}
         {activeView === 'dashboard' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -878,8 +982,8 @@ const SalespersonForm = ({ userId, onLogout }) => {
               </div>
               <div onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
                 <div>
-                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">🧾 Create Invoice</h3>
-                  <p className="text-xs text-[var(--color-body)] mt-1">Submit payment proof & details.</p>
+                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">🧾 Submit Installment</h3>
+                  <p className="text-xs text-[var(--color-body)] mt-1">Pay due amount & clear balance.</p>
                 </div>
                 <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">💳</span>
               </div>
@@ -908,50 +1012,59 @@ const SalespersonForm = ({ userId, onLogout }) => {
               </div>
             </div>
 
-            {/* My Submitted Invoices History List */}
             <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
               <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-4">
-                <h3 className="text-base font-bold text-[var(--color-heading)]">📋 My Invoice Requests History</h3>
+                <div>
+                  <h3 className="text-base font-bold text-[var(--color-heading)]">📊 Institute Due Ledger (Installment Tracker)</h3>
+                  <p className="text-xs text-[var(--color-body)] mt-0.5">See exact pending dues per institute. Click "Pay Due" to instantly jump to invoice page with pre-filled balance.</p>
+                </div>
                 <span className="text-xs bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-border)] font-semibold">
-                  {myDeals.length} Record(s)
+                  {myDeals.length} Deal(s)
                 </span>
               </div>
 
               {loadingDeals ? (
-                <div className="text-center py-12 text-xs text-[var(--color-body)]">Loading your deals...</div>
+                <div className="text-center py-12 text-xs text-[var(--color-body)]">Loading institute dues...</div>
               ) : myDeals.length === 0 ? (
                 <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
-                  <p>You haven't submitted any invoice requests yet.</p>
-                  <button onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-xl font-semibold cursor-pointer shadow-sm">
-                    Create Your First Invoice Request
-                  </button>
+                  <p>No institute deals found yet.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {myDeals.map((deal) => (
-                    <div key={deal._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-5 rounded-2xl space-y-3 text-xs">
-                      <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[var(--color-border)] pb-3">
-                        <div>
+                    <div key={deal._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
                           <strong className="text-sm text-[var(--color-heading)] font-bold">{deal.instituteName}</strong>
-                          <span className="ml-2 text-[var(--color-body)]">({deal.appName})</span>
+                          <span className="text-[var(--color-body)]">({deal.appName})</span>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          deal.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 
-                          deal.status === 'rejected' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 
-                          'bg-amber-500/10 text-amber-600 border border-amber-500/20'
-                        }`}>
-                          {deal.status}
-                        </span>
+                        <p>👤 Contact: <a href={`tel:${deal.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{deal.mobileNo}</a> | 📍 {deal.city || 'N/A'}, {deal.state || ''}</p>
+                        <div className="flex flex-wrap gap-4 pt-1 font-medium text-[var(--color-body)]">
+                          <span>Total Bill: <strong>₹{deal.totalAmount?.toLocaleString('en-IN')}</strong></span>
+                          <span>Paid So Far: <strong className="text-emerald-600">₹{deal.paidAmount?.toLocaleString('en-IN')}</strong></span>
+                        </div>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[var(--color-heading)]">
-                        <div>📍 <strong>Address:</strong> {deal.address || 'N/A'}, {deal.city || ''}, {deal.state || ''} ({deal.pincode || ''})</div>
-                        <div>📞 <strong>Client Contact:</strong> <a href={`tel:${deal.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{deal.mobileNo}</a> | {deal.email}</div>
-                      </div>
-                      <div className="flex flex-wrap gap-4 pt-3 border-t border-[var(--color-border)] font-medium">
-                        <span>Total: <strong className="text-[var(--color-heading)]">₹{deal.totalAmount?.toLocaleString('en-IN')}</strong></span>
-                        <span className="text-emerald-600">Paid: <strong>₹{deal.paidAmount?.toLocaleString('en-IN')}</strong></span>
-                        <span className="text-red-500">Due: <strong>₹{deal.dueAmount?.toLocaleString('en-IN')}</strong></span>
-                        {deal.invoiceId && <span className="text-[var(--color-primary)] font-mono">Invoice ID: #{deal.invoiceId}</span>}
+
+                      <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-[var(--color-border)]">
+                        <div className="text-left md:text-right">
+                          <span className="text-[10px] uppercase font-bold text-[var(--color-body)] block">Due Amount</span>
+                          <span className={`text-base font-extrabold ${deal.dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            ₹{deal.dueAmount?.toLocaleString('en-IN')} {deal.dueAmount === 0 ? '✨ (Cleared)' : ''}
+                          </span>
+                        </div>
+
+                        {deal.dueAmount > 0 ? (
+                          <button
+                            onClick={() => handlePayDueFromLedger(deal)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold cursor-pointer transition shadow-sm"
+                          >
+                            Pay Due / Installment ➔
+                          </button>
+                        ) : (
+                          <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-4 py-2 rounded-xl font-bold">
+                            Fully Settled
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -961,7 +1074,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
           </div>
         )}
 
-        {/* VIEW 2: LEADS LIST */}
         {activeView === 'leads' && (
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
@@ -971,7 +1083,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
               </button>
             </div>
 
-            {/* 🔍 Search Bar & Filters */}
             <div className="space-y-3">
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-[var(--color-body)]">🔍</span>
@@ -1036,19 +1147,13 @@ const SalespersonForm = ({ userId, onLogout }) => {
                       <div>
                         👤 <strong>Contact:</strong> {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{lead.mobileNo}</a>
                       </div>
-                      <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">📍 <strong>Location:</strong> {lead.address || 'N/A'}, {lead.city}, {lead.state} ({lead.pincode})</div>
+                      <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">📍 <strong>Location:</strong> {lead.address || 'N/A'}, {lead.city}, {lead.state}</div>
                       <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">🎯 <strong>Demo Status:</strong> <span className="text-amber-600 font-semibold">{lead.demoStatus || 'Not Given'}</span></div>
-                      {lead.leadDate && (
-                        <div onClick={() => setSelectedLead(lead)} className="cursor-pointer text-[var(--color-body)]">
-                          📅 <strong>Created / Last Visit:</strong> {new Date(lead.leadDate).toLocaleDateString('en-IN')} {lead.leadTime ? `at ${lead.leadTime}` : ''}
-                        </div>
-                      )}
                       {lead.followUpDate && (
                         <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 cursor-pointer">
                           🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}
                         </div>
                       )}
-                      {lead.notes && <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 cursor-pointer text-[var(--color-body)]">📝 <strong>Notes:</strong> {lead.notes}</div>}
                     </div>
                   </div>
                 ))}
@@ -1073,7 +1178,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
                     <p>✉️ <strong>Email:</strong> {selectedLead.email || 'N/A'}</p>
                     <p>📍 <strong>Address:</strong> {selectedLead.address || 'N/A'}, {selectedLead.city}, {selectedLead.state} - {selectedLead.pincode}</p>
                     <p>🎯 <strong>Current Demo Status:</strong> <span className="text-[var(--color-primary)] font-bold">{selectedLead.demoStatus || 'Not Given'}</span></p>
-                    <p>📌 <strong>Pipeline Status:</strong> <span className="text-emerald-600 font-bold">{selectedLead.leadStatus || 'Active'}</span></p>
                     {selectedLead.meetingPhoto && (
                       <div className="pt-1">
                         <strong className="block mb-1 text-[var(--color-body)]">Meeting Photo:</strong>
@@ -1146,7 +1250,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
           </div>
         )}
 
-        {/* VIEW: CALENDAR */}
         {activeView === 'calendar' && (
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
             <div className="border-b border-[var(--color-border)] pb-4">
@@ -1172,7 +1275,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
                         <strong className="text-sm text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
                       </div>
                       <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{lead.mobileNo}</a></p>
-                      {lead.notes && <p className="text-[var(--color-heading)]">📝 Note: {lead.notes}</p>}
                     </div>
                     <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-3.5 rounded-2xl text-right sm:min-w-[200px]">
                       <span className="text-[var(--color-body)] block text-[10px] font-medium uppercase">Scheduled For:</span>
@@ -1186,7 +1288,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
           </div>
         )}
 
-        {/* VIEW 3: NEW LEAD / VISIT RECORD FORM */}
         {activeView === 'lead-form' && (
           <div>
             {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.success}</div>}
@@ -1299,7 +1400,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
           </div>
         )}
 
-        {/* VIEW 4: INVOICE FORM */}
         {activeView === 'invoice-form' && (
           <div>
             {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.success}</div>}
@@ -1307,7 +1407,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
             <form onSubmit={handleSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 space-y-6 shadow-sm">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
-                <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">1. Client Details for Invoice</h3>
+                <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">1. Client Details & Installment Ledger Lookup</h3>
                 <button type="button" onClick={handleInvoiceAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2">
                   📍 Auto-Detect Current GPS Location & Address
                 </button>
@@ -1315,8 +1415,24 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div>
-                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Institute Name *</label>
-                  <input type="text" name="instituteName" required value={formData.instituteName} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Type or select existing lead institute" />
+                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Institute Name (Type or select to auto-load due) *</label>
+                  <input 
+                    type="text" 
+                    name="instituteName" 
+                    list="existingInstitutes"
+                    required 
+                    value={formData.instituteName} 
+                    onChange={handleChange} 
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-semibold" 
+                    placeholder="Type institute name..." 
+                  />
+                  <datalist id="existingInstitutes">
+                    {myDeals.map((deal) => (
+                      <option key={deal._id} value={deal.instituteName}>
+                        {deal.instituteName} (Pending Due: ₹{deal.dueAmount})
+                      </option>
+                    ))}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">App Name *</label>
@@ -1368,23 +1484,26 @@ const SalespersonForm = ({ userId, onLogout }) => {
               <hr className="border-[var(--color-border)]" />
 
               <div className="space-y-4">
-                <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">2. Billing & Add-on Packages</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                  <div>
-                    <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Validity</label>
-                    <select name="packageValidity" value={formData.packageValidity} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 font-medium">
-                      <option value="6 Months">6 Months</option>
-                      <option value="1 Year">1 Year</option>
-                      <option value="2 Years">2 Years</option>
-                    </select>
+                <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">2. Installment & Due Payment Ledger</h3>
+                 
+                {formData.previousDueBalance > 0 && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex justify-between items-center text-xs">
+                    <div>
+                      <strong className="text-amber-600 block font-bold">⚠️ Outstanding Due Balance Automatically Loaded:</strong>
+                      <span className="text-[var(--color-body)]">This institute has a pending due balance that this payment will clear against.</span>
+                    </div>
+                    <span className="text-amber-600 font-extrabold text-sm">₹{formData.previousDueBalance.toLocaleString('en-IN')}</span>
                   </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div>
-                    <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Base Price (₹)</label>
+                    <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Base Package Price (₹)</label>
                     <input type="number" name="baseAmount" value={formData.baseAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)]" />
                   </div>
                   <div>
-                    <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Payment Paid (₹)</label>
-                    <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)]" />
+                    <label className="block font-medium mb-1.5 text-emerald-600 font-bold">Installment Paid Now (₹) *</label>
+                    <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-emerald-500/50 rounded-2xl p-3 font-bold text-emerald-600 focus:outline-none" />
                   </div>
                 </div>
 
@@ -1419,23 +1538,24 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
                   {isCouponApplied && couponDetails && (
                     <p className="text-xs text-emerald-600 font-medium mt-1">
-                      🎉 Coupon "{couponDetails.code}" applied! {couponDetails.discountType === 'percentage' ? `${couponDetails.discountValue}%` : `₹${couponDetails.discountValue}`} discount added.
+                      🎉 Coupon "{couponDetails.code}" applied! Discount added.
                     </p>
                   )}
                 </div>
 
-                {/* Price Breakdown Banner with 18% GST */}
                 <div className="bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] space-y-2 text-xs text-[var(--color-heading)]">
                   <div className="flex justify-between">
-                    <span className="text-[var(--color-body)]">Subtotal (Base + Add-ons {isCouponApplied ? '- Discount' : ''}):</span>
-                    <span className="font-medium">₹{formData.subtotalAmount.toLocaleString('en-IN')}</span>
+                    <span className="text-[var(--color-body)]">Current Package Subtotal + 18% GST:</span>
+                    <span className="font-medium">₹{(formData.subtotalAmount + formData.gstAmount).toLocaleString('en-IN')}</span>
                   </div>
-                  <div className="flex justify-between border-b border-[var(--color-border)] pb-2">
-                    <span className="text-[var(--color-body)]">GST (18%):</span>
-                    <span className="font-medium">₹{formData.gstAmount.toLocaleString('en-IN')}</span>
-                  </div>
-                  <div className="flex justify-between items-center pt-1 text-sm">
-                    <span className="font-bold text-[var(--color-heading)]">Grand Total (Incl. GST):</span>
+                  {formData.previousDueBalance > 0 && (
+                    <div className="flex justify-between text-amber-600 font-medium">
+                      <span>Pending Due Balance Carried Forward:</span>
+                      <span>+ ₹{formData.previousDueBalance.toLocaleString('en-IN')}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center pt-2 border-t border-[var(--color-border)] text-sm">
+                    <span className="font-bold text-[var(--color-heading)]">Grand Total (Bill + Past Dues):</span>
                     <span className="text-base font-extrabold text-[var(--color-primary)]">
                       ₹{formData.totalAmount.toLocaleString('en-IN')}
                     </span>
@@ -1447,17 +1567,16 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   <input type="file" accept="image/*" required onChange={handleFileChange} className="block w-full text-xs text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" />
                 </div>
 
-                {/* Auto Calculated Due Amount Banner */}
                 <div className="bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] flex justify-between items-center text-xs">
-                  <span className="text-[var(--color-body)] font-medium">Calculated Due Balance:</span>
-                  <span className={`text-sm font-bold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                    ₹{dueAmount.toLocaleString('en-IN')}
+                  <span className="text-[var(--color-heading)] font-bold">Rest Due Balance After This Payment:</span>
+                  <span className={`text-sm font-extrabold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    ₹{dueAmount.toLocaleString('en-IN')} {dueAmount === 0 ? '🎉 (Zero Due - Fully Settled)' : ''}
                   </span>
                 </div>
               </div>
 
               <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer disabled:opacity-50 shadow-sm text-xs">
-                {status.loading ? 'Fetching Live GPS & Submitting...' : 'Submit Request to Accountant'}
+                {status.loading ? 'Submitting Installment & Updating Ledger...' : 'Submit Installment Payment & Update Due Balance'}
               </button>
             </form>
           </div>
