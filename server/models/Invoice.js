@@ -33,10 +33,29 @@ const invoiceSchema = new mongoose.Schema({
   baseAmount: { type: Number, default: 0 },
   couponCode: { type: String, default: '' },
   discountAmount: { type: Number, default: 0 },
-  previousDueBalance: { type: Number, default: 0 }, // 👈 CRITICAL FIX: Added this field to properly track carried-forward dues
+  previousDueBalance: { type: Number, default: 0 },
   totalAmount: { type: Number, required: true },
   paidAmount: { type: Number, required: true },
   dueAmount: { type: Number, required: true },
+
+  // 🌟 NEW: Payment Mode & Offline Transaction Details
+  paymentMode: { 
+    type: String, 
+    enum: ['ONLINE', 'CASH', 'CHEQUE'], 
+    default: 'ONLINE' 
+  },
+  utrNumber: { type: String, default: '' },
+  receiptNo: { type: String, default: '' },
+  chequeNo: { type: String, default: '' },
+  bankName: { type: String, default: '' },
+
+  // 🌟 NEW: AI OCR Verification Status Fields
+  ocrStatus: { 
+    type: String, 
+    enum: ['PENDING', 'GREEN', 'YELLOW', 'RED'], 
+    default: 'PENDING' 
+  },
+  ocrMessage: { type: String, default: '' },
 
   termsAndConditions: { type: String, required: true },
   paymentProof: { type: String, required: true },

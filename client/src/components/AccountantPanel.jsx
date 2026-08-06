@@ -247,6 +247,8 @@ const AccountantPanel = ({ userId, onLogout }) => {
       ContactPerson: item.contactPerson || "N/A",
       MobileNo: item.mobileNo,
       Email: item.email,
+      PaymentMode: item.paymentMode || "ONLINE",
+      UTR_Receipt_Cheque: item.utrNumber || item.receiptNo || item.chequeNo || "N/A",
       City: item.city || "",
       State: item.state || "",
       TotalAmount: item.totalAmount,
@@ -459,9 +461,44 @@ const AccountantPanel = ({ userId, onLogout }) => {
                             <span className="text-[10px] font-medium bg-[var(--color-primary)]/10 text-[var(--color-primary)] px-2.5 py-1 rounded-lg">
                               Emp: {item.salespersonId}
                             </span>
+
+                            {/* 🌟 PAYMENT MODE BADGE DISPLAY */}
+                            {item.paymentMode === 'CASH' ? (
+                              <span className="text-[10px] font-bold bg-blue-500/10 text-blue-600 px-2.5 py-1 rounded-lg border border-blue-500/20">
+                                💵 Cash (Voucher: {item.receiptNo || 'N/A'})
+                              </span>
+                            ) : item.paymentMode === 'CHEQUE' ? (
+                              <span className="text-[10px] font-bold bg-purple-500/10 text-purple-600 px-2.5 py-1 rounded-lg border border-purple-500/20">
+                                🏦 Cheque No: {item.chequeNo || 'N/A'} ({item.bankName || 'Bank'})
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-lg border border-emerald-500/20 font-mono">
+                                📱 UPI UTR: {item.utrNumber || 'N/A'}
+                              </span>
+                            )}
+
                             {item.couponCode && (
                               <span className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 px-2.5 py-1 rounded-lg border border-emerald-500/20">
                                 🏷️ {item.couponCode} (-₹{item.discountAmount || 999})
+                              </span>
+                            )}
+                          </div>
+
+                          {/* 🌟 AI OCR VERIFICATION / MISMATCH WARNING BADGE */}
+                          <div className="flex flex-wrap items-center gap-2">
+                            {item.ocrStatus === 'GREEN' && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                🟢 {item.ocrMessage || "AI Verified: UTR & Amount Matched"}
+                              </span>
+                            )}
+                            {item.ocrStatus === 'YELLOW' && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-500/10 text-amber-600 border border-amber-500/20" title={item.ocrMessage}>
+                                ⚠️ {item.ocrMessage || "Mismatch Warning: Data differs from screenshot!"}
+                              </span>
+                            )}
+                            {item.ocrStatus === 'RED' && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-red-500/10 text-red-600 border border-red-500/20" title={item.ocrMessage}>
+                                🔴 {item.ocrMessage || "Fraud Alert: Duplicate UTR detected!"}
                               </span>
                             )}
                           </div>
@@ -473,8 +510,8 @@ const AccountantPanel = ({ userId, onLogout }) => {
                           {/* Financial Pills */}
                           <div className="inline-flex flex-wrap gap-3 bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-border)] text-xs">
                             <div>
-                              <span className="text-[var(--color-body)] text-[10px] block">Total Amount</span>
-                              <strong className="text-[var(--color-heading)] text-sm">₹{item.totalAmount?.toLocaleString("en-IN")}</strong>
+                                <span className="text-[var(--color-body)] text-[10px] block">Total Amount</span>
+                                <strong className="text-[var(--color-heading)] text-sm">₹{item.totalAmount?.toLocaleString("en-IN")}</strong>
                             </div>
                             <div className="w-px bg-[var(--color-border)]"></div>
                             <div>
@@ -655,12 +692,14 @@ const AccountantPanel = ({ userId, onLogout }) => {
                   <strong className="truncate block">{viewModalData.email}</strong>
                 </div>
                 <div className="bg-[var(--color-surface)] p-2.5 rounded-2xl border border-[var(--color-border)]">
-                  <span className="text-[var(--color-body)] block text-[10px]">Pincode</span>
-                  <strong>{viewModalData.pincode}</strong>
+                  <span className="text-[var(--color-body)] block text-[10px]">Payment Mode</span>
+                  <strong>{viewModalData.paymentMode || 'ONLINE'}</strong>
                 </div>
                 <div className="bg-[var(--color-surface)] p-2.5 rounded-2xl border border-[var(--color-border)]">
-                  <span className="text-[var(--color-body)] block text-[10px]">GST No</span>
-                  <strong>{viewModalData.gstNo || "N/A"}</strong>
+                  <span className="text-[var(--color-body)] block text-[10px]">
+                    {viewModalData.paymentMode === 'CASH' ? 'Receipt No' : viewModalData.paymentMode === 'CHEQUE' ? 'Cheque No' : 'UTR Number'}
+                  </span>
+                  <strong>{viewModalData.utrNumber || viewModalData.receiptNo || viewModalData.chequeNo || 'N/A'}</strong>
                 </div>
 
                 {/* Add-on Packages Display */}

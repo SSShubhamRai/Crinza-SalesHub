@@ -119,7 +119,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
       };
     } catch (err) {
       console.warn("Capacitor geolocation fallback to browser navigator:", err.message);
-      // Fallback for standard browser web view
       return new Promise((resolve) => {
         if (!navigator.geolocation) {
           resolve({ lat: null, lng: null, isMocked: false });
@@ -161,7 +160,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     let intervalId = null;
 
     if (navigator.geolocation && userId) {
-      // 1. Continuous WatchPosition for instant movement tracking
       watchId = navigator.geolocation.watchPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
@@ -175,7 +173,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
       );
 
-      // 2. Fallback / Active Background Interval
       intervalId = setInterval(() => {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -226,6 +223,12 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     couponCode: '',
     discountAmount: 0,
     termsAndConditions: '1. Payment once made is non-refundable.\n2. Validity counts from application activation date.',
+    // 🌟 Payment Mode & Offline Fields Integrated
+    paymentMode: 'ONLINE',
+    utrNumber: '',
+    receiptNo: '',
+    chequeNo: '',
+    bankName: '',
   };
 
   const initialLeadFormData = {
@@ -832,7 +835,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
     setStatus({ loading: true, success: 'Validating secure GPS & saving lead visit...', error: '' });
 
-    // 🛡️ Secure GPS Check with Mock Prevention
     const { lat, lng, isMocked } = await getSecureLocation();
     if (isMocked) {
       setStatus({ loading: false, success: '', error: 'Action Blocked: Mock Location / Fake GPS detected!' });
@@ -895,7 +897,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
     setStatus({ loading: true, success: 'Verifying secure GPS & submitting installment...', error: '' });
 
-    // 🛡️ Secure GPS Check with Mock Prevention
     const { lat, lng, isMocked } = await getSecureLocation();
     if (isMocked) {
       setStatus({ loading: false, success: '', error: 'Action Blocked: Mock Location / Fake GPS detected!' });
@@ -993,9 +994,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
             <p className="text-[var(--color-body)] text-xs truncate">Signed in as <strong className="text-[var(--color-primary)]">{username || userId}</strong></p>
           </div>
 
-          {/* Header Action Controls: Notification Bell & Logout */}
           <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
-            {/* 🔔 Notification Bell & Dropdown */}
             <div className="relative">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
@@ -1418,8 +1417,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-              
-              {/* --- COLUMN 1: NEW / ACTIVE LEADS --- */}
               <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
                 <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
                   <span className="text-xs font-bold text-blue-600 uppercase tracking-wider">📥 New Leads</span>
@@ -1453,7 +1450,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
               </div>
 
-              {/* --- COLUMN 2: CALL BACK / FOLLOW UP --- */}
               <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
                 <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
                   <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">📞 Call Back / Follow Up</span>
@@ -1491,7 +1487,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
               </div>
 
-              {/* --- COLUMN 3: DEMO COMPLETED --- */}
               <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
                 <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
                   <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">💻 Demo Completed</span>
@@ -1529,7 +1524,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                               }));
                               setActiveView('invoice-form');
                             }} className="w-full text-center text-[10px] bg-emerald-600 text-white py-1.5 rounded-xl font-semibold hover:bg-emerald-700 cursor-pointer shadow-sm">
-                              🚀 Convert to Deal (Invoice)
+                              Convert to Deal (Invoice)
                             </button>
                           </div>
                         </div>
@@ -1538,7 +1533,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
               </div>
 
-              {/* --- COLUMN 4: DEAL CLOSED --- */}
               <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3 sm:col-span-2 lg:col-span-1">
                 <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
                   <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">🎉 Deal Closed</span>
@@ -1563,7 +1557,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                   )}
                 </div>
               </div>
-
             </div>
           </div>
         )}
@@ -1857,6 +1850,95 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     <label className="block font-medium mb-1.5 text-emerald-600 font-bold">Installment Paid Now (₹) *</label>
                     <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-emerald-500/50 rounded-2xl p-3 font-bold text-emerald-600 focus:outline-none" />
                   </div>
+                </div>
+
+                {/* 🌟 PAYMENT MODE SELECTOR (ONLINE / CASH / CHEQUE) */}
+                <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">
+                  <label className="block text-[11px] font-semibold text-[var(--color-primary)] uppercase tracking-wider">💳 Select Payment Mode *</label>
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, paymentMode: 'ONLINE' })}
+                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center ${formData.paymentMode === 'ONLINE' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
+                    >
+                      📱 Online / UPI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, paymentMode: 'CASH' })}
+                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center ${formData.paymentMode === 'CASH' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
+                    >
+                      💵 Cash Payment
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, paymentMode: 'CHEQUE' })}
+                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center ${formData.paymentMode === 'CHEQUE' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
+                    >
+                      🏦 Cheque / DD
+                    </button>
+                  </div>
+
+                  {formData.paymentMode === 'ONLINE' && (
+                    <div className="pt-2">
+                      <label className="block font-medium mb-1.5 text-[var(--color-heading)]">UTR / UPI Transaction ID (12 Digits) *</label>
+                      <input
+                        type="text"
+                        name="utrNumber"
+                        maxLength={12}
+                        required
+                        value={formData.utrNumber}
+                        onChange={handleChange}
+                        placeholder="e.g. 419283746501"
+                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 font-mono text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                      />
+                    </div>
+                  )}
+
+                  {formData.paymentMode === 'CASH' && (
+                    <div className="pt-2">
+                      <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Cash Receipt / Voucher Number *</label>
+                      <input
+                        type="text"
+                        name="receiptNo"
+                        required
+                        value={formData.receiptNo}
+                        onChange={handleChange}
+                        placeholder="e.g. CRZ-CASH-2026-001"
+                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                      />
+                    </div>
+                  )}
+
+                  {formData.paymentMode === 'CHEQUE' && (
+                    <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Cheque / DD Number (6 Digits) *</label>
+                        <input
+                          type="text"
+                          name="chequeNo"
+                          maxLength={6}
+                          required
+                          value={formData.chequeNo}
+                          onChange={handleChange}
+                          placeholder="e.g. 348219"
+                          className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 font-mono text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Bank Name & Branch *</label>
+                        <input
+                          type="text"
+                          name="bankName"
+                          required
+                          value={formData.bankName}
+                          onChange={handleChange}
+                          placeholder="e.g. HDFC Bank, Main Branch"
+                          className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">

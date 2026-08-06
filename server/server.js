@@ -17,6 +17,7 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto"); // 🌟 Token & OTP hashing ke liye zaroori
 const axios = require("axios"); // 🌟 OSRM API call ke liye axios zaroori hai
+const Tesseract = require("tesseract.js"); // 🌟 AI OCR Payment Proof Verification ke liye
 require("dotenv").config();
 
 // --- Security & Validation Package Imports ---
@@ -38,7 +39,7 @@ const server = http.createServer(app); // 🌟 Express app ko HTTP server mein w
 const io = new Server(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
 
@@ -376,6 +377,7 @@ const createInvoicePDF = async (data) => {
             <p style="margin:3px 0;"><strong>App Name:</strong> ${data.appName}</p>
             <p style="margin:3px 0;"><strong>Mobile:</strong> ${data.mobileNo}</p>
             <p style="margin:3px 0;"><strong>Email:</strong> ${data.email}</p>
+            <p style="margin:3px 0;"><strong>Payment Mode:</strong> ${data.paymentMode || 'ONLINE'} (${data.utrNumber || data.receiptNo || data.chequeNo || 'N/A'})</p>
             ${data.gstNo ? `<p style="margin:3px 0;"><strong>GSTIN:</strong> ${data.gstNo}</p>` : ""}
           </div>
           <div class="box">
@@ -709,10 +711,8 @@ app.get(
   },
 );
 
-// 🌟 Helper for Delay to prevent Nominatim Rate Limit errors (429 / 500)
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// 🏷️ Reverse Geocoding Proxy Route with Built-in Delay & Safe Fallback
 app.get("/api/boss/reverse-geocode", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
@@ -723,7 +723,6 @@ app.get("/api/boss/reverse-geocode", verifyToken, async (req, res) => {
       return res.status(400).json({ message: "Lat and Lon are required" });
     }
 
-    // 🌟 1 second delay to respect OSM Nominatim rate limits
     await delay(1000);
 
     const response = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`, {
@@ -1015,7 +1014,7 @@ app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 🧾 INVOICE & BILLING API ROUTES ---
+// --- 🧾 INVOICE & BILLING API ROUTES (FIXED SYNCHRONOUS OCR VERIFICATION) ---
 // =========================================================================
 const handleInvoiceSubmission = async (req, res) => {
   try {
@@ -1032,13 +1031,60 @@ const handleInvoiceSubmission = async (req, res) => {
     }
 
     const normalizedPath = req.file ? req.file.path.replace(/\\/g, "/") : "";
+    const paymentMode = req.body.paymentMode || 'ONLINE';
+    const utrNumber = req.body.utrNumber ? req.body.utrNumber.trim() : '';
+    const claimedPaid = Number(req.body.paidAmount) || 0;
+
+    let ocrStatus = "PENDING";
+    let ocrMessage = "Manual review required";
+
+    // 🌟 1. DUPLICATE UTR CHECK (Pending & Approved dono mein)
+    if (paymentMode === 'ONLINE' && utrNumber) {
+      const existingUtrCheck = await Invoice.findOne({ 
+        utrNumber: utrNumber, 
+        status: { $in: ['pending', 'approved'] } 
+      });
+
+      if (existingUtrCheck) {
+        ocrStatus = "RED";
+        ocrMessage = `Fraud Alert: UTR "${utrNumber}" already used in Invoice #${existingUtrCheck.invoiceId}!`;
+      }
+    }
+
+    // 🌟 2. SYNCHRONOUS TESSERACT OCR SCAN & MATCHING
+    if (paymentMode === 'ONLINE' && req.file && utrNumber && ocrStatus !== "RED") {
+      try {
+        console.log("🔍 Running AI OCR Scan on payment proof...");
+        const { data: { text } } = await Tesseract.recognize(req.file.path, 'eng');
+        console.log("📄 OCR Extracted Text:", text);
+
+        const cleanedText = text.replace(/[\s,]/g, ''); // Remove spaces and commas for robust matching
+        const isAmountMatched = cleanedText.includes(claimedPaid.toString());
+        const isUtrMatched = cleanedText.includes(utrNumber);
+
+        if (isUtrMatched && isAmountMatched) {
+          ocrStatus = "GREEN";
+          ocrMessage = "AI Verified: UTR & Amount Matched 100%";
+        } else {
+          ocrStatus = "YELLOW";
+          ocrMessage = `Mismatch Warning: Entered UTR (${utrNumber}) or Amount (₹${claimedPaid}) differs from screenshot!`;
+        }
+      } catch (ocrErr) {
+        console.error("🔥 OCR Processing Error:", ocrErr);
+        ocrStatus = "YELLOW";
+        ocrMessage = "OCR scan failed to read image clearly, manual review required.";
+      }
+    } else if (paymentMode !== 'ONLINE') {
+      ocrStatus = "GREEN";
+      ocrMessage = "Offline Payment Mode (Cash/Cheque)";
+    }
 
     const newInvoice = new Invoice({
       ...req.body,
       baseAmount:
         Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
       totalAmount: Number(req.body.totalAmount) || 0,
-      paidAmount: Number(req.body.paidAmount) || 0,
+      paidAmount: claimedPaid,
       dueAmount: Number(req.body.dueAmount) || 0,
       previousDueBalance: Number(req.body.previousDueBalance) || 0,
       discountAmount: Number(req.body.discountAmount) || 0,
@@ -1048,6 +1094,13 @@ const handleInvoiceSubmission = async (req, res) => {
       salespersonId: req.user.userId,
       paymentProof: normalizedPath,
       addons: parsedAddons,
+      paymentMode,
+      utrNumber,
+      receiptNo: req.body.receiptNo || '',
+      chequeNo: req.body.chequeNo || '',
+      bankName: req.body.bankName || '',
+      ocrStatus,
+      ocrMessage,
       status: "pending",
     });
 
@@ -1198,7 +1251,10 @@ app.post("/api/invoices/reject/:id", verifyToken, async (req, res) => {
 // =========================================================================
 app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
   try {
-    const rawDeals = await Invoice.find({ salespersonId: req.user.userId }).sort({
+    const rawDeals = await Invoice.find({ 
+      salespersonId: req.user.userId,
+      status: { $ne: 'rejected' }
+    }).sort({
       createdAt: 1, 
     });
 
@@ -1209,36 +1265,17 @@ app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
 
       if (!consolidatedMap[key]) {
         consolidatedMap[key] = {
-          _id: deal._id,
-          invoiceId: deal.invoiceId,
-          instituteName: deal.instituteName,
-          appName: deal.appName,
-          mobileNo: deal.mobileNo,
-          email: deal.email,
-          address: deal.address,
-          city: deal.city,
-          state: deal.state,
-          pincode: deal.pincode,
-          gstNo: deal.gstNo,
-          packageValidity: deal.packageValidity,
-          status: deal.status,
+          ...deal.toObject(),
           totalAmount: 0,
           paidAmount: 0,
           dueAmount: 0,
-          previousDueBalance: 0,
-          createdAt: deal.createdAt,
         };
       }
 
-      const currentDealTotal = Number(deal.totalAmount) || 0;
-      const currentDealPaid = Number(deal.paidAmount) || 0;
-
-      if (deal.baseAmount === 0 && deal.previousDueBalance > 0) {
-        consolidatedMap[key].paidAmount += currentDealPaid;
-      } else {
-        consolidatedMap[key].totalAmount = currentDealTotal;
-        consolidatedMap[key].paidAmount += currentDealPaid;
+      if (deal.baseAmount > 0) {
+        consolidatedMap[key].totalAmount = Number(deal.totalAmount) || 0;
       }
+      consolidatedMap[key].paidAmount += (Number(deal.paidAmount) || 0);
 
       consolidatedMap[key].dueAmount = Math.max(
         0,
