@@ -127,6 +127,18 @@ const taskSchema = new mongoose.Schema({
 const Task = mongoose.model("Task", taskSchema);
 
 // =========================================================================
+// --- 📢 BROADCAST ANNOUNCEMENTS SCHEMA ---
+// =========================================================================
+const broadcastSchema = new mongoose.Schema({
+  adminId: { type: String, required: true },
+  title: { type: String, required: true },
+  message: { type: String, required: true },
+  priority: { type: String, enum: ["normal", "important", "urgent"], default: "normal" },
+  createdAt: { type: Date, default: Date.now }
+});
+const Broadcast = mongoose.model("Broadcast", broadcastSchema);
+
+// =========================================================================
 // --- 📍 LOCATION TRACKING SCHEMA (WITH SECURITY SPOOF FLAG) ---
 // =========================================================================
 const locationLogSchema = new mongoose.Schema({
@@ -674,6 +686,43 @@ app.post("/api/auth/reset-password-otp", async (req, res) => {
 // =========================================================================
 // --- 👑 BOSS / ADMIN OPERATIONS API ROUTES ---
 // =========================================================================
+
+// 📢 Broadcast Message API Route
+app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied! Admin privileges required." });
+    }
+
+    const { title, message, priority } = req.body;
+    if (!title || !message) {
+      return res.status(400).json({ message: "Title and message are required!" });
+    }
+
+    const newBroadcast = new Broadcast({
+      adminId: req.user.userId,
+      title,
+      message,
+      priority: priority || "normal",
+    });
+
+    await newBroadcast.save();
+
+    // 🌟 Instant WebSocket push to all connected users
+    io.emit("team_broadcast", {
+      title,
+      message,
+      priority: priority || "normal",
+      adminId: req.user.userId,
+      timestamp: new Date()
+    });
+
+    res.status(201).json({ success: true, message: "Broadcast sent successfully to all team devices!" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to send broadcast", error: err.message });
+  }
+});
+
 app.get(
   "/api/boss/salesperson-travel/:salespersonId",
   verifyToken,
@@ -1249,6 +1298,29 @@ app.post("/api/invoices/reject/:id", verifyToken, async (req, res) => {
 // =========================================================================
 // --- 👤 SALESPERSON SPECIFIC ROUTES ---
 // =========================================================================
+
+// 🔔 Salesperson Notifications Route (Fixes 404 Error)
+app.get("/api/salesperson/notifications", verifyToken, async (req, res) => {
+  try {
+    const tasks = await Task.find({ 
+      salespersonId: req.user.userId, 
+      status: "pending" 
+    }).sort({ createdAt: -1 });
+
+    const formattedNotifications = tasks.map((t) => ({
+      _id: t._id,
+      title: `${t.taskType.toUpperCase()} Reminder`,
+      message: `Pending task for institute: ${t.instituteName}`,
+      isRead: false,
+      createdAt: t.createdAt,
+    }));
+
+    res.json(formattedNotifications);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch notifications", error: err.message });
+  }
+});
+
 app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
   try {
     const rawDeals = await Invoice.find({ 
@@ -1519,6 +1591,6 @@ app.post("/api/coupons/verify", verifyToken, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(
-    `🚀 Server running on port ${PORT} with Socket.io Live Tracking & Single Session Control Enabled`,
+    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Single Session Control & Broadcast Enabled`,
   );
 });

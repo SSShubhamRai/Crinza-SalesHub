@@ -3,8 +3,8 @@
  * 👑 ADMIN DASHBOARD COMPONENT (`AdminDashboard.jsx`)
  * =========================================================================
  * Description: Allows admin to track live tasks, live location, total distance,
- * manage team, coupons, advanced lead filters, Excel/CSV data export, and 
- * real-time Mock Location / Spoofing Security Alerts.
+ * manage team, coupons, advanced lead filters, Excel/CSV data export, real-time 
+ * Mock Location / Spoofing Security Alerts, and Live Broadcast Announcements.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -50,6 +50,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
   // 🚨 Security & Spoofing Alerts State
   const [spoofingAlerts, setSpoofingAlerts] = useState([]);
+
+  // 📢 Team Broadcast Messaging States
+  const [broadcastMsg, setBroadcastMsg] = useState({ title: "", message: "", priority: "normal" });
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   const socketRef = useRef(null);
 
@@ -175,7 +179,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const resolvePlaceName = async (lat, lon, pointKey) => {
     if (resolvedAddresses[pointKey]) return; 
     try {
-      // 🌟 Added minor delay to prevent browser socket exhaustion / Nominatim rate limit
       await new Promise((resolve) => setTimeout(resolve, 300));
 
       const res = await fetch(`${API_BASE}/api/boss/reverse-geocode?lat=${lat}&lon=${lon}`, {
@@ -378,6 +381,37 @@ const AdminDashboard = ({ userId, onLogout }) => {
       fetchData();
     } catch (err) {
       toast.error(err.message || "Failed to delete user");
+    }
+  };
+
+  // 📢 Broadcast Message Handler
+  const handleSendBroadcast = async (e) => {
+    e.preventDefault();
+    if (!broadcastMsg.title.trim() || !broadcastMsg.message.trim()) {
+      toast.error("Please provide both a title and message!");
+      return;
+    }
+
+    setIsBroadcasting(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`${API_BASE}/api/boss/broadcast`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(broadcastMsg),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to send broadcast");
+
+      toast.success("Broadcast message sent to all active team members!");
+      setBroadcastMsg({ title: "", message: "", priority: "normal" });
+    } catch (err) {
+      toast.error(err.message || "Error sending broadcast");
+    } finally {
+      setIsBroadcasting(false);
     }
   };
 
@@ -614,6 +648,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
             }`}
           >
             🚨 Security & Spoofing {spoofingAlerts.length > 0 && <span className="ml-1 bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px] font-extrabold animate-pulse">{spoofingAlerts.length}</span>}
+          </button>
+          <button
+            onClick={() => setActiveTab("broadcast")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
+              activeTab === "broadcast" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            📢 Team Broadcast
           </button>
           <button
             onClick={() => setActiveTab("leads-export")}
@@ -921,6 +963,69 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* TAB: TEAM BROADCAST ANNOUNCEMENTS */}
+            {activeTab === "broadcast" && (
+              <div className="max-w-3xl mx-auto space-y-6">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--color-primary)] flex items-center gap-2">
+                      <span>📢</span> Send Live Broadcast Announcement
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)] mt-1">
+                      Instantly push real-time alerts, daily goals, or important updates to all active salesperson apps.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSendBroadcast} className="space-y-4 text-xs">
+                    <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Priority Level *</label>
+                      <select
+                        value={broadcastMsg.priority}
+                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, priority: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+                      >
+                        <option value="normal">🟢 Normal Update</option>
+                        <option value="important">🟡 Important Notice</option>
+                        <option value="urgent">🔴 Urgent / Emergency</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Headline / Title *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g., Evening Team Sync-up at 6 PM"
+                        value={broadcastMsg.title}
+                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, title: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Message Details *</label>
+                      <textarea
+                        required
+                        rows="4"
+                        placeholder="Type your complete announcement here..."
+                        value={broadcastMsg.message}
+                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, message: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] resize-none"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isBroadcasting}
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs disabled:opacity-50"
+                    >
+                      {isBroadcasting ? "Broadcasting to Team..." : "🚀 Push Broadcast to All Devices"}
+                    </button>
+                  </form>
+                </div>
               </div>
             )}
 

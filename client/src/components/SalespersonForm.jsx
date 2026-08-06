@@ -7,7 +7,8 @@
  * database-verified coupon discounts, 18% GST calculation, add-on packages, 
  * multi-visit tracking, true partial installment due ledger system, 
  * Capacitor native Mock Location / Anti-Bypass security, Kanban Pipeline View, 
- * WhatsApp Quick Reminders with Logo, and 🔔 Real-time In-App Notifications.
+ * WhatsApp Quick Reminders with Logo, 🔔 Real-time In-App Notifications, 
+ * and 📢 Live Team Broadcast Announcement Listener.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -133,17 +134,23 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     }
   };
 
-  // --- 🌟 CONTINUOUS SOCKET.IO LIVE LOCATION TRACKING WITH NOTIFICATION LISTENER ---
+  // --- 🌟 CONTINUOUS SOCKET.IO LIVE LOCATION TRACKING, NOTIFICATIONS & BROADCAST LISTENER ---
   const socketRef = useRef(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    if (!token) return;
+
     socketRef.current = io(API_BASE, {
-      auth: { token }
+      auth: { token },
+      transports: ['websocket', 'polling']
     });
 
     socketRef.current.on('connect', () => {
-      console.log('🔌 Connected to Live Tracking Server');
+      console.log('🔌 Salesperson Connected to Socket Server, ID:', socketRef.current.id);
+      if (userId) {
+        socketRef.current.emit('register_user', { userId });
+      }
     });
 
     socketRef.current.on('connect_error', (err) => {
@@ -154,6 +161,27 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     socketRef.current.on('new_notification', (notif) => {
       setNotifications((prev) => [notif, ...prev]);
       toast.success(notif.message, { icon: '🔔', duration: 5000 });
+    });
+
+    // 📢 Real-time Team Broadcast Announcement Listener
+    socketRef.current.on('team_broadcast', (data) => {
+      console.log("📢 BROADCAST RECEIVED ON SALESPERSON APP:", data);
+      
+      const title = data?.title || "Announcement";
+      const message = data?.message || "";
+      const priority = (data?.priority || "normal").toUpperCase();
+
+      toast(`📢 [${priority}] ${title}\n${message}`, {
+        duration: 12000,
+        position: 'top-right',
+        icon: '📢',
+        style: {
+          background: data?.priority === 'urgent' ? '#fee2e2' : '#f3f4f6',
+          color: data?.priority === 'urgent' ? '#991b1b' : '#1f2937',
+          fontWeight: '500',
+          padding: '16px',
+        },
+      });
     });
 
     let watchId = null;
@@ -223,7 +251,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     couponCode: '',
     discountAmount: 0,
     termsAndConditions: '1. Payment once made is non-refundable.\n2. Validity counts from application activation date.',
-    // 🌟 Payment Mode & Offline Fields Integrated
     paymentMode: 'ONLINE',
     utrNumber: '',
     receiptNo: '',
