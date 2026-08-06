@@ -171,14 +171,19 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   }, [selectedTrackerEmp, trackerDate, activeTab, fetchSalespersonTravelHistory, fetchAllSystemLeads]);
 
-  // 🗺️ Helper to convert Lat/Lng to Place Name with safe Fallback
+  // 🗺️ Helper to convert Lat/Lng to Place Name with Rate-Limit & Resource Protection
   const resolvePlaceName = async (lat, lon, pointKey) => {
     if (resolvedAddresses[pointKey]) return; 
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+      // 🌟 Added minor delay to prevent browser socket exhaustion / Nominatim rate limit
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const res = await fetch(`${API_BASE}/api/boss/reverse-geocode?lat=${lat}&lon=${lon}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` }
+      });
       const data = await res.json();
-      if (data && data.display_name) {
-        const shortAddr = data.display_name.split(',').slice(0, 3).join(',');
+      if (res.ok && data.displayName) {
+        const shortAddr = data.displayName.split(',').slice(0, 3).join(',');
         setResolvedAddresses((prev) => ({ ...prev, [pointKey]: shortAddr }));
       } else {
         setResolvedAddresses((prev) => ({ ...prev, [pointKey]: `GPS Point (${lat.toFixed(3)}, ${lon.toFixed(3)})` }));
@@ -964,14 +969,41 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   <div className="space-y-3">
                     {filteredSystemLeads.map((lead) => (
                       <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
-                        <div className="space-y-1">
+                        <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <strong className="text-sm text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
                             <span className="bg-purple-500/10 text-purple-600 border border-purple-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold">👤 {lead.salespersonName}</span>
                           </div>
                           <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold">{lead.mobileNo}</a></p>
                           <p className="text-[var(--color-heading)]">📍 Location: {lead.city || 'N/A'}, {lead.state || 'N/A'}</p>
+
+                          {/* 🌟 MEETING PHOTO PREVIEW IN LEADS REPORT */}
+                          {lead.meetingPhoto && (
+                            <div className="pt-1 flex items-center gap-3">
+                              <img
+                                src={`${API_BASE}/${lead.meetingPhoto}`}
+                                alt="Meeting Proof"
+                                className="w-16 h-16 object-cover rounded-xl border border-[var(--color-border)] shadow-sm bg-black/5"
+                                onError={(e) => {
+                                  e.target.onerror = null;
+                                  e.target.src = "https://placehold.co/100?text=Preview";
+                                }}
+                              />
+                              <div>
+                                <p className="text-[10px] text-[var(--color-body)] font-mono mb-1">📸 {lead.meetingPhoto}</p>
+                                <a
+                                  href={`${API_BASE}/${lead.meetingPhoto}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-block bg-[var(--color-primary)] text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition shadow-sm"
+                                >
+                                  🔍 Open Full Image
+                                </a>
+                              </div>
+                            </div>
+                          )}
                         </div>
+
                         <span className="bg-blue-500/10 text-blue-600 border border-blue-500/25 px-3 py-1 rounded-full font-bold text-[10px] uppercase tracking-wider">
                           {lead.leadStatus || 'Active'}
                         </span>

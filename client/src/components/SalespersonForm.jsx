@@ -17,7 +17,7 @@ import { Geolocation } from '@capacitor/geolocation'; // 🌟 Capacitor Geolocat
 import { submitInvoiceRequest } from '../api/api';
 import toast from 'react-hot-toast';
 
-const SalespersonForm = ({ userId, onLogout }) => {
+const SalespersonForm = ({ userId, username, onLogout }) => {
   // --- Navigation & View States ---
   const [activeView, setActiveView] = useState('dashboard');
 
@@ -954,12 +954,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[var(--color-background)] p-3 sm:p-4 md:p-8">
+      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
         
         {settledAlert && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-emerald-500/50 rounded-3xl p-6 md:p-8 max-w-md w-full space-y-4 shadow-2xl text-center">
+            <div className="bg-[var(--color-card)] border border-emerald-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center">
               <span className="text-4xl">🎉</span>
               <h3 className="text-lg font-extrabold text-emerald-600">Deal Fully Settled & Cleared!</h3>
               <p className="text-xs text-[var(--color-heading)]">
@@ -975,25 +975,26 @@ const SalespersonForm = ({ userId, onLogout }) => {
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm gap-4">
-          <div className="space-y-1">
+        {/* Header Section */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-6 rounded-3xl shadow-sm gap-4">
+          <div className="space-y-1 min-w-0">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              SALESPERSON PORTAL WITH KANBAN PIPELINE & WHATSAPP REMINDERS
+              SALESPERSON PORTAL 
             </span>
-            <h1 className="text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1">
-              {activeView === 'dashboard' && 'My Dashboard & Performance'}
+            <h1 className="text-xl sm:text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1 truncate">
+              {activeView === 'dashboard' && 'My Dashboard'}
               {activeView === 'leads' && 'My Generated Leads'}
-              {activeView === 'kanban' && '📌 Sales Pipeline (Kanban Board)'}
+              {activeView === 'kanban' && '📌 Manage Lead'}
               {activeView === 'calendar' && '📅 Follow-up & Meeting Calendar'}
               {activeView === 'lead-form' && 'Create New Lead / Record Client Visit'}
               {activeView === 'invoice-form' && 'Create Invoice Request & Installment Ledger'}
             </h1>
-            <p className="text-[var(--color-body)] text-xs">Signed in as <strong className="text-[var(--color-primary)]">{userId}</strong></p>
+            <p className="text-[var(--color-body)] text-xs truncate">Signed in as <strong className="text-[var(--color-primary)]">{username || userId}</strong></p>
           </div>
 
           {/* Header Action Controls: Notification Bell & Logout */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
             {/* 🔔 Notification Bell & Dropdown */}
             <div className="relative">
               <button
@@ -1010,7 +1011,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 top-14 w-80 sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-3 max-h-[450px] overflow-y-auto text-xs">
+                <div className="absolute right-0 mt-2 w-[280px] max-w-[90vw] sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-3 max-h-[450px] overflow-y-auto text-xs">
                   <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2.5">
                     <strong className="text-[var(--color-heading)] font-bold">🔔 Today's Follow-up & Demo Alerts</strong>
                     <span className="text-[10px] text-[var(--color-body)]">{notifications.length} Total</span>
@@ -1032,13 +1033,13 @@ const SalespersonForm = ({ userId, onLogout }) => {
                               : 'bg-emerald-500/10 border-emerald-500/30'
                           }`}
                         >
-                          <div className="flex justify-between items-center">
-                            <strong className="text-[var(--color-heading)] font-bold">{n.title}</strong>
-                            <span className="text-[9px] text-[var(--color-body)]">
+                          <div className="flex justify-between items-center gap-2">
+                            <strong className="text-[var(--color-heading)] font-bold truncate">{n.title}</strong>
+                            <span className="text-[9px] text-[var(--color-body)] shrink-0">
                               {new Date(n.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
-                          <p className="text-[var(--color-body)] font-medium">{n.message}</p>
+                          <p className="text-[var(--color-body)] font-medium break-words">{n.message}</p>
                         </div>
                       ))}
                     </div>
@@ -1049,18 +1050,19 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
             <button
               onClick={onLogout}
-              className="px-4 py-3 rounded-2xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2 shadow-sm"
+              className="px-4 py-3 rounded-2xl text-xs font-semibold bg-red-500/15 hover:bg-red-500/25 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2 shadow-sm shrink-0"
             >
               Logout
             </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 p-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm">
-          <div className="flex gap-2 overflow-x-auto w-full sm:w-auto">
+        {/* Navigation Tabs */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm">
+          <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto scrollbar-thin">
             <button
               onClick={() => setActiveView('dashboard')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeView === 'dashboard' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
@@ -1068,7 +1070,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
             </button>
             <button
               onClick={() => setActiveView('leads')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeView === 'leads' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
@@ -1076,15 +1078,15 @@ const SalespersonForm = ({ userId, onLogout }) => {
             </button>
             <button
               onClick={() => setActiveView('kanban')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeView === 'kanban' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
-              📌 Kanban Pipeline
+              Manage Lead
             </button>
             <button
               onClick={() => setActiveView('calendar')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 activeView === 'calendar' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
@@ -1092,10 +1094,10 @@ const SalespersonForm = ({ userId, onLogout }) => {
             </button>
           </div>
 
-          <div className="flex gap-2 w-full sm:w-auto justify-end">
+          <div className="flex gap-2 w-full sm:w-auto justify-stretch sm:justify-end">
             <button
               onClick={() => setActiveView('lead-form')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
                 activeView === 'lead-form' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
               }`}
             >
@@ -1103,7 +1105,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
             </button>
             <button
               onClick={() => setActiveView('invoice-form')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
                 activeView === 'invoice-form' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
               }`}
             >
@@ -1115,59 +1117,59 @@ const SalespersonForm = ({ userId, onLogout }) => {
         {activeView === 'dashboard' && (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div onClick={() => setActiveView('lead-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+              <div onClick={() => setActiveView('lead-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
                 <div>
                   <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">➕ Create / Visit Lead</h3>
                   <p className="text-xs text-[var(--color-body)] mt-1">Record client visit & meeting photo.</p>
                 </div>
-                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">🎯</span>
+                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0">🎯</span>
               </div>
-              <div onClick={() => setActiveView('kanban')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+              <div onClick={() => setActiveView('kanban')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
                 <div>
-                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">📌 Pipeline Kanban</h3>
+                  <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">📌 Manage Lead</h3>
                   <p className="text-xs text-[var(--color-body)] mt-1">Manage leads across sales stages.</p>
                 </div>
-                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">📋</span>
+                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0">📋</span>
               </div>
-              <div onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+              <div onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
                 <div>
                   <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">🧾 Submit Installment</h3>
                   <p className="text-xs text-[var(--color-body)] mt-1">Pay due amount & clear balance.</p>
                 </div>
-                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">💳</span>
+                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0">💳</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 shadow-sm space-y-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Total Deals</span>
-                <strong className="text-2xl font-extrabold text-[var(--color-primary)]">{totalDealsCount}</strong>
+                <strong className="text-xl sm:text-2xl font-extrabold text-[var(--color-primary)]">{totalDealsCount}</strong>
               </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 shadow-sm space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Active Leads</span>
-                <strong className="text-2xl font-extrabold text-blue-600">{totalLeadsCount}</strong>
+                <strong className="text-xl sm:text-2xl font-extrabold text-blue-600">{totalLeadsCount}</strong>
               </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 shadow-sm space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Approved Invoices</span>
-                <strong className="text-2xl font-extrabold text-emerald-600">{approvedDealsCount}</strong>
+                <strong className="text-xl sm:text-2xl font-extrabold text-emerald-600">{approvedDealsCount}</strong>
               </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 shadow-sm space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Pending Invoices</span>
-                <strong className="text-2xl font-extrabold text-amber-600">{pendingDealsCount}</strong>
+                <strong className="text-xl sm:text-2xl font-extrabold text-amber-600">{pendingDealsCount}</strong>
               </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 shadow-sm sm:col-span-2 md:col-span-1 space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm col-span-2 sm:col-span-3 md:col-span-1 space-y-1">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Collected</span>
-                <strong className="text-2xl font-extrabold text-emerald-600">₹{totalPaidCollected.toLocaleString('en-IN')}</strong>
+                <strong className="text-xl sm:text-2xl font-extrabold text-emerald-600">₹{totalPaidCollected.toLocaleString('en-IN')}</strong>
               </div>
             </div>
 
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
-              <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-4">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-2">
                 <div>
-                  <h3 className="text-base font-bold text-[var(--color-heading)]">📊 Institute Due Ledger (Installment Tracker)</h3>
+                  <h3 className="text-base font-bold text-[var(--color-heading)]">📊 Institute Due Ledger</h3>
                   <p className="text-xs text-[var(--color-body)] mt-0.5">See exact pending dues per institute. Click "Pay Due" to instantly jump to invoice page with pre-filled balance.</p>
                 </div>
-                <span className="text-xs bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-border)] font-semibold">
+                <span className="text-xs bg-[var(--color-surface)] px-3 py-1.5 rounded-xl border border-[var(--color-border)] font-semibold shrink-0">
                   {myDeals.length} Deal(s)
                 </span>
               </div>
@@ -1182,22 +1184,22 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 <div className="space-y-3">
                   {myDeals.map((deal) => (
                     <div key={deal._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <strong className="text-sm text-[var(--color-heading)] font-bold">{deal.instituteName}</strong>
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <strong className="text-sm text-[var(--color-heading)] font-bold break-words">{deal.instituteName}</strong>
                           <span className="text-[var(--color-body)]">({deal.appName})</span>
                         </div>
-                        <p>👤 Contact: <a href={`tel:${deal.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{deal.mobileNo}</a> | 📍 {deal.city || 'N/A'}, {deal.state || ''}</p>
-                        <div className="flex flex-wrap gap-4 pt-1 font-medium text-[var(--color-body)]">
+                        <p className="break-words">👤 Contact: <a href={`tel:${deal.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{deal.mobileNo}</a> | 📍 {deal.city || 'N/A'}, {deal.state || ''}</p>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 font-medium text-[var(--color-body)]">
                           <span>Total Bill: <strong>₹{deal.totalAmount?.toLocaleString('en-IN')}</strong></span>
                           <span>Paid So Far: <strong className="text-emerald-600">₹{deal.paidAmount?.toLocaleString('en-IN')}</strong></span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-3 md:pt-0 border-[var(--color-border)]">
+                      <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-[var(--color-border)]">
                         <div className="text-left md:text-right">
                           <span className="text-[10px] uppercase font-bold text-[var(--color-body)] block">Due Amount</span>
-                          <span className={`text-base font-extrabold ${deal.dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          <span className={`text-sm sm:text-base font-extrabold ${deal.dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                             ₹{deal.dueAmount?.toLocaleString('en-IN')} {deal.dueAmount === 0 ? '✨ (Cleared)' : ''}
                           </span>
                         </div>
@@ -1205,12 +1207,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
                         {deal.dueAmount > 0 ? (
                           <button
                             onClick={() => handlePayDueFromLedger(deal)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold cursor-pointer transition shadow-sm"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0"
                           >
-                            Pay Due / Installment ➔
+                            Pay Due ➔
                           </button>
                         ) : (
-                          <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-4 py-2 rounded-xl font-bold">
+                          <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-4 py-2 rounded-xl font-bold shrink-0">
                             Fully Settled
                           </span>
                         )}
@@ -1224,10 +1226,10 @@ const SalespersonForm = ({ userId, onLogout }) => {
         )}
 
         {activeView === 'leads' && (
-          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
+          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
               <h3 className="text-base font-bold text-[var(--color-heading)]">📋 My Generated Leads & Visit Records</h3>
-              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm">
+              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center">
                 ➕ Record Visit / Add Lead
               </button>
             </div>
@@ -1239,8 +1241,8 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   type="text"
                   value={leadSearchQuery}
                   onChange={(e) => setLeadSearchQuery(e.target.value)}
-                  placeholder="Search by institute name, contact person, mobile number, or city..."
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3 pl-10 pr-4 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                  placeholder="Search by institute name, contact person, mobile number..."
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3 pl-10 pr-16 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
                 />
                 {leadSearchQuery && (
                   <button onClick={() => setLeadSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-4 text-xs text-[var(--color-body)] hover:text-[var(--color-heading)]">
@@ -1249,20 +1251,20 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 )}
               </div>
 
-              <div className="flex gap-2 flex-wrap pt-1">
-                <button onClick={() => setLeadFilter('all')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'all' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+              <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                <button onClick={() => setLeadFilter('all')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'all' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   All Active ({activeLeadsList.length})
                 </button>
-                <button onClick={() => setLeadFilter('call')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'call' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('call')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'call' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   📞 To Call / Call Back
                 </button>
-                <button onClick={() => setLeadFilter('meeting')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'meeting' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('meeting')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'meeting' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   🤝 Meetings
                 </button>
-                <button onClick={() => setLeadFilter('demo-done')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'demo-done' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('demo-done')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'demo-done' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   ✅ Demo Done
                 </button>
-                <button onClick={() => setLeadFilter('demo-pending')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('demo-pending')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   ⏳ Demo Pending
                 </button>
               </div>
@@ -1278,10 +1280,10 @@ const SalespersonForm = ({ userId, onLogout }) => {
             ) : (
               <div className="space-y-3">
                 {filteredLeads.map((lead) => (
-                  <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-5 rounded-2xl space-y-2.5 text-xs transition shadow-sm">
-                    <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                      <div className="flex items-center gap-2">
-                        <strong onClick={() => setSelectedLead(lead)} className="text-sm text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)]">{lead.instituteName}</strong>
+                  <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-4 sm:p-5 rounded-2xl space-y-2.5 text-xs transition shadow-sm">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <strong onClick={() => setSelectedLead(lead)} className="text-sm text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)] break-words">{lead.instituteName}</strong>
                         {lead.visitCount > 1 && (
                           <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2.5 py-0.5 rounded-full font-bold text-[10px]">
                             🔄 {lead.visitCount} Visits
@@ -1293,15 +1295,15 @@ const SalespersonForm = ({ userId, onLogout }) => {
                       </span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[var(--color-heading)]">
-                      <div>
+                      <div className="break-words">
                         👤 <strong>Contact:</strong> {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{lead.mobileNo}</a>
                       </div>
-                      <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">📍 <strong>Location:</strong> {lead.address || 'N/A'}, {lead.city}, {lead.state}</div>
+                      <div onClick={() => setSelectedLead(lead)} className="cursor-pointer break-words">📍 <strong>Location:</strong> {lead.address || 'N/A'}, {lead.city}, {lead.state}</div>
                       <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">🎯 <strong>Demo Status:</strong> <span className="text-amber-600 font-semibold">{lead.demoStatus || 'Not Given'}</span></div>
                       {lead.followUpDate && (
-                        <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 cursor-pointer flex justify-between items-center">
-                          <span>🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}</span>
-                          <button onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(lead, 'followup'); }} className="bg-[#25D366] text-white px-3.5 py-2 rounded-xl font-bold text-[10px] hover:opacity-90 cursor-pointer flex items-center gap-1.5 shadow-sm">
+                        <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                          <span className="break-words">🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}</span>
+                          <button onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(lead, 'followup'); }} className="bg-[#25D366] text-white px-3.5 py-2 rounded-xl font-bold text-[10px] hover:opacity-90 cursor-pointer flex items-center gap-1.5 shadow-sm shrink-0">
                             <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                             WhatsApp
                           </button>
@@ -1314,19 +1316,19 @@ const SalespersonForm = ({ userId, onLogout }) => {
             )}
 
             {selectedLead && (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
-                  <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                    <div>
-                      <h3 className="text-base font-bold text-[var(--color-heading)]">{selectedLead.instituteName}</h3>
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3 gap-2">
+                    <div className="min-w-0">
+                      <h3 className="text-base font-bold text-[var(--color-heading)] break-words">{selectedLead.instituteName}</h3>
                       {selectedLead.visitCount > 1 && (
-                        <span className="text-[11px] text-emerald-600 font-semibold">Total Visits / Interactions: {selectedLead.visitCount}</span>
+                        <span className="text-[11px] text-emerald-600 font-semibold">Total Visits : {selectedLead.visitCount}</span>
                       )}
                     </div>
-                    <button onClick={() => { setSelectedLead(null); setFollowUpModalAction(null); }} className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs cursor-pointer">✕</button>
+                    <button onClick={() => { setSelectedLead(null); setFollowUpModalAction(null); }} className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs cursor-pointer shrink-0">✕</button>
                   </div>
 
-                  <div className="space-y-2 text-xs text-[var(--color-heading)]">
+                  <div className="space-y-2 text-xs text-[var(--color-heading)] break-words">
                     <p>👤 <strong>Contact Person:</strong> {selectedLead.contactPerson} | 📞 <a href={`tel:${selectedLead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{selectedLead.mobileNo}</a></p>
                     <p>✉️ <strong>Email:</strong> {selectedLead.email || 'N/A'}</p>
                     <p>📍 <strong>Address:</strong> {selectedLead.address || 'N/A'}, {selectedLead.city}, {selectedLead.state} - {selectedLead.pincode}</p>
@@ -1383,7 +1385,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
                       {followUpModalAction && (
                         <div className="mt-3 p-4 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-2xl space-y-3">
                           <p className="text-xs font-bold text-[var(--color-primary)]">Select Date & Time for {followUpModalAction}:</p>
-                          <div className="grid grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <input type="date" value={modalDate} onChange={(e) => setModalDate(e.target.value)} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
                             <input type="time" value={modalTime} onChange={(e) => setModalTime(e.target.value)} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
                           </div>
@@ -1405,17 +1407,17 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
         {activeView === 'kanban' && (
           <div className="space-y-6">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <h3 className="text-base font-bold text-[var(--color-heading)]">📌 Sales Pipeline (Kanban Board)</h3>
+                <h3 className="text-base font-bold text-[var(--color-heading)]">Manage Lead</h3>
                 <p className="text-xs text-[var(--color-body)] mt-0.5">Visualize and move your leads smoothly across different stages of conversion.</p>
               </div>
-              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm">
+              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center">
                 ➕ Record Visit / Add Lead
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
               
               {/* --- COLUMN 1: NEW / ACTIVE LEADS --- */}
               <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
@@ -1425,14 +1427,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
                     {activeLeadsList.filter(l => l.leadStatus === 'Active').length}
                   </span>
                 </div>
-                <div className="space-y-3 min-h-[300px]">
+                <div className="space-y-3 min-h-[250px]">
                   {activeLeadsList.filter(l => l.leadStatus === 'Active').length === 0 ? (
                     <p className="text-xs text-[var(--color-body)] text-center py-8">No new leads</p>
                   ) : (
                     activeLeadsList
                       .filter(l => l.leadStatus === 'Active')
                       .map(lead => (
-                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm">
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words">
                           <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
                           <p className="text-[var(--color-body)]">👤 {lead.contactPerson} | 📞 {lead.mobileNo}</p>
                           <p className="text-[var(--color-body)]">📍 {lead.city}, {lead.state}</p>
@@ -1459,14 +1461,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
                     {activeLeadsList.filter(l => l.leadStatus === 'Call Back' || l.leadStatus === 'Follow Up').length}
                   </span>
                 </div>
-                <div className="space-y-3 min-h-[300px]">
+                <div className="space-y-3 min-h-[250px]">
                   {activeLeadsList.filter(l => l.leadStatus === 'Call Back' || l.leadStatus === 'Follow Up').length === 0 ? (
                     <p className="text-xs text-[var(--color-body)] text-center py-8">No follow-ups</p>
                   ) : (
                     activeLeadsList
                       .filter(l => l.leadStatus === 'Call Back' || l.leadStatus === 'Follow Up')
                       .map(lead => (
-                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm">
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words">
                           <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
                           <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
                           {lead.followUpDate && (
@@ -1497,14 +1499,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
                     {activeLeadsList.filter(l => l.demoStatus === 'Completed').length}
                   </span>
                 </div>
-                <div className="space-y-3 min-h-[300px]">
+                <div className="space-y-3 min-h-[250px]">
                   {activeLeadsList.filter(l => l.demoStatus === 'Completed').length === 0 ? (
                     <p className="text-xs text-[var(--color-body)] text-center py-8">No completed demos</p>
                   ) : (
                     activeLeadsList
                       .filter(l => l.demoStatus === 'Completed')
                       .map(lead => (
-                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm">
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words">
                           <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
                           <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
                           <span className="inline-block bg-indigo-500/10 text-indigo-600 px-2 py-0.5 rounded-md font-semibold text-[10px]">Demo Successful</span>
@@ -1537,19 +1539,19 @@ const SalespersonForm = ({ userId, onLogout }) => {
               </div>
 
               {/* --- COLUMN 4: DEAL CLOSED --- */}
-              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3">
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 space-y-3 sm:col-span-2 lg:col-span-1">
                 <div className="flex justify-between items-center pb-2 border-b border-[var(--color-border)]">
                   <span className="text-xs font-bold text-emerald-600 uppercase tracking-wider">🎉 Deal Closed</span>
                   <span className="text-xs bg-[var(--color-card)] px-2.5 py-0.5 rounded-full border border-[var(--color-border)] font-semibold">
                     {myDeals.length}
                   </span>
                 </div>
-                <div className="space-y-3 min-h-[300px]">
+                <div className="space-y-3 min-h-[250px]">
                   {myDeals.length === 0 ? (
                     <p className="text-xs text-[var(--color-body)] text-center py-8">No closed deals yet</p>
                   ) : (
                     myDeals.map(deal => (
-                      <div key={deal._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm">
+                      <div key={deal._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words">
                         <strong className="text-sm text-[var(--color-heading)] block">{deal.instituteName}</strong>
                         <p className="text-[var(--color-body)]">📱 {deal.appName}</p>
                         <p className="text-emerald-600 font-extrabold">₹{deal.totalAmount?.toLocaleString('en-IN')}</p>
@@ -1567,7 +1569,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
         )}
 
         {activeView === 'calendar' && (
-          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
+          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
             <div className="border-b border-[var(--color-border)] pb-4">
               <h3 className="text-base font-bold text-[var(--color-heading)]">📅 Upcoming Follow-ups & Meetings Schedule</h3>
               <p className="text-xs text-[var(--color-body)] mt-1">Keep track of all client callbacks and meetings scheduled for upcoming dates.</p>
@@ -1584,24 +1586,24 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   .filter(l => l.followUpDate && l.leadStatus !== 'Not Interested' && l.leadStatus !== 'Deal Close')
                   .sort((a,b) => new Date(a.followUpDate) - new Date(b.followUpDate))
                   .map((lead) => (
-                  <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2">
+                  <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="bg-[var(--color-primary)] text-white px-2.5 py-0.5 rounded-full font-bold text-[10px] uppercase tracking-wider">{lead.followUpAction || 'Call'}</span>
-                        <strong className="text-sm text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
+                        <strong className="text-sm text-[var(--color-heading)] font-bold break-words">{lead.instituteName}</strong>
                       </div>
-                      <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{lead.mobileNo}</a></p>
+                      <p className="text-[var(--color-body)] break-words">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{lead.mobileNo}</a></p>
                     </div>
                     
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                    <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-[var(--color-border)]">
                       <button
                         onClick={() => handleWhatsAppReminder(lead, 'followup')}
-                        className="bg-[#25D366] hover:opacity-90 text-white px-4 py-2.5 rounded-xl font-bold text-[10px] cursor-pointer transition shadow-sm flex items-center gap-1.5"
+                        className="bg-[#25D366] hover:opacity-90 text-white px-4 py-2.5 rounded-xl font-bold text-[10px] cursor-pointer transition shadow-sm flex items-center gap-1.5 shrink-0"
                       >
                         <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                         WhatsApp Remind
                       </button>
-                      <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-3.5 rounded-2xl text-right sm:min-w-[180px]">
+                      <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-3.5 rounded-2xl text-right sm:min-w-[180px] shrink-0">
                         <span className="text-[var(--color-body)] block text-[10px] font-medium uppercase">Scheduled For:</span>
                         <strong className="text-emerald-600 text-xs font-bold">📅 {new Date(lead.followUpDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</strong>
                         {lead.followUpTime && <span className="block text-[var(--color-heading)] font-semibold mt-0.5">⏰ {lead.followUpTime}</span>}
@@ -1619,14 +1621,14 @@ const SalespersonForm = ({ userId, onLogout }) => {
             {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.success}</div>}
             {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.error}</div>}
 
-            <form onSubmit={handleLeadSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 space-y-6 shadow-sm">
+            <form onSubmit={handleLeadSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 space-y-6 shadow-sm">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
                 <div>
                   <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">Record Visit / New Lead</h3>
                   <p className="text-[11px] text-[var(--color-body)] mt-0.5">Date and time are automatically recorded upon submission.</p>
                 </div>
-                <button type="button" onClick={handleAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2">
-                  📍 Auto-Detect Current GPS Location & Address
+                <button type="button" onClick={handleAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2 shrink-0">
+                  Locate Me
                 </button>
               </div>
 
@@ -1663,7 +1665,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   </select>
                 </div>
 
-                {/* 🌟 Single Clean Autocomplete Input for City using datalist */}
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City / District *</label>
                   <input
@@ -1742,11 +1743,11 @@ const SalespersonForm = ({ userId, onLogout }) => {
             {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.success}</div>}
             {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.error}</div>}
 
-            <form onSubmit={handleSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 space-y-6 shadow-sm">
+            <form onSubmit={handleSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 space-y-6 shadow-sm">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
                 <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">1. Client Details & Installment Ledger Lookup</h3>
-                <button type="button" onClick={handleInvoiceAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2">
-                  📍 Auto-Detect Current GPS Location & Address
+                <button type="button" onClick={handleInvoiceAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2 shrink-0">
+                  Locate Me
                 </button>
               </div>
 
@@ -1795,7 +1796,6 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   </select>
                 </div>
 
-                {/* 🌟 Single Clean Autocomplete Input for Invoice City using datalist */}
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City *</label>
                   <input
@@ -1839,12 +1839,12 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">2. Installment & Due Payment Ledger</h3>
                  
                 {formData.previousDueBalance > 0 && (
-                  <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex justify-between items-center text-xs">
+                  <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
                     <div>
                       <strong className="text-amber-600 block font-bold">⚠️ Outstanding Due Balance Automatically Loaded:</strong>
                       <span className="text-[var(--color-body)]">This institute has a pending due balance that this payment will clear against.</span>
                     </div>
-                    <span className="text-amber-600 font-extrabold text-sm">₹{formData.previousDueBalance.toLocaleString('en-IN')}</span>
+                    <span className="text-amber-600 font-extrabold text-sm shrink-0">₹{formData.previousDueBalance.toLocaleString('en-IN')}</span>
                   </div>
                 )}
 
@@ -1861,7 +1861,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
 
                 <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">
                   <label className="block text-[11px] font-semibold text-[var(--color-primary)] uppercase tracking-wider">🎁 Select Add-on Packages</label>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-[var(--color-heading)]">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-[var(--color-heading)]">
                     <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
                       <input type="checkbox" name="testModule" checked={addons.testModule} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
                       <span>Test Series Module (+₹5,000)</span>
@@ -1882,9 +1882,9 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   <div className="flex gap-2">
                     <input type="text" value={couponInput} disabled={isCouponApplied} onChange={(e) => setCouponInput(e.target.value)} placeholder="FLAT50" className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs font-mono" />
                     {!isCouponApplied ? (
-                      <button type="button" onClick={handleApplyCoupon} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-xl cursor-pointer font-semibold">Apply</button>
+                      <button type="button" onClick={handleApplyCoupon} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-xl cursor-pointer font-semibold shrink-0">Apply</button>
                     ) : (
-                      <button type="button" onClick={handleRemoveCoupon} className="bg-red-500/10 text-red-600 border border-red-500/20 text-xs px-5 py-2.5 rounded-xl cursor-pointer font-semibold">Remove</button>
+                      <button type="button" onClick={handleRemoveCoupon} className="bg-red-500/15 text-red-600 border border-red-500/20 text-xs px-5 py-2.5 rounded-xl cursor-pointer font-semibold shrink-0">Remove</button>
                     )}
                   </div>
                   {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
@@ -1896,19 +1896,19 @@ const SalespersonForm = ({ userId, onLogout }) => {
                 </div>
 
                 <div className="bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] space-y-2 text-xs text-[var(--color-heading)]">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span className="text-[var(--color-body)]">Current Package Subtotal + 18% GST:</span>
                     <span className="font-medium">₹{(formData.subtotalAmount + formData.gstAmount).toLocaleString('en-IN')}</span>
                   </div>
                   {formData.previousDueBalance > 0 && (
-                    <div className="flex justify-between text-amber-600 font-medium">
+                    <div className="flex justify-between gap-2 text-amber-600 font-medium">
                       <span>Pending Due Balance Carried Forward:</span>
                       <span>+ ₹{formData.previousDueBalance.toLocaleString('en-IN')}</span>
                     </div>
                   )}
-                  <div className="flex justify-between items-center pt-2 border-t border-[var(--color-border)] text-sm">
+                  <div className="flex justify-between items-center pt-2 border-t border-[var(--color-border)] text-sm gap-2">
                     <span className="font-bold text-[var(--color-heading)]">Grand Total (Bill + Past Dues):</span>
-                    <span className="text-base font-extrabold text-[var(--color-primary)]">
+                    <span className="text-sm sm:text-base font-extrabold text-[var(--color-primary)]">
                       ₹{formData.totalAmount.toLocaleString('en-IN')}
                     </span>
                   </div>
@@ -1919,7 +1919,7 @@ const SalespersonForm = ({ userId, onLogout }) => {
                   <input type="file" accept="image/*" required onChange={handleFileChange} className="block w-full text-xs text-[var(--color-body)] file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" />
                 </div>
 
-                <div className="bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] flex justify-between items-center text-xs">
+                <div className="bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-xs">
                   <span className="text-[var(--color-heading)] font-bold">Rest Due Balance After This Payment:</span>
                   <span className={`text-sm font-extrabold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
                     ₹{dueAmount.toLocaleString('en-IN')} {dueAmount === 0 ? '🎉 (Zero Due - Fully Settled)' : ''}

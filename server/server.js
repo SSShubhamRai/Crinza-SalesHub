@@ -81,10 +81,16 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB Limit restriction
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
+    // 🌟 Added support for HEIC/HEIF mobile image formats alongside standard images
+    const isImage = file.mimetype.startsWith("image/") || 
+                    file.mimetype === "image/heic" || 
+                    file.mimetype === "image/heif" || 
+                    file.originalname.match(/\.(heic|HEIC|heif|HEIF|jpg|jpeg|png|webp)$/);
+
+    if (isImage) {
       cb(null, true);
     } else {
-      cb(new Error("Only image files are allowed for uploads!"), false);
+      cb(new Error("Only image files (including HEIC) are allowed for uploads!"), false);
     }
   },
 });
@@ -127,35 +133,47 @@ const locationLogSchema = new mongoose.Schema({
   latitude: { type: Number, required: true },
   longitude: { type: Number, required: true },
   date: { type: String, required: true, index: true }, // Format: 'YYYY-MM-DD'
-  isMocked: { type: Boolean, default: false },         // 👈 Anti-Bypass Security Flag
+  isMocked: { type: Boolean, default: false },        // 👈 Anti-Bypass Security Flag
   timestamp: { type: Date, default: Date.now },
 });
 const LocationLog = mongoose.model("LocationLog", locationLogSchema);
 
 // =========================================================================
-// --- 📐 OSRM ACTUAL ROAD DISTANCE HELPER ---
+// --- 📐 Haversine Formula Helper & Drift Filtering (200m Threshold) ---
 // =========================================================================
-async function calculateOSRMRouteDistance(coords) {
-  if (!coords || coords.length < 2) return 0;
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the earth in km
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // Distance in km
+}
 
-  try {
-    // OSRM expects coordinates in "longitude,latitude" format separated by semicolons
-    const coordinatesString = coords
-      .map(pt => `${pt.longitude},${pt.latitude}`)
-      .join(';');
+function deg2rad(deg) {
+  return deg * (Math.PI / 180);
+}
 
-    const url = `https://router.project-osrm.org/route/v1/driving/${coordinatesString}?overview=false`;
-    
-    const response = await axios.get(url);
-    if (response.data && response.data.routes && response.data.routes.length > 0) {
-      // OSRM returns distance in meters, convert to Kilometers and round to 2 decimals
-      const distanceMeters = response.data.routes[0].distance;
-      return Number((distanceMeters / 1000).toFixed(2));
+// 🌟 Local Distance Calculation with 200 Meters Threshold
+function calculateValidDistance(coordinatesList) {
+  let totalDistance = 0;
+  const MIN_DISTANCE_THRESHOLD = 0.2; // 0.2 KM = 200 meters threshold to prevent fake indoor/jitter counts
+
+  for (let i = 1; i < coordinatesList.length; i++) {
+    const prev = coordinatesList[i - 1];
+    const curr = coordinatesList[i];
+
+    const dist = calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+
+    if (dist >= MIN_DISTANCE_THRESHOLD) {
+      totalDistance += dist;
     }
-  } catch (err) {
-    console.error("🔥 OSRM Routing Error:", err.message);
   }
-  return 0;
+
+  return Number(totalDistance.toFixed(2));
 }
 
 // =========================================================================
@@ -185,7 +203,6 @@ io.on("connection", (socket) => {
   socket.on("register_user", ({ userId }) => {
     if (!userId) return;
 
-    // Agar is userId ka pehle se koi active session hai, toh purane device ko force logout bhej do
     if (activeUserSessions[userId] && activeUserSessions[userId] !== socket.id) {
       io.to(activeUserSessions[userId]).emit("force_logout", {
         message: "Aapne yeh ID kisi doosre device par login kar li hai, isliye yahan se session expire ho gaya hai.",
@@ -196,13 +213,12 @@ io.on("connection", (socket) => {
     console.log(`👤 Active Session Registered for: ${userId} (${socket.id})`);
   });
 
-  // Salesperson sends continuous live location updates with Smart Drift & Teleportation Anti-Bypass Filter
+  // Salesperson sends continuous live location updates with 200m Jitter & Teleportation Anti-Bypass Filter
   socket.on("update_location", async (data) => {
     try {
       const { salespersonId, latitude, longitude } = data;
       if (!salespersonId || !latitude || !longitude) return;
 
-      // Security check: ensure socket user matches reporting ID
       if (socket.user.userId !== salespersonId && socket.user.role !== 'admin' && socket.user.role !== 'boss') {
         return;
       }
@@ -210,24 +226,16 @@ io.on("connection", (socket) => {
       const currentDate = new Date().toISOString().split("T")[0];
       const currentTime = new Date();
 
-      // 🌟 Check last logged location today to filter out jitter and detect fake teleportation
       const lastLog = await LocationLog.findOne({ salespersonId, date: currentDate }).sort({ timestamp: -1 });
 
       let isMockedByTeleport = false;
 
       if (lastLog) {
-        const R = 6371; // Earth radius in KM
-        const dLat = (latitude - lastLog.latitude) * (Math.PI / 180);
-        const dLon = (longitude - lastLog.longitude) * (Math.PI / 180);
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                  Math.cos(lastLog.latitude * (Math.PI / 180)) * Math.cos(latitude * (Math.PI / 180)) *
-                  Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        const distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
+        const distanceKm = calculateDistance(lastLog.latitude, lastLog.longitude, latitude, longitude);
         const timeDiffHours = (currentTime - new Date(lastLog.timestamp)) / (1000 * 60 * 60);
 
-        // 1. Jitter Filter: Agar user 15 meters (0.015 KM) ke daayre mein hi baitha hai
-        if (distanceKm < 0.015) {
+        // 1. Jitter Filter: Agar user 200 meters (0.2 KM) ke daayre mein hi baitha hai
+        if (distanceKm < 0.2) {
           io.emit("live_location_broadcast", {
             salespersonId,
             latitude,
@@ -545,11 +553,11 @@ app.post(
         return res.status(400).json({ message: "Invalid password" });
 
       const token = jwt.sign(
-        { userId: user.userId, role: user.role },
+        { userId: user.userId, name: user.name, role: user.role },
         process.env.JWT_SECRET || "secret",
         { expiresIn: "1d" },
       );
-      res.json({ token, userId: user.userId, role: user.role });
+      res.json({ token, userId: user.userId, name: user.name, role: user.role });
     } catch (err) {
       res.status(500).json({ message: "Server error" });
     }
@@ -682,8 +690,7 @@ app.get(
         date: queryDate,
       }).sort({ timestamp: 1 });
 
-      // 🌟 OSRM API call for actual road-mapped distance calculation
-      const totalDistanceKm = await calculateOSRMRouteDistance(logs);
+      const totalDistanceKm = calculateValidDistance(logs);
 
       res.json({
         salespersonId,
@@ -701,6 +708,33 @@ app.get(
     }
   },
 );
+
+// 🌟 Helper for Delay to prevent Nominatim Rate Limit errors (429 / 500)
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// 🏷️ Reverse Geocoding Proxy Route with Built-in Delay & Safe Fallback
+app.get("/api/boss/reverse-geocode", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const { lat, lon } = req.query;
+    if (!lat || !lon) {
+      return res.status(400).json({ message: "Lat and Lon are required" });
+    }
+
+    // 🌟 1 second delay to respect OSM Nominatim rate limits
+    await delay(1000);
+
+    const response = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`, {
+      headers: { 'User-Agent': 'CrinzaInvoicePortal/1.0' }
+    });
+    
+    res.json({ displayName: response.data.display_name || "Unknown Location" });
+  } catch (err) {
+    res.json({ displayName: "Location name unavailable (Rate Limited)" });
+  }
+});
 
 app.get("/api/boss/employees", verifyToken, async (req, res) => {
   try {
@@ -981,7 +1015,7 @@ app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 🧾 INVOICE & BILLING API ROUTES (WITH DUE LEDGER & ALIAS) ---
+// --- 🧾 INVOICE & BILLING API ROUTES ---
 // =========================================================================
 const handleInvoiceSubmission = async (req, res) => {
   try {
@@ -1160,12 +1194,12 @@ app.post("/api/invoices/reject/:id", verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 👤 SALESPERSON SPECIFIC ROUTES (FIXED CONSOLIDATED DEALS LEDGER) ---
+// --- 👤 SALESPERSON SPECIFIC ROUTES ---
 // =========================================================================
 app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
   try {
     const rawDeals = await Invoice.find({ salespersonId: req.user.userId }).sort({
-      createdAt: 1, // Chronological order (purane se naye) taaki calculations sahi chalein
+      createdAt: 1, 
     });
 
     const consolidatedMap = {};
@@ -1199,7 +1233,6 @@ app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
       const currentDealTotal = Number(deal.totalAmount) || 0;
       const currentDealPaid = Number(deal.paidAmount) || 0;
 
-      // 🌟 FIXED LEDGER CALCULATION:
       if (deal.baseAmount === 0 && deal.previousDueBalance > 0) {
         consolidatedMap[key].paidAmount += currentDealPaid;
       } else {
