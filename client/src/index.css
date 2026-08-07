@@ -16,17 +16,17 @@
 
   --color-accent: #F9A8D4;
 
-  /* Surface Colors */
+  /* Surface Colors (Light Default) */
   --color-background: #FCFCFF;
   --color-surface: #F8FAFC;
   --color-card: #FFFFFF;
 
-  /* Text Colors */
+  /* Text Colors (Light Default) */
   --color-heading: #111827;
   --color-body: #6B7280;
   --color-inverse: #FFFFFF;
 
-  /* Border Colors */
+  /* Border Colors (Light Default) */
   --color-border: #E5E7EB;
 
   /* Status Colors */
@@ -39,6 +39,20 @@
   --font-body: "Inter", sans-serif;
 }
 
+/* ==========================================
+   🌙 DARK MODE OVERRIDES FOR @theme
+   ========================================== */
+.dark {
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-card: #1e293b;
+
+  --color-heading: #f1f5f9;
+  --color-body: #94a3b8;
+
+  --color-border: #334155;
+}
+
 /* Base Body Styles with Font Smoothing */
 body {
   background-color: var(--color-background);
@@ -49,6 +63,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* Headings Font Family */

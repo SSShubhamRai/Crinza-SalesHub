@@ -15,7 +15,6 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(0);
 
-  // Countdown timer for OTP resend
   useEffect(() => {
     let timer;
     if (resendCountdown > 0) {
@@ -43,7 +42,7 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
 
       toast.success(data.message || 'OTP sent to your registered email!');
       setForgotStep(2);
-      setResendCountdown(60); // 60-second cooldown
+      setResendCountdown(60);
     } catch (err) {
       toast.error(err.message || 'Error sending OTP');
     } finally {
@@ -82,11 +81,11 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
   };
 
   return (
-    <div className="space-y-4 animate-fadeIn">
-      <div className="text-center pb-3 border-b border-[var(--color-border)]">
-        <h2 className="text-sm font-bold text-[var(--color-heading)]">Reset Your Password</h2>
-        <p className="text-[11px] text-[var(--color-body)] mt-0.5 font-medium">
-          {forgotStep === 1 ? 'Enter your Employee ID or Registered Email' : 'Enter the OTP received on your registered email'}
+    <div className="space-y-5 animate-in fade-in zoom-in-95 duration-300">
+      <div className="text-center pb-4 border-b border-[var(--color-border)]/60">
+        <h2 className="text-base font-bold text-[var(--color-heading)] tracking-tight">Reset Your Password</h2>
+        <p className="text-xs text-[var(--color-body)] mt-1 font-medium leading-relaxed">
+          {forgotStep === 1 ? 'Enter your Employee ID or Registered Email to receive verification code.' : 'Enter the 6-digit verification code sent to your email.'}
         </p>
       </div>
 
@@ -96,8 +95,8 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
             <label htmlFor="identifier" className="block text-[11px] font-bold uppercase tracking-wider text-[var(--color-heading)]">
               Employee ID or Email *
             </label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-body)] pointer-events-none">
+            <div className="relative group">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-body)] group-focus-within:text-[var(--color-primary)] transition-colors pointer-events-none">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
                 </svg>
@@ -109,45 +108,45 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
                 autoComplete="email"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value.trimStart())}
-                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl pl-11 pr-4 py-3 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] font-medium"
+                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl pl-11 pr-4 py-3.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all font-medium shadow-2xs"
                 placeholder="e.g. EMP101 or email@crinza.com"
               />
             </div>
           </div>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] font-semibold py-3 rounded-2xl text-xs cursor-pointer hover:bg-[var(--color-border)]/30 transition-colors"
+              className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] font-semibold py-3.5 rounded-2xl text-xs cursor-pointer hover:bg-[var(--color-border)]/40 transition-all active:scale-95 shadow-2xs"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={forgotLoading}
-              className="flex-1 bg-[var(--color-primary)] text-white font-semibold py-3 rounded-2xl text-xs cursor-pointer disabled:opacity-50 shadow-md transition-all active:scale-[0.98]"
+              className="flex-1 bg-[var(--color-primary)] hover:opacity-95 text-white font-semibold py-3.5 rounded-2xl text-xs cursor-pointer disabled:opacity-50 shadow-lg shadow-[var(--color-primary)]/25 transition-all active:scale-95"
             >
               {forgotLoading ? 'Sending...' : 'Send OTP'}
             </button>
           </div>
         </form>
       ) : (
-        <form onSubmit={handleResetPassword} className="space-y-3">
-          <div className="space-y-1">
+        <form onSubmit={handleResetPassword} className="space-y-4">
+          <div className="space-y-1.5">
             <div className="flex justify-between items-center">
-              <label htmlFor="otp" className="block text-[10px] font-bold uppercase tracking-wider text-[var(--color-heading)]">Enter 6-Digit OTP *</label>
+              <label htmlFor="otp" className="block text-[11px] font-bold uppercase tracking-wider text-[var(--color-heading)]">Enter 6-Digit OTP *</label>
               <button
                 type="button"
                 disabled={resendCountdown > 0}
                 onClick={handleSendOtp}
-                className="text-[10px] font-semibold text-[var(--color-primary)] disabled:text-[var(--color-body)] disabled:opacity-50 hover:underline cursor-pointer"
+                className="text-xs font-semibold text-[var(--color-primary)] disabled:text-[var(--color-body)] disabled:opacity-50 hover:underline cursor-pointer transition-all"
               >
-                {resendCountdown > 0 ? `Resend OTP in ${resendCountdown}s` : 'Resend OTP'}
+                {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : 'Resend OTP'}
               </button>
             </div>
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-body)] pointer-events-none">
+            <div className="relative group">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-body)] group-focus-within:text-[var(--color-primary)] transition-colors pointer-events-none">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                 </svg>
@@ -159,16 +158,16 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
                 maxLength={6}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.trimStart())}
-                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-xl pl-10 pr-3 py-3 text-xs font-mono tracking-widest text-center font-bold focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)]"
+                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl pl-11 pr-4 py-3.5 text-xs font-mono tracking-[0.3em] text-center font-bold focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all shadow-2xs"
                 placeholder="123456"
               />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label htmlFor="newPassword" className="block text-[10px] font-bold uppercase tracking-wider text-[var(--color-heading)]">New Password (Min 6 chars) *</label>
-            <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--color-body)] pointer-events-none">
+          <div className="space-y-1.5">
+            <label htmlFor="newPassword" className="block text-[11px] font-bold uppercase tracking-wider text-[var(--color-heading)]">New Password (Min 6 chars) *</label>
+            <div className="relative group">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-body)] group-focus-within:text-[var(--color-primary)] transition-colors pointer-events-none">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
@@ -180,13 +179,13 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-xl pl-10 pr-12 py-3 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)]"
+                className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl pl-11 pr-12 py-3.5 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all shadow-2xs"
                 placeholder="••••••••"
               />
               <button
                 type="button"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer p-1"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer p-1 transition-colors"
                 aria-label="Toggle password visibility"
               >
                 {showNewPassword ? (
@@ -198,18 +197,18 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
             </div>
           </div>
 
-          <div className="flex gap-2 pt-2">
+          <div className="flex gap-3 pt-2">
             <button
               type="button"
               onClick={() => setForgotStep(1)}
-              className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] font-semibold py-3 rounded-2xl text-xs cursor-pointer hover:bg-[var(--color-border)]/30 transition-colors"
+              className="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] font-semibold py-3.5 rounded-2xl text-xs cursor-pointer hover:bg-[var(--color-border)]/40 transition-all active:scale-95 shadow-2xs"
             >
               Back
             </button>
             <button
               type="submit"
               disabled={forgotLoading}
-              className="flex-1 bg-[var(--color-primary)] text-white font-semibold py-3 rounded-2xl text-xs cursor-pointer disabled:opacity-50 shadow-md transition-all active:scale-[0.98]"
+              className="flex-1 bg-[var(--color-primary)] hover:opacity-95 text-white font-semibold py-3.5 rounded-2xl text-xs cursor-pointer disabled:opacity-50 shadow-lg shadow-[var(--color-primary)]/25 transition-all active:scale-95"
             >
               {forgotLoading ? 'Updating...' : 'Update Password'}
             </button>
@@ -220,15 +219,19 @@ const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
   );
 };
 
-// 🌟 Main Login Component with Caps Lock Detection
+// 🌟 Main Login Component with Smooth Animations & Interactive Experience
 const Login = ({ onLoginSuccess }) => {
   const [credentials, setCredentials] = useState({ userId: '', password: '' });
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutTimer, setLockoutTimer] = useState(0);
 
   const socketRef = useRef(null);
 
@@ -236,7 +239,22 @@ const Login = ({ onLoginSuccess }) => {
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
 
-  // Force Logout Socket Listener
+  useEffect(() => {
+    const savedUserId = localStorage.getItem('rememberedUserId');
+    if (savedUserId) {
+      setCredentials(prev => ({ ...prev, userId: savedUserId }));
+      setRememberMe(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    let timer;
+    if (lockoutTimer > 0) {
+      timer = setInterval(() => setLockoutTimer(prev => prev - 1), 1000);
+    }
+    return () => clearInterval(timer);
+  }, [lockoutTimer]);
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userId = localStorage.getItem('userId');
@@ -263,7 +281,7 @@ const Login = ({ onLoginSuccess }) => {
     };
   }, [API_BASE]);
 
-  // Throttled Mouse Parallax Effect
+  // Mouse Parallax Glow Effect
   useEffect(() => {
     let animationFrameId = null;
 
@@ -272,8 +290,8 @@ const Login = ({ onLoginSuccess }) => {
 
       animationFrameId = requestAnimationFrame(() => {
         const { innerWidth, innerHeight } = window;
-        const x = (e.clientX / innerWidth - 0.5) * 20;
-        const y = (e.clientY / innerHeight - 0.5) * 20;
+        const x = (e.clientX / innerWidth - 0.5) * 30;
+        const y = (e.clientY / innerHeight - 0.5) * 30;
         setMousePos({ x, y });
         animationFrameId = null;
       });
@@ -298,10 +316,21 @@ const Login = ({ onLoginSuccess }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (lockoutTimer > 0) {
+      toast.error(`Too many failed attempts. Please wait ${lockoutTimer}s.`);
+      return;
+    }
+
     setLoading(true);
 
     try {
       const data = await loginUser(credentials);
+
+      if (rememberMe) {
+        localStorage.setItem('rememberedUserId', credentials.userId);
+      } else {
+        localStorage.removeItem('rememberedUserId');
+      }
 
       localStorage.setItem('token', data.token);
       localStorage.setItem('role', data.role);
@@ -316,72 +345,111 @@ const Login = ({ onLoginSuccess }) => {
       socketRef.current = io(API_BASE, { auth: { token: data.token } });
       socketRef.current.emit('register_user', { userId: data.userId });
 
+      setFailedAttempts(0);
       toast.success(`Welcome back, ${data.userId}!`);
       onLoginSuccess(data.token, data.role, data.userId);
     } catch (err) {
-      toast.error(
-        err.response?.data?.message || 
-        'Server connection error. Check if Backend is running!'
-      );
+      const newFailedCount = failedAttempts + 1;
+      setFailedAttempts(newFailedCount);
+
+      if (newFailedCount >= 5) {
+        setLockoutTimer(30);
+        toast.error('Too many failed attempts! Account temporarily locked for 30 seconds.');
+      } else {
+        toast.error(
+          err.response?.data?.message || 
+          'Server connection error. Check credentials or backend status!'
+        );
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-[var(--color-background)] transition-colors duration-300 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-[var(--color-background)] transition-colors duration-500 relative overflow-hidden">
       
+      {/* 🌟 Custom CSS Keyframe Styles for Floating Animation */}
+      <style>{`
+        @keyframes floatOrb {
+          0%, 100% { transform: translateY(0px) scale(1); }
+          50% { transform: translateY(-20px) scale(1.05); }
+        }
+        .animate-float-slow {
+          animation: floatOrb 8s ease-in-out infinite;
+        }
+        .animate-float-delayed {
+          animation: floatOrb 10s ease-in-out infinite 3s;
+        }
+        @keyframes cardEntrance {
+          0% { opacity: 0; transform: translateY(20px) scale(0.97); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-card-entrance {
+          animation: cardEntrance 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+      `}</style>
+
+      {/* 🌟 Animated Floating Ambient Glow Orbs */}
       <div 
-        className="absolute w-96 h-96 bg-[var(--color-primary)]/15 rounded-full blur-3xl pointer-events-none transition-transform duration-300 ease-out"
+        className="absolute w-[450px] h-[450px] bg-[var(--color-primary)]/15 rounded-full blur-[120px] pointer-events-none animate-float-slow"
         style={{
-          transform: `translate(${mousePos.x * 1.5}px, ${mousePos.y * 1.5}px)`,
-          top: '10%',
-          left: '15%'
+          transform: `translate(${mousePos.x * 1.2}px, ${mousePos.y * 1.2}px)`,
+          top: '5%',
+          left: '10%'
         }}
       ></div>
       <div 
-        className="absolute w-96 h-96 bg-[var(--color-primary)]/10 rounded-full blur-3xl pointer-events-none transition-transform duration-300 ease-out"
+        className="absolute w-[450px] h-[450px] bg-[var(--color-primary)]/10 rounded-full blur-[120px] pointer-events-none animate-float-delayed"
         style={{
-          transform: `translate(${-mousePos.x * 1.5}px, ${-mousePos.y * 1.5}px)`,
-          bottom: '10%',
-          right: '15%'
+          transform: `translate(${-mousePos.x * 1.2}px, ${-mousePos.y * 1.2}px)`,
+          bottom: '5%',
+          right: '10%'
         }}
       ></div>
 
-      <div className="max-w-md w-full bg-[var(--color-card)] rounded-3xl shadow-2xl p-8 sm:p-10 border border-[var(--color-border)] backdrop-blur-xl space-y-6 relative z-10 transition-all duration-300 animate-fadeIn ring-1 ring-white/10">
+      {/* 🌟 Main Card Container with Entrance Animation & Glassmorphism */}
+      <div className="max-w-md w-full bg-[var(--color-card)]/85 rounded-[2.5rem] shadow-[0_25px_60px_rgba(0,0,0,0.15)] p-8 sm:p-10 border border-[var(--color-border)] backdrop-blur-xl space-y-8 relative z-10 animate-card-entrance hover:shadow-[0_30px_70px_rgba(0,0,0,0.18)] transition-all duration-300">
         
-        <div className="text-center flex flex-col items-center space-y-3">
+        {/* Header Section / Logo with Pulse Hover */}
+        <div className="text-center flex flex-col items-center space-y-4 pt-2">
           {!imgError ? (
-            <div className="p-3.5 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shadow-sm mb-1 transform hover:scale-105 transition-transform duration-200">
+            <div className="p-4 bg-[var(--color-surface)] rounded-3xl border border-[var(--color-border)] shadow-md shadow-black/5 transform hover:scale-105 hover:shadow-xl hover:shadow-[var(--color-primary)]/15 transition-all duration-300">
               <img 
                 src={logoImage} 
                 alt="Crinza Logo" 
-                className="h-12 sm:h-14 w-auto object-contain"
+                className="h-14 sm:h-16 w-auto object-contain"
                 onError={() => setImgError(true)}
               />
             </div>
           ) : (
-            <div className="w-14 h-14 rounded-2xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center font-black text-xl mb-1 border border-[var(--color-primary)]/20 shadow-sm">
+            <div className="w-16 h-16 rounded-3xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center font-black text-2xl mb-1 border border-[var(--color-primary)]/20 shadow-md">
               C
             </div>
           )}
           
           <div className="space-y-1">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-[var(--color-heading)] tracking-tight">
-              Welcome to CRINZA
+            <h1 className="text-2xl sm:text-3xl font-black text-[var(--color-heading)] tracking-tight">
+              Welcome Back
             </h1>
+            <p className="text-xs text-[var(--color-body)] font-medium">
+              Sign in to access your Crinza Sales Portal
+            </p>
           </div>
         </div>
 
+        {/* Form Switcher Area */}
         <div className="transition-all duration-300 ease-in-out">
           {!showForgotModal ? (
-            <form onSubmit={handleSubmit} className="space-y-4 animate-fadeIn">
+            <form onSubmit={handleSubmit} className="space-y-5 animate-in fade-in duration-300">
+              
+              {/* User ID Field */}
               <div className="space-y-1.5">
                 <label htmlFor="userId" className="block text-[11px] font-bold uppercase tracking-wider text-[var(--color-heading)]">
                   User ID
                 </label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-body)] pointer-events-none">
+                <div className="relative group">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-body)] group-focus-within:text-[var(--color-primary)] transition-colors pointer-events-none">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
@@ -394,12 +462,13 @@ const Login = ({ onLoginSuccess }) => {
                     autoComplete="username"
                     value={credentials.userId}
                     onChange={handleChange}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl pl-11 pr-4 py-3.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] transition-all duration-200 shadow-sm font-medium"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl pl-11 pr-4 py-3.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all duration-200 shadow-2xs font-semibold"
                     placeholder="e.g. BOSS101, EMP101"
                   />
                 </div>
               </div>
 
+              {/* Password Field */}
               <div className="space-y-1.5">
                 <div className="flex justify-between items-center">
                   <label htmlFor="password" className="block text-[11px] font-bold uppercase tracking-wider text-[var(--color-heading)]">
@@ -408,14 +477,14 @@ const Login = ({ onLoginSuccess }) => {
                   <button
                     type="button"
                     onClick={() => setShowForgotModal(true)}
-                    className="text-[11px] font-semibold text-[var(--color-primary)] hover:underline cursor-pointer"
+                    className="text-xs font-semibold text-[var(--color-primary)] hover:underline cursor-pointer transition-all"
                   >
                     Forgot Password?
                   </button>
                 </div>
                 
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-body)] pointer-events-none">
+                <div className="relative group">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-body)] group-focus-within:text-[var(--color-primary)] transition-colors pointer-events-none">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
@@ -430,13 +499,13 @@ const Login = ({ onLoginSuccess }) => {
                     onChange={handleChange}
                     onKeyDown={handleKeyDown}
                     onKeyUp={handleKeyDown}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl pl-11 pr-12 py-3.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] transition-all duration-200 shadow-sm font-medium"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] rounded-2xl pl-11 pr-12 py-3.5 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all duration-200 shadow-2xs font-semibold"
                     placeholder="••••••••"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer p-1"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer p-1 transition-colors"
                     aria-label="Toggle password visibility"
                   >
                     {showPassword ? (
@@ -447,16 +516,30 @@ const Login = ({ onLoginSuccess }) => {
                   </button>
                 </div>
                 {capsLockOn && (
-                  <p className="text-[10px] text-amber-500 font-semibold tracking-wide pl-1 mt-1">
-                    ⚠️ Caps Lock is on
+                  <p className="text-[10px] text-amber-500 font-semibold tracking-wide pl-1 mt-1 flex items-center gap-1 animate-pulse">
+                    <span>⚠️</span> Caps Lock is on
                   </p>
                 )}
               </div>
 
+              {/* Remember Me Checkbox */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <label className="flex items-center gap-2.5 cursor-pointer text-[var(--color-body)] select-none group">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-[var(--color-border)] accent-[var(--color-primary)] cursor-pointer transition-all"
+                  />
+                  <span className="group-hover:text-[var(--color-heading)] transition-colors font-medium">Remember my ID</span>
+                </label>
+              </div>
+
+              {/* Submit Button with Hover Lift */}
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full mt-3 bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition-all duration-200 cursor-pointer disabled:opacity-50 shadow-lg shadow-[var(--color-primary)]/20 flex items-center justify-center text-xs sm:text-sm active:scale-[0.98]"
+                disabled={loading || lockoutTimer > 0}
+                className="w-full mt-2 bg-[var(--color-primary)] hover:opacity-95 hover:shadow-xl hover:-translate-y-0.5 text-white font-semibold py-4 rounded-2xl transition-all duration-200 cursor-pointer disabled:opacity-50 shadow-lg shadow-[var(--color-primary)]/25 flex items-center justify-center text-xs sm:text-sm active:scale-95"
               >
                 {loading ? (
                   <span className="flex items-center gap-2">
@@ -466,7 +549,7 @@ const Login = ({ onLoginSuccess }) => {
                     </svg>
                     Authenticating...
                   </span>
-                ) : 'Sign In'}
+                ) : lockoutTimer > 0 ? `Locked (${lockoutTimer}s)` : 'Sign In'}
               </button>
             </form>
           ) : (

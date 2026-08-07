@@ -2,6 +2,7 @@
  * =========================================================================
  * 🚀 CRINZA INVOICE & LEAD MANAGEMENT SYSTEM - BACKEND SERVER (`server.js`)
  * =========================================================================
+ * Fully Updated with KPI Summary, Single Deal Transfer, & Advanced Invoice Payload Handling
  */
 
 const express = require("express");
@@ -728,6 +729,63 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
   }
 });
 
+// 🌟 Global KPI Summary API Route for Admin Dashboard Cards
+app.get("/api/boss/kpi-summary", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+
+    const totalInvoices = await Invoice.aggregate([
+      { $match: { status: "approved" } },
+      { 
+        $group: { 
+          _id: null, 
+          totalRevenue: { $sum: "$totalAmount" }, 
+          totalCollected: { $sum: "$paidAmount" } 
+        } 
+      }
+    ]);
+
+    const activeLeadsCount = await Lead.countDocuments();
+    const activeEmployeesCount = await User.countDocuments({ role: "salesperson" });
+
+    res.json({
+      totalRevenue: totalInvoices[0]?.totalRevenue || 0,
+      totalCollected: totalInvoices[0]?.totalCollected || 0,
+      activeLeadsCount,
+      activeEmployeesCount
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch KPI summary", error: err.message });
+  }
+});
+
+// 🌟 Single Deal Transfer API Route
+app.post("/api/boss/transfer-single-deal", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const { dealId, newSalespersonId } = req.body;
+    if (!dealId || !newSalespersonId) {
+      return res.status(400).json({ message: "Deal ID and Target Salesperson are required!" });
+    }
+
+    const updatedDeal = await Invoice.findByIdAndUpdate(
+      dealId,
+      { $set: { salespersonId: newSalespersonId } },
+      { new: true }
+    );
+
+    if (!updatedDeal) return res.status(404).json({ message: "Deal not found" });
+
+    res.json({ success: true, message: `Deal successfully reassigned to ${newSalespersonId}!` });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to transfer deal", error: err.message });
+  }
+});
+
 app.get(
   "/api/boss/salesperson-travel/:salespersonId",
   verifyToken,
@@ -1323,6 +1381,26 @@ app.get("/api/salesperson/notifications", verifyToken, async (req, res) => {
     res.json(formattedNotifications);
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch notifications", error: err.message });
+  }
+});
+
+// 🔔 Dismiss / Mark Task Notification as Read/Completed
+app.put("/api/salesperson/notifications/:id/dismiss", verifyToken, async (req, res) => {
+  try {
+    const taskId = req.params.id;
+    const task = await Task.findOneAndUpdate(
+      { _id: taskId, salespersonId: req.user.userId },
+      { $set: { status: "completed" } },
+      { new: true }
+    );
+
+    if (!task) {
+      return res.status(404).json({ message: "Task not found or unauthorized" });
+    }
+
+    res.json({ success: true, message: "Notification dismissed successfully!" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to dismiss notification", error: err.message });
   }
 });
 

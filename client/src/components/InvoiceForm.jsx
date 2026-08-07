@@ -23,11 +23,17 @@ const InvoiceForm = ({ onLogout }) => {
     packageValidity: '1 Year',
     baseAmount: 15000,
     subtotalAmount: 15000, 
-    gstAmount: 2700,      
+    gstAmount: 2700,       
+    previousDueBalance: 0,  // 🌟 Ledger Support
     totalAmount: 17700,    
     paidAmount: 0,
     couponCode: '',
     discountAmount: 0,
+    paymentMode: 'ONLINE', // 🌟 Payment Mode Support
+    utrNumber: '',
+    receiptNo: '',
+    chequeNo: '',
+    bankName: '',
     termsAndConditions: '1. Payment once made is non-refundable.\n2. Validity counts from application activation date.\n3. Taxes calculated as applicable.',
   };
 
@@ -42,6 +48,10 @@ const InvoiceForm = ({ onLogout }) => {
   const [addons, setAddons] = useState(initialAddons);
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState({ loading: false, success: '', error: '' });
+  const [lastSubmittedInvoiceId, setLastSubmittedInvoiceId] = useState('');
+
+  // Modal Preview State
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   // Coupon state
   const [couponInput, setCouponInput] = useState('');
@@ -61,7 +71,7 @@ const InvoiceForm = ({ onLogout }) => {
     ? City.getCitiesOfState('IN', selectedStateCode) 
     : [];
 
-  // Recalculate Subtotal, Discount, GST (18%), and Total whenever baseAmount, addons, or coupon changes
+  // Recalculate Subtotal, Discount, GST (18%), Previous Due, and Grand Total
   useEffect(() => {
     let totalAddonCost = 0;
     if (addons.testModule) totalAddonCost += ADDON_PRICES.testModule;
@@ -84,8 +94,11 @@ const InvoiceForm = ({ onLogout }) => {
     // Calculate 18% GST on the discounted subtotal
     const gst = discountedSubtotal * 0.18;
     
+    // Include previous due balance
+    const prevDue = Number(formData.previousDueBalance) || 0;
+    
     // Final Grand Total
-    const calculatedTotal = discountedSubtotal + gst;
+    const calculatedTotal = discountedSubtotal + gst + prevDue;
 
     setFormData((prev) => ({
       ...prev,
@@ -94,12 +107,12 @@ const InvoiceForm = ({ onLogout }) => {
       totalAmount: Math.round(calculatedTotal * 100) / 100,
       discountAmount: discount
     }));
-  }, [addons, formData.baseAmount, isCouponApplied, couponDetails]);
+  }, [addons, formData.baseAmount, formData.previousDueBalance, isCouponApplied, couponDetails]);
 
   // Auto-calculated Due Amount
   const dueAmount = Math.max(0, formData.totalAmount - formData.paidAmount);
 
-  // Apply Coupon Handler via API (Database Connected)
+  // Apply Coupon Handler via API
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) {
       setCouponError('Please enter a coupon code.');
@@ -223,7 +236,7 @@ const InvoiceForm = ({ onLogout }) => {
 
     setFormData((prev) => ({
       ...prev,
-      [name]: name === 'baseAmount' || name === 'paidAmount' ? Number(value) : value,
+      [name]: ['baseAmount', 'paidAmount', 'previousDueBalance'].includes(name) ? Number(value) : value,
     }));
 
     if (name === 'pincode') {
@@ -261,6 +274,7 @@ const InvoiceForm = ({ onLogout }) => {
     try {
       const data = await submitInvoiceRequest(payload);
 
+      setLastSubmittedInvoiceId(data.invoiceId || 'CRINZA');
       setStatus({
         loading: false,
         success: `Invoice Request #${data.invoiceId || ''} submitted successfully!`,
@@ -305,10 +319,18 @@ const InvoiceForm = ({ onLogout }) => {
           </button>
         </div>
 
-        {/* Status Alerts */}
+        {/* Status Alerts & WhatsApp Quick Share */}
         {status.success && (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl text-xs font-semibold">
-            {status.success}
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl text-xs font-semibold space-y-3">
+            <p>{status.success}</p>
+            <a
+              href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Hello! Your subscription invoice #${lastSubmittedInvoiceId} for ${formData.instituteName} has been generated successfully. Grand Total: ₹${formData.totalAmount}. Thank you for choosing Crinza Technologies!`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl transition shadow-sm font-bold"
+            >
+              📱 Share Summary via WhatsApp
+            </a>
           </div>
         )}
         {status.error && (
@@ -505,14 +527,96 @@ const InvoiceForm = ({ onLogout }) => {
               </div>
 
               <div>
-                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Paid Amount (₹)</label>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Previous Due Balance (₹)</label>
                 <input
                   type="number"
-                  name="paidAmount"
-                  value={formData.paidAmount}
+                  name="previousDueBalance"
+                  value={formData.previousDueBalance}
                   onChange={handleChange}
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)]"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-[var(--color-heading)] font-semibold text-amber-600"
+                  placeholder="0"
                 />
+              </div>
+            </div>
+
+            {/* 🌟 Payment Mode Selector & Details */}
+            <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">
+              <label className="block text-[11px] font-semibold text-[var(--color-primary)] uppercase tracking-wider">
+                💳 Payment Mode & Reference
+              </label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="block font-medium mb-1 text-[var(--color-heading)]">Payment Mode *</label>
+                  <select
+                    name="paymentMode"
+                    value={formData.paymentMode}
+                    onChange={handleChange}
+                    className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 outline-none text-[var(--color-heading)] font-medium cursor-pointer"
+                  >
+                    <option value="ONLINE">📱 Online UPI / Bank Transfer (UTR)</option>
+                    <option value="CASH">💵 Cash (Receipt Voucher)</option>
+                    <option value="CHEQUE">🏦 Cheque</option>
+                  </select>
+                </div>
+
+                {formData.paymentMode === 'ONLINE' && (
+                  <div>
+                    <label className="block font-medium mb-1 text-[var(--color-heading)]">UPI UTR / Ref Number *</label>
+                    <input
+                      type="text"
+                      name="utrNumber"
+                      required
+                      value={formData.utrNumber}
+                      onChange={handleChange}
+                      placeholder="Enter UTR transaction ID"
+                      className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 outline-none text-[var(--color-heading)] font-mono"
+                    />
+                  </div>
+                )}
+
+                {formData.paymentMode === 'CASH' && (
+                  <div>
+                    <label className="block font-medium mb-1 text-[var(--color-heading)]">Cash Receipt Voucher No *</label>
+                    <input
+                      type="text"
+                      name="receiptNo"
+                      required
+                      value={formData.receiptNo}
+                      onChange={handleChange}
+                      placeholder="Voucher #102"
+                      className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 outline-none text-[var(--color-heading)]"
+                    />
+                  </div>
+                )}
+
+                {formData.paymentMode === 'CHEQUE' && (
+                  <>
+                    <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Cheque Number *</label>
+                      <input
+                        type="text"
+                        name="chequeNo"
+                        required
+                        value={formData.chequeNo}
+                        onChange={handleChange}
+                        placeholder="Cheque No"
+                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 outline-none text-[var(--color-heading)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Bank Name *</label>
+                      <input
+                        type="text"
+                        name="bankName"
+                        required
+                        value={formData.bankName}
+                        onChange={handleChange}
+                        placeholder="HDFC Bank"
+                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 outline-none text-[var(--color-heading)]"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -568,7 +672,7 @@ const InvoiceForm = ({ onLogout }) => {
                   value={couponInput}
                   disabled={isCouponApplied}
                   onChange={(e) => setCouponInput(e.target.value)}
-                  placeholder="Enter Coupon (e.g. FLAT50)" 
+                  placeholder="Enter Coupon (e.g. CRINZA)" 
                   className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] disabled:opacity-60 font-mono font-bold"
                 />
                 {!isCouponApplied ? (
@@ -603,12 +707,18 @@ const InvoiceForm = ({ onLogout }) => {
                 <span className="text-[var(--color-body)]">Subtotal (Base + Add-ons {isCouponApplied ? '- Discount' : ''}):</span>
                 <span className="font-medium">₹{formData.subtotalAmount.toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex justify-between border-b border-[var(--color-border)] pb-2">
+              <div className="flex justify-between">
                 <span className="text-[var(--color-body)]">GST (18%):</span>
                 <span className="font-medium">₹{formData.gstAmount.toLocaleString('en-IN')}</span>
               </div>
-              <div className="flex justify-between items-center pt-1 text-sm">
-                <span className="font-bold text-[var(--color-heading)]">Grand Total (Incl. GST):</span>
+              {formData.previousDueBalance > 0 && (
+                <div className="flex justify-between text-amber-600 font-semibold">
+                  <span>Previous Due Balance Added:</span>
+                  <span>+₹{formData.previousDueBalance.toLocaleString('en-IN')}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center pt-2 border-t border-[var(--color-border)] text-sm">
+                <span className="font-bold text-[var(--color-heading)]">Grand Total:</span>
                 <span className="text-base font-extrabold text-[var(--color-primary)]">
                   ₹{formData.totalAmount.toLocaleString('en-IN')}
                 </span>
@@ -629,12 +739,25 @@ const InvoiceForm = ({ onLogout }) => {
               />
             </div>
 
-            {/* Auto Calculated Balance Banner */}
-            <div className="bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] flex justify-between items-center text-xs">
-              <span className="text-[var(--color-body)] font-medium">Calculated Due Amount:</span>
-              <span className={`text-sm font-bold ${dueAmount > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                ₹{dueAmount.toLocaleString('en-IN')}
-              </span>
+            {/* Paid & Due Inputs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Paid Amount (₹) *</label>
+                <input
+                  type="number"
+                  name="paidAmount"
+                  required
+                  value={formData.paidAmount}
+                  onChange={handleChange}
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 outline-none focus:border-[var(--color-primary)] text-emerald-600 font-bold"
+                />
+              </div>
+              <div>
+                <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Calculated Due Balance (₹)</label>
+                <div className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 font-bold text-red-500">
+                  ₹{dueAmount.toLocaleString('en-IN')}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -652,14 +775,106 @@ const InvoiceForm = ({ onLogout }) => {
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={status.loading}
-            className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition duration-200 cursor-pointer disabled:opacity-50 shadow-sm text-xs"
-          >
-            {status.loading ? 'Submitting Request...' : 'Generate & Send Invoice Request'}
-          </button>
+          {/* Action Buttons */}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setShowPreviewModal(true)}
+              className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[var(--color-heading)] font-semibold py-3.5 rounded-2xl transition cursor-pointer border border-[var(--color-border)] text-xs"
+            >
+              👁️ Preview Invoice Summary
+            </button>
+            <button
+              type="submit"
+              disabled={status.loading}
+              className="flex-1 bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition duration-200 cursor-pointer disabled:opacity-50 shadow-sm text-xs"
+            >
+              {status.loading ? 'Submitting Request...' : 'Generate & Send Invoice'}
+            </button>
+          </div>
         </form>
+
+        {/* 🌟 LIVE INVOICE PREVIEW MODAL */}
+        {showPreviewModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-lg w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
+                <h3 className="text-base font-extrabold text-[var(--color-primary)]">
+                  📄 Live Invoice Preview
+                </h3>
+                <button
+                  onClick={() => setShowPreviewModal(false)}
+                  className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)]">
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-body)]">Institute:</span>
+                  <strong className="text-[var(--color-heading)]">{formData.instituteName || 'Not entered'}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-body)]">App Name:</span>
+                  <strong className="text-[var(--color-heading)]">{formData.appName || 'Not entered'}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-body)]">Client Email:</span>
+                  <strong className="text-[var(--color-heading)]">{formData.email || 'Not entered'}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-body)]">Validity:</span>
+                  <strong>{formData.packageValidity}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--color-body)]">Payment Mode:</span>
+                  <strong>{formData.paymentMode}</strong>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-xs bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)]">
+                <div className="flex justify-between">
+                  <span>Base Amount:</span>
+                  <span>₹{formData.baseAmount.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Subtotal (After Discount):</span>
+                  <span>₹{formData.subtotalAmount.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>GST (18%):</span>
+                  <span>₹{formData.gstAmount.toLocaleString('en-IN')}</span>
+                </div>
+                {formData.previousDueBalance > 0 && (
+                  <div className="flex justify-between text-amber-600">
+                    <span>Previous Due Balance:</span>
+                    <span>+₹{formData.previousDueBalance.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-[var(--color-border)] pt-2 text-sm font-extrabold text-[var(--color-primary)]">
+                  <span>Grand Total:</span>
+                  <span>₹{formData.totalAmount.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between text-emerald-600 font-semibold">
+                  <span>Paid Amount:</span>
+                  <span>₹{formData.paidAmount.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between text-red-500 font-bold">
+                  <span>Due Balance:</span>
+                  <span>₹{dueAmount.toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="w-full bg-[var(--color-primary)] text-white py-3 rounded-2xl font-semibold text-xs cursor-pointer shadow-sm transition"
+              >
+                Close Preview & Edit
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

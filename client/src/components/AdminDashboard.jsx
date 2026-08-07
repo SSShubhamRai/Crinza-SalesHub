@@ -5,6 +5,7 @@
  * Description: Allows admin to track live tasks, live location, total distance,
  * manage team, coupons, advanced lead filters, Excel/CSV data export, real-time 
  * Mock Location / Spoofing Security Alerts, and Live Broadcast Announcements.
+ * Enhanced with: Glassmorphism, Micro-Interactions, Smooth Transitions, & Polish.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
@@ -36,6 +37,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [allSystemLeads, setAllSystemLeads] = useState([]);
   const [loadingSystemLeads, setLoadingSystemLeads] = useState(false);
 
+  // 📅 Date Range Filter States for Leads Export
+  const [exportStartDate, setExportStartDate] = useState("");
+  const [exportEndDate, setExportEndDate] = useState("");
+
   const [selectedEmpLogs, setSelectedEmpLogs] = useState(null);
   const [loadingLogs, setLoadingLoadingLogs] = useState(false);
 
@@ -46,10 +51,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
   // 🛰️ LIVE TRACKING & TRAVEL HISTORY STATES
   const [selectedTrackerEmp, setSelectedTrackerEmp] = useState("");
-  const [trackerDate, setTrackerDate] = useState(new Date().toISOString().split('T')[0]); // 📅 Date picker state for past days
+  const [trackerDate, setTrackerDate] = useState(new Date().toISOString().split('T')[0]);
   const [travelData, setTravelData] = useState({ totalDistanceKm: 0, routePoints: [] });
   const [liveLocations, setLiveLocations] = useState({});
-  const [resolvedAddresses, setResolvedAddresses] = useState({}); // 🏷️ Cache for Place Names
+  const [resolvedAddresses, setResolvedAddresses] = useState({});
 
   // 🚨 Security & Spoofing Alerts State
   const [spoofingAlerts, setSpoofingAlerts] = useState([]);
@@ -57,6 +62,9 @@ const AdminDashboard = ({ userId, onLogout }) => {
   // 📢 Team Broadcast Messaging States
   const [broadcastMsg, setBroadcastMsg] = useState({ title: "", message: "", priority: "normal" });
   const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+  // 📊 Global KPI Summary State
+  const [kpiSummary, setKpiSummary] = useState({ totalRevenue: 0, totalCollected: 0, activeLeadsCount: 0 });
 
   const socketRef = useRef(null);
 
@@ -223,6 +231,21 @@ const AdminDashboard = ({ userId, onLogout }) => {
       if (couponRes.ok) {
         const couponList = await couponRes.json();
         setCoupons(couponList);
+      }
+
+      // Fetch Global KPI Summary if API exists
+      const kpiRes = await fetch(`${API_BASE}/api/boss/kpi-summary`, { headers });
+      if (kpiRes.ok) {
+        const kpiData = await kpiRes.json();
+        setKpiSummary(kpiData);
+      } else {
+        let totalRev = 0;
+        let totalColl = 0;
+        stats.forEach(s => {
+          totalRev += s.totalBusiness || 0;
+          totalColl += s.totalPaid || 0;
+        });
+        setKpiSummary({ totalRevenue: totalRev, totalCollected: totalColl });
       }
     } catch (err) {
       console.error("Failed to fetch Admin Data:", err);
@@ -584,31 +607,41 @@ const AdminDashboard = ({ userId, onLogout }) => {
     const lStatus = lead.leadStatus?.toLowerCase() || "";
     const fAction = lead.followUpAction?.toLowerCase() || "";
 
-    if (adminLeadFilter === "all") return true;
+    // 1. Status Filter Check
+    let matchesStatus = true;
     if (adminLeadFilter === "call-back") {
-      return lStatus.includes("call") || fAction.includes("call");
+      matchesStatus = lStatus.includes("call") || fAction.includes("call");
+    } else if (adminLeadFilter === "next-meeting") {
+      matchesStatus = lStatus.includes("meeting") || fAction.includes("meeting") || fAction.includes("next meeting");
+    } else if (adminLeadFilter === "not-interested") {
+      matchesStatus = lStatus.includes("not interested");
+    } else if (adminLeadFilter === "deal-closed") {
+      matchesStatus = lStatus.includes("deal close") || lStatus.includes("closed");
     }
-    if (adminLeadFilter === "next-meeting") {
-      return lStatus.includes("meeting") || fAction.includes("meeting") || fAction.includes("next meeting");
+
+    // 2. Date Range Filter Check
+    let matchesDate = true;
+    const leadDateStr = lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : "");
+    
+    if (exportStartDate && leadDateStr) {
+      matchesDate = matchesDate && (leadDateStr >= exportStartDate);
     }
-    if (adminLeadFilter === "not-interested") {
-      return lStatus.includes("not interested");
+    if (exportEndDate && leadDateStr) {
+      matchesDate = matchesDate && (leadDateStr <= exportEndDate);
     }
-    if (adminLeadFilter === "deal-closed") {
-      return lStatus.includes("deal close") || lStatus.includes("closed");
-    }
-    return true;
+
+    return matchesStatus && matchesDate;
   });
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8 transition-colors duration-300">
+      <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
         
         {/* 🚪 Logout Confirmation Modal */}
         {showLogoutModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center">
-              <span className="text-4xl">⚠️</span>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in transition-all">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center transform scale-100 animate-in zoom-in-95 duration-200">
+              <span className="text-4xl animate-bounce inline-block">⚠️</span>
               <h3 className="text-lg font-extrabold text-[var(--color-heading)]">Confirm Logout</h3>
               <p className="text-xs text-[var(--color-body)]">
                 Are you sure you want to log out from the Admin Portal?
@@ -616,7 +649,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setShowLogoutModal(false)}
-                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/50 text-[var(--color-heading)] py-3 rounded-xl text-xs font-semibold cursor-pointer border border-[var(--color-border)] transition"
+                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/60 text-[var(--color-heading)] py-3 rounded-xl text-xs font-semibold cursor-pointer border border-[var(--color-border)] transition active:scale-95"
                 >
                   Cancel
                 </button>
@@ -625,7 +658,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     setShowLogoutModal(false);
                     onLogout();
                   }}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer transition shadow-sm"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer transition shadow-sm active:scale-95"
                 >
                   Confirm Logout
                 </button>
@@ -635,10 +668,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
         )}
 
         {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm gap-4 transition-all duration-300 hover:shadow-md">
           <div className="space-y-1">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-600 border border-purple-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-ping"></span>
               ADMIN PORTAL
             </span>
             <h1 className="text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1">
@@ -650,82 +683,109 @@ const AdminDashboard = ({ userId, onLogout }) => {
           </div>
           <button
             onClick={() => setShowLogoutModal(true)}
-            className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2"
+            className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition-all duration-200 cursor-pointer flex items-center gap-2 active:scale-95"
           >
             Logout
           </button>
+        </div>
+
+        {/* 🌟 GLOBAL FINANCIAL KPI SUMMARY CARDS */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-5 rounded-3xl shadow-sm flex items-center justify-between transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+            <div>
+              <span className="text-[11px] text-[var(--color-body)] font-medium block">Total Revenue Generated</span>
+              <h3 className="text-lg font-extrabold text-[var(--color-heading)] mt-0.5">₹{kpiSummary.totalRevenue?.toLocaleString("en-IN") || 0}</h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold text-sm transition-transform duration-300 hover:rotate-12">📈</div>
+          </div>
+
+          <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-5 rounded-3xl shadow-sm flex items-center justify-between transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+            <div>
+              <span className="text-[11px] text-[var(--color-body)] font-medium block">Total Collections (Paid)</span>
+              <h3 className="text-lg font-extrabold text-[var(--color-primary)] mt-0.5">₹{kpiSummary.totalCollected?.toLocaleString("en-IN") || 0}</h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold text-sm transition-transform duration-300 hover:rotate-12">💰</div>
+          </div>
+
+          <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-5 rounded-3xl shadow-sm flex items-center justify-between transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+            <div>
+              <span className="text-[11px] text-[var(--color-body)] font-medium block">Active Sales Team</span>
+              <h3 className="text-lg font-extrabold text-purple-600 mt-0.5">{employees.filter(e => e.role === 'salesperson').length} Members</h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-bold text-sm transition-transform duration-300 hover:rotate-12">👥</div>
+          </div>
         </div>
 
         {/* Navigation Tabs Bar */}
         <div className="flex gap-2 p-1.5 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm overflow-x-auto">
           <button
             onClick={() => setActiveTab("tracker")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
-              activeTab === "tracker" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "tracker" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             📋 Task Tracker
           </button>
           <button
             onClick={() => setActiveTab("live-tracking")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
-              activeTab === "live-tracking" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "live-tracking" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             🛰️ Live Tracking & Travel
           </button>
           <button
             onClick={() => setActiveTab("security-alerts")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap relative ${
-              activeTab === "security-alerts" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap relative active:scale-95 ${
+              activeTab === "security-alerts" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             🚨 Security & Spoofing {spoofingAlerts.length > 0 && <span className="ml-1 bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px] font-extrabold animate-pulse">{spoofingAlerts.length}</span>}
           </button>
           <button
             onClick={() => setActiveTab("broadcast")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
-              activeTab === "broadcast" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "broadcast" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             📢 Team Broadcast
           </button>
           <button
             onClick={() => setActiveTab("leads-export")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
-              activeTab === "leads-export" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "leads-export" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             📊 Leads Report & Excel Export
           </button>
           <button
             onClick={() => setActiveTab("directory")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
-              activeTab === "directory" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "directory" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             👥 Team Directory & Deals
           </button>
           <button
             onClick={() => setActiveTab("employees")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
-              activeTab === "employees" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "employees" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             ➕ Manage Team
           </button>
           <button
             onClick={() => setActiveTab("transfer")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
-              activeTab === "transfer" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "transfer" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             🔄 Transfer Leads
           </button>
           <button
             onClick={() => setActiveTab("coupons")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition cursor-pointer whitespace-nowrap ${
-              activeTab === "coupons" ? "bg-[var(--color-primary)] text-white shadow-sm" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "coupons" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
             🎟️ Discount Coupons
@@ -745,8 +805,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
           <>
             {/* TAB 1: TASK TRACKER */}
             {activeTab === "tracker" && (
-              <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3">
+              <div className="space-y-6 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
                   <div>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">
                       📞 Salesperson Call, Demo & Follow-up Schedule
@@ -781,7 +841,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
                   {filteredTasksList.length === 0 ? (
                     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
-                      <div className="w-12 h-12 bg-[var(--color-surface)] rounded-full flex items-center justify-center mx-auto text-xl">📭</div>
+                      <div className="w-12 h-12 bg-[var(--color-surface)] rounded-full flex items-center justify-center mx-auto text-xl animate-bounce">📭</div>
                       <h3 className="text-sm font-bold text-[var(--color-heading)]">No Tasks Scheduled</h3>
                       <p className="text-xs text-[var(--color-body)]">There are no active calls or demos scheduled by salespersons yet.</p>
                     </div>
@@ -792,7 +852,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         return (
                           <div
                             key={task._id}
-                            className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-3 hover:border-[var(--color-primary)]/40 transition"
+                            className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-3 hover:border-[var(--color-primary)]/40 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5"
                           >
                             <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
                               <span className="text-[10px] font-bold bg-purple-500/10 text-purple-600 px-3 py-1 rounded-xl border border-purple-500/20 uppercase tracking-wider">
@@ -829,8 +889,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
             {/* TAB 1.5: LIVE TRACKING & TRAVEL HISTORY */}
             {activeTab === "live-tracking" && (
-              <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3">
+              <div className="space-y-6 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
                   <div>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">
                       🛰️ Salesperson Live Location & Travel History
@@ -879,13 +939,13 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
                 {!selectedTrackerEmp ? (
                   <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
-                    <span className="text-3xl">📍</span>
+                    <span className="text-3xl animate-bounce">📍</span>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">No Salesperson Selected</h3>
                     <p className="text-xs text-[var(--color-body)]">Please choose a salesperson from the dropdown above to view their live GPS status and travel report.</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4">
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
                       <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
                       {liveLocations[selectedTrackerEmp] ? (
                         <div className="space-y-3 text-xs text-[var(--color-heading)]">
@@ -895,7 +955,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             href={`https://www.google.com/maps?q=${liveLocations[selectedTrackerEmp].latitude},${liveLocations[selectedTrackerEmp].longitude}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm"
+                            className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm active:scale-95"
                           >
                             🗺️ Open Live Position on Map
                           </a>
@@ -907,7 +967,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       )}
                     </div>
 
-                    <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
+                    <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4 transition-all hover:shadow-md">
                       <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
                         <h4 className="text-sm font-bold text-[var(--color-heading)]">🛣️ Travel Summary for {trackerDate}</h4>
                         <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-xl font-extrabold text-xs">
@@ -929,7 +989,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                               resolvePlaceName(pt.latitude, pt.longitude, pointKey);
                             }
                             return (
-                              <div key={pointKey} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] gap-2">
+                              <div key={pointKey} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] gap-2 transition hover:border-[var(--color-primary)]/40">
                                 <div className="space-y-0.5">
                                   <span className="font-bold text-[var(--color-heading)] flex items-center gap-1">
                                     📍 {resolvedAddresses[pointKey] || `GPS Point (${pt.latitude.toFixed(3)}, ${pt.longitude.toFixed(3)})`}
@@ -954,7 +1014,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
             {/* TAB: SECURITY ALERTS & SPOOFING LOGS */}
             {activeTab === "security-alerts" && (
-              <div className="bg-[var(--color-card)] border border-red-500/30 rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+              <div className="bg-[var(--color-card)] border border-red-500/30 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 animate-fade-in">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
                   <div>
                     <h3 className="text-base font-bold text-red-600 flex items-center gap-2">
@@ -975,11 +1035,11 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 ) : (
                   <div className="space-y-3">
                     {spoofingAlerts.map((alert, idx) => (
-                      <div key={idx} className="bg-red-500/5 border border-red-500/30 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+                      <div key={idx} className="bg-red-500/5 border border-red-500/30 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs transition hover:bg-red-500/10">
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <strong className="text-sm text-red-600 font-bold">Salesperson ID: {alert.salespersonId}</strong>
-                            <span className="bg-red-500 text-white px-2 py-0.5 rounded-md text-[10px] font-bold">Mock Detected</span>
+                            <span className="bg-red-500 text-white px-2 py-0.5 rounded-md text-[10px] font-bold animate-pulse">Mock Detected</span>
                           </div>
                           <p className="text-[var(--color-heading)]">📍 Coordinates flagged: <span className="font-mono">{alert.latitude?.toFixed(4)}, {alert.longitude?.toFixed(4)}</span></p>
                           <p className="text-[var(--color-body)]">⏰ Timestamp: {new Date(alert.timestamp || Date.now()).toLocaleString('en-IN')}</p>
@@ -988,7 +1048,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                           href={`https://www.google.com/maps?q=${alert.latitude},${alert.longitude}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold transition shadow-sm text-center"
+                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold transition shadow-sm text-center active:scale-95"
                         >
                           🗺️ View Flagged Location
                         </a>
@@ -1001,7 +1061,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
             {/* TAB: TEAM BROADCAST ANNOUNCEMENTS */}
             {activeTab === "broadcast" && (
-              <div className="max-w-3xl mx-auto space-y-6">
+              <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
                   <div>
                     <h3 className="text-base font-bold text-[var(--color-primary)] flex items-center gap-2">
@@ -1034,7 +1094,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         placeholder="e.g., Evening Team Sync-up at 6 PM"
                         value={broadcastMsg.title}
                         onChange={(e) => setBroadcastMsg({ ...broadcastMsg, title: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
 
@@ -1046,14 +1106,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         placeholder="Type your complete announcement here..."
                         value={broadcastMsg.message}
                         onChange={(e) => setBroadcastMsg({ ...broadcastMsg, message: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] resize-none"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] resize-none transition"
                       />
                     </div>
 
                     <button
                       type="submit"
                       disabled={isBroadcasting}
-                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs disabled:opacity-50"
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs disabled:opacity-50 active:scale-95"
                     >
                       {isBroadcasting ? "Broadcasting to Team..." : "🚀 Push Broadcast to All Devices"}
                     </button>
@@ -1064,56 +1124,88 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
             {/* TAB 1.6: LEADS REPORT & EXCEL EXPORT */}
             {activeTab === "leads-export" && (
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-6">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-6 animate-fade-in">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
                   <div>
                     <h3 className="text-base font-bold text-[var(--color-heading)]">📊 Leads Report & Excel Export</h3>
-                    <p className="text-xs text-[var(--color-body)] mt-0.5">Filter team leads by status and download spreadsheet reports.</p>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">Filter team leads by status & date range and download spreadsheet reports.</p>
                   </div>
                   <button
-                    onClick={() => downloadCSV(filteredSystemLeads, `Leads_Report_${adminLeadFilter}.csv`)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-5 py-3 rounded-2xl font-semibold transition cursor-pointer shadow-sm flex items-center gap-2"
+                    onClick={() => downloadCSV(filteredSystemLeads, `Leads_Report_${adminLeadFilter}_${exportStartDate || 'all'}_to_${exportEndDate || 'all'}.csv`)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-5 py-3 rounded-2xl font-semibold transition cursor-pointer shadow-sm flex items-center gap-2 active:scale-95 hover:shadow-md"
                   >
-                    📥 Download Excel (.CSV) Report
+                    📥 Download Excel (.CSV) Report ({filteredSystemLeads.length})
                   </button>
                 </div>
 
-                {/* Filter Buttons */}
+                {/* 📅 Date Range Filter Controls */}
+                <div className="flex flex-wrap items-center gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-[var(--color-body)]">Start Date:</span>
+                    <input
+                      type="date"
+                      value={exportStartDate}
+                      onChange={(e) => setExportStartDate(e.target.value)}
+                      className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-[var(--color-body)]">End Date:</span>
+                    <input
+                      type="date"
+                      value={exportEndDate}
+                      onChange={(e) => setExportEndDate(e.target.value)}
+                      className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                    />
+                  </div>
+
+                  {(exportStartDate || exportEndDate) && (
+                    <button
+                      onClick={() => { setExportStartDate(""); setExportEndDate(""); }}
+                      className="text-red-500 hover:underline font-semibold cursor-pointer ml-auto"
+                    >
+                      Clear Dates ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Status Buttons */}
                 <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => setAdminLeadFilter("all")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "all" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                  <button onClick={() => setAdminLeadFilter("all")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "all" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
                     All Leads ({allSystemLeads.length})
                   </button>
-                  <button onClick={() => setAdminLeadFilter("call-back")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "call-back" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                  <button onClick={() => setAdminLeadFilter("call-back")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "call-back" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
                     📞 Call Back ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("call") || l.followUpAction?.toLowerCase().includes("call")).length})
                   </button>
-                  <button onClick={() => setAdminLeadFilter("next-meeting")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "next-meeting" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                  <button onClick={() => setAdminLeadFilter("next-meeting")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "next-meeting" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
                     🤝 Next Meeting ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("meeting") || l.followUpAction?.toLowerCase().includes("meeting")).length})
                   </button>
-                  <button onClick={() => setAdminLeadFilter("not-interested")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "not-interested" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                  <button onClick={() => setAdminLeadFilter("not-interested")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "not-interested" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
                     ❌ Not Interested ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("not interested")).length})
                   </button>
-                  <button onClick={() => setAdminLeadFilter("deal-closed")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition ${adminLeadFilter === "deal-closed" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                  <button onClick={() => setAdminLeadFilter("deal-closed")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "deal-closed" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
                     🎉 Deal Closed ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("deal close") || l.leadStatus?.toLowerCase().includes("closed")).length})
                   </button>
                 </div>
 
                 {loadingSystemLeads ? (
-                  <div className="py-16 text-center text-xs text-[var(--color-body)]">Loading all team leads...</div>
+                  <div className="py-16 text-center text-xs text-[var(--color-body)] animate-pulse">Loading all team leads...</div>
                 ) : filteredSystemLeads.length === 0 ? (
                   <div className="py-16 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
-                    No leads found for this filter category.
+                    No leads found for this filter category and date range.
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {filteredSystemLeads.map((lead) => (
-                      <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+                      <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs transition hover:border-[var(--color-primary)]/40">
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
                             <strong className="text-sm text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
                             <span className="bg-purple-500/10 text-purple-600 border border-purple-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold">👤 {lead.salespersonName}</span>
                           </div>
                           <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold">{lead.mobileNo}</a></p>
-                          <p className="text-[var(--color-heading)]">📍 Location: {lead.city || 'N/A'}, {lead.state || 'N/A'}</p>
+                          <p className="text-[var(--color-heading)]">📍 Location: {lead.city || 'N/A'}, {lead.state || 'N/A'} | 📅 Date: {lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : 'N/A')}</p>
 
                           {/* 🌟 MEETING PHOTO PREVIEW IN LEADS REPORT */}
                           {lead.meetingPhoto && (
@@ -1121,7 +1213,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                               <img
                                 src={`${API_BASE}/${lead.meetingPhoto}`}
                                 alt="Meeting Proof"
-                                className="w-16 h-16 object-cover rounded-xl border border-[var(--color-border)] shadow-sm bg-black/5"
+                                className="w-16 h-16 object-cover rounded-xl border border-[var(--color-border)] shadow-sm bg-black/5 transition hover:scale-105"
                                 onError={(e) => {
                                   e.target.onerror = null;
                                   e.target.src = "https://placehold.co/100?text=Preview";
@@ -1133,7 +1225,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                                   href={`${API_BASE}/${lead.meetingPhoto}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-block bg-[var(--color-primary)] text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition shadow-sm"
+                                  className="inline-block bg-[var(--color-primary)] text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition shadow-sm active:scale-95"
                                 >
                                   🔍 Open Full Image
                                 </a>
@@ -1154,8 +1246,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
             {/* TAB 3: TEAM DIRECTORY */}
             {activeTab === "directory" && (
-              <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3">
+              <div className="space-y-6 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
                   <div>
                     <h3 className="text-sm font-bold text-[var(--color-heading)]">
                       Search Salesperson & Deal Records
@@ -1186,7 +1278,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     return (
                       <div
                         key={stat.salespersonId || "unassigned"}
-                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 hover:border-[var(--color-primary)]/40 transition"
+                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 hover:border-[var(--color-primary)]/40 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5"
                       >
                         <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
                           <div>
@@ -1231,7 +1323,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         <div className="flex gap-2 pt-1">
                           <button
                             onClick={() => handleViewEmployeeDetails(stat.salespersonId || "null")}
-                            className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border border-purple-500/20 text-xs py-2.5 rounded-xl font-semibold transition cursor-pointer text-center"
+                            className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border border-purple-500/20 text-xs py-2.5 rounded-xl font-semibold transition cursor-pointer text-center active:scale-95"
                           >
                             👁️ View Deals History
                           </button>
@@ -1239,7 +1331,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                           {stat.salespersonId && stat.salespersonId !== "Unassigned" && stat.salespersonId !== userId && (
                             <button
                               onClick={() => handleDeleteEmployee(stat.salespersonId)}
-                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-3.5 py-2.5 rounded-xl font-semibold transition cursor-pointer"
+                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-3.5 py-2.5 rounded-xl font-semibold transition cursor-pointer active:scale-95"
                             >
                               ❌
                             </button>
@@ -1254,18 +1346,18 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
             {/* TAB 4: MANAGE TEAM */}
             {activeTab === "employees" && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
                   <h3 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">
                     ➕ Add Team Member
                   </h3>
                   {empStatus.success && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-2xl text-xs font-semibold">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-2xl text-xs font-semibold animate-fade-in">
                       {empStatus.success}
                     </div>
                   )}
                   {empStatus.error && (
-                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-2xl text-xs font-semibold">
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-2xl text-xs font-semibold animate-fade-in">
                       {empStatus.error}
                     </div>
                   )}
@@ -1275,7 +1367,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       <select
                         value={newEmp.role}
                         onChange={(e) => setNewEmp({ ...newEmp, role: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] transition"
                       >
                         <option value="salesperson">👤 Salesperson</option>
                         <option value="accountant">📑 Accountant</option>
@@ -1289,7 +1381,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         placeholder="e.g. Rahul Sharma"
                         value={newEmp.name}
                         onChange={(e) => setNewEmp({ ...newEmp, name: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
                     <div>
@@ -1300,7 +1392,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         placeholder="e.g. rahul@crinza.com"
                         value={newEmp.email}
                         onChange={(e) => setNewEmp({ ...newEmp, email: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
                     <div>
@@ -1311,7 +1403,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         placeholder="e.g. EMP105"
                         value={newEmp.userId}
                         onChange={(e) => setNewEmp({ ...newEmp, userId: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
                     <div>
@@ -1322,12 +1414,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         placeholder="e.g. Pass@123"
                         value={newEmp.password}
                         onChange={(e) => setNewEmp({ ...newEmp, password: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
                     <button
                       type="submit"
-                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white text-xs font-semibold py-3 rounded-2xl transition cursor-pointer shadow-sm"
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white text-xs font-semibold py-3 rounded-2xl transition cursor-pointer shadow-sm active:scale-95"
                     >
                       Create Account
                     </button>
@@ -1370,7 +1462,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       filteredEmployees.map((emp) => (
                         <div
                           key={emp._id}
-                          className="py-3.5 flex justify-between items-center text-xs"
+                          className="py-3.5 flex justify-between items-center text-xs transition hover:bg-[var(--color-surface)] px-2 rounded-xl"
                         >
                           <div>
                             <div className="flex items-center gap-2">
@@ -1398,7 +1490,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             {emp.role === "salesperson" && (
                               <button
                                 onClick={() => handleViewEmployeeDetails(emp.userId)}
-                                className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 text-xs px-3.5 py-2 rounded-xl border border-purple-500/20 transition cursor-pointer font-semibold"
+                                className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 text-xs px-3.5 py-2 rounded-xl border border-purple-500/20 transition cursor-pointer font-semibold active:scale-95"
                               >
                                 👁️ History
                               </button>
@@ -1406,7 +1498,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             {emp.userId !== userId && (
                               <button
                                 onClick={() => handleDeleteEmployee(emp.userId)}
-                                className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-3.5 py-2 rounded-xl transition cursor-pointer font-semibold"
+                                className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-3.5 py-2 transition cursor-pointer font-semibold rounded-xl active:scale-95"
                               >
                                 ❌ Delete
                               </button>
@@ -1422,7 +1514,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
             {/* TAB 5: TRANSFER LEADS */}
             {activeTab === "transfer" && (
-              <div className="max-w-4xl mx-auto space-y-6">
+              <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
                   <div>
                     <h3 className="text-base font-bold text-[var(--color-primary)]">
@@ -1434,12 +1526,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   </div>
 
                   {transferStatus.success && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3.5 rounded-2xl text-xs font-semibold">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3.5 rounded-2xl text-xs font-semibold animate-fade-in">
                       {transferStatus.success}
                     </div>
                   )}
                   {transferStatus.error && (
-                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3.5 rounded-2xl text-xs font-semibold">
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3.5 rounded-2xl text-xs font-semibold animate-fade-in">
                       {transferStatus.error}
                     </div>
                   )}
@@ -1457,7 +1549,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             setTransferData({ ...transferData, fromSalesperson: e.target.value });
                             if (e.target.value) fetchSalespersonLeadsForTransfer(e.target.value);
                           }}
-                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
                         >
                           <option value="">Select Salesperson to pick leads from</option>
                           <option value="null">Unassigned / Deleted (null)</option>
@@ -1479,7 +1571,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                           required
                           value={transferData.toSalesperson}
                           onChange={(e) => setTransferData({ ...transferData, toSalesperson: e.target.value })}
-                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
                         >
                           <option value="">Select Salesperson to assign leads to</option>
                           {employees
@@ -1494,7 +1586,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     </div>
 
                     {transferData.fromSalesperson && (
-                      <div className="space-y-3 pt-4 border-t border-[var(--color-border)]">
+                      <div className="space-y-3 pt-4 border-t border-[var(--color-border)] animate-fade-in">
                         <div className="flex justify-between items-center">
                           <h4 className="font-bold text-[var(--color-heading)]">
                             Select Leads to Transfer ({selectedLeadIds.length} selected)
@@ -1511,7 +1603,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         </div>
 
                         {loadingSourceLeads ? (
-                          <div className="py-8 text-center text-xs text-[var(--color-body)]">Loading leads...</div>
+                          <div className="py-8 text-center text-xs text-[var(--color-body)] animate-pulse">Loading leads...</div>
                         ) : sourceLeads.length === 0 ? (
                           <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
                             No active leads found for this salesperson.
@@ -1545,7 +1637,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
                     <button
                       type="submit"
-                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs"
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs active:scale-95"
                     >
                       Transfer Selected Leads ({selectedLeadIds.length})
                     </button>
@@ -1556,18 +1648,18 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
             {/* TAB 6: COUPONS */}
             {activeTab === "coupons" && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
                   <h3 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">
                     🎟️ Generate Coupon
                   </h3>
                   {couponStatus.success && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-2xl text-xs font-semibold">
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3 rounded-2xl text-xs font-semibold animate-fade-in">
                       {couponStatus.success}
                     </div>
                   )}
                   {couponStatus.error && (
-                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-2xl text-xs font-semibold">
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded-2xl text-xs font-semibold animate-fade-in">
                       {couponStatus.error}
                     </div>
                   )}
@@ -1585,7 +1677,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             code: e.target.value.toUpperCase(),
                           })
                         }
-                        className="w-full uppercase bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-mono font-bold focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full uppercase bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-mono font-bold focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
                     <div>
@@ -1598,7 +1690,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             discountType: e.target.value,
                           })
                         }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] cursor-pointer transition"
                       >
                         <option value="percentage">Percentage (%)</option>
                         <option value="flat">Flat Amount (₹)</option>
@@ -1624,7 +1716,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             discountValue: e.target.value,
                           })
                         }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
                     <div>
@@ -1638,12 +1730,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             expiryDate: e.target.value,
                           })
                         }
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition cursor-pointer"
                       />
                     </div>
                     <button
                       type="submit"
-                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white text-xs font-semibold py-3 rounded-2xl transition cursor-pointer shadow-sm"
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white text-xs font-semibold py-3 rounded-2xl transition cursor-pointer shadow-sm active:scale-95"
                     >
                       Generate & Save Coupon
                     </button>
@@ -1663,7 +1755,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       {coupons.map((coupon) => (
                         <div
                           key={coupon._id}
-                          className="py-3.5 flex justify-between items-center text-xs"
+                          className="py-3.5 flex justify-between items-center text-xs transition hover:bg-[var(--color-surface)] px-2 rounded-xl"
                         >
                           <div>
                             <div className="flex items-center gap-2">
@@ -1693,7 +1785,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                               onClick={() =>
                                 handleDeleteCoupon(coupon._id, coupon.code)
                               }
-                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 px-3.5 py-2 rounded-xl transition cursor-pointer font-semibold"
+                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 px-3.5 py-2 rounded-xl transition cursor-pointer font-semibold active:scale-95"
                             >
                               ❌ Delete
                             </button>
@@ -1710,8 +1802,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
         {/* MODAL VIEW FOR EMPLOYEE DEALS & LOCATION LOGS */}
         {selectedEmpLogs && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-3xl w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-3xl w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto transform scale-100 animate-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
                 <div>
                   <h3 className="text-lg font-extrabold text-[var(--color-primary)]">
@@ -1723,14 +1815,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 </div>
                 <button
                   onClick={() => setSelectedEmpLogs(null)}
-                  className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-body)] hover:text-[var(--color-heading)] cursor-pointer transition active:scale-90"
                 >
                   ✕
                 </button>
               </div>
 
               {loadingLogs ? (
-                <div className="py-12 text-center text-xs text-[var(--color-body)]">
+                <div className="py-12 text-center text-xs text-[var(--color-body)] animate-pulse">
                   Fetching full activity logs...
                 </div>
               ) : selectedEmpLogs.deals.length === 0 ? (
@@ -1747,7 +1839,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     {selectedEmpLogs.deals.map((deal) => (
                       <div
                         key={deal._id}
-                        className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl space-y-3 text-xs"
+                        className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl space-y-3 text-xs transition hover:border-[var(--color-primary)]/40"
                       >
                         <div className="flex flex-wrap justify-between items-center gap-2 border-b border-[var(--color-border)] pb-3">
                           <span className="text-sm font-bold text-[var(--color-heading)]">
@@ -1776,7 +1868,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                               href={`https://www.google.com/maps?q=${deal.latitude},${deal.longitude}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-xl transition shadow-sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-3 py-1.5 rounded-xl transition shadow-sm active:scale-95"
                             >
                               🗺️ Map
                             </a>
@@ -1800,7 +1892,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                               setTransferModalDeal(deal);
                               setTargetSalesperson("");
                             }}
-                            className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 border border-purple-500/20 text-xs px-3.5 py-2 rounded-xl font-semibold transition cursor-pointer flex items-center gap-1.5"
+                            className="bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 border border-purple-500/20 text-xs px-3.5 py-2 rounded-xl font-semibold transition cursor-pointer flex items-center gap-1.5 active:scale-95"
                           >
                             🔄 Transfer This Deal
                           </button>
@@ -1813,7 +1905,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
               <button
                 onClick={() => setSelectedEmpLogs(null)}
-                className="w-full bg-[var(--color-surface)] hover:bg-[var(--color-border)] py-3 rounded-2xl font-semibold text-xs border border-[var(--color-border)] mt-2 cursor-pointer transition"
+                className="w-full bg-[var(--color-surface)] hover:bg-[var(--color-border)] py-3 rounded-2xl font-semibold text-xs border border-[var(--color-border)] mt-2 cursor-pointer transition active:scale-95"
               >
                 Close Report
               </button>
@@ -1823,8 +1915,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
         {/* SINGLE DEAL TRANSFER POPUP */}
         {transferModalDeal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-md w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-md w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl transform scale-100 animate-in zoom-in-95 duration-200">
               <div>
                 <h3 className="text-base font-bold text-[var(--color-primary)]">
                   Reassign Deal
@@ -1858,7 +1950,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 <button
                   type="button"
                   onClick={() => setTransferModalDeal(null)}
-                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[var(--color-heading)] py-3 rounded-2xl text-xs font-semibold transition cursor-pointer border border-[var(--color-border)]"
+                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)] text-[var(--color-heading)] py-3 rounded-2xl text-xs font-semibold transition cursor-pointer border border-[var(--color-border)] active:scale-95"
                 >
                   Cancel
                 </button>
@@ -1866,7 +1958,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   type="button"
                   onClick={handleExecuteSingleDealTransfer}
                   disabled={isTransferring || !targetSalesperson}
-                  className={`flex-1 py-3 rounded-2xl text-xs font-semibold transition cursor-pointer text-white shadow-sm ${
+                  className={`flex-1 py-3 rounded-2xl text-xs font-semibold transition cursor-pointer text-white shadow-sm active:scale-95 ${
                     isTransferring || !targetSalesperson 
                       ? "bg-purple-400 opacity-60 cursor-not-allowed" 
                       : "bg-[var(--color-primary)] hover:opacity-90"

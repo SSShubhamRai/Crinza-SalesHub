@@ -9,14 +9,20 @@
  * Capacitor native Mock Location / Anti-Bypass security, Kanban Pipeline View, 
  * WhatsApp Quick Reminders with Logo, 🔔 Real-time In-App Notifications, 
  * and 📢 Live Team Broadcast Announcement Listener.
+ * Enhanced with: Smooth Keyframe Animations, Micro-Interactions, & Polish.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { State, City } from 'country-state-city';
 import { io } from 'socket.io-client'; // 🌟 Socket.io client for real-time live tracking
 import { Geolocation } from '@capacitor/geolocation'; // 🌟 Capacitor Geolocation for Native Mock Detection
+import ReactPhoneInput from 'react-phone-input-2';
+import 'react-phone-input-2/lib/style.css';
 import { submitInvoiceRequest } from '../api/api';
 import toast from 'react-hot-toast';
+
+// 🌟 Safe fallback for Vite CommonJS interop
+const PhoneInput = ReactPhoneInput.default || ReactPhoneInput;
 
 const SalespersonForm = ({ userId, username, onLogout }) => {
   // --- Navigation & View States ---
@@ -80,7 +86,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   // --- 🌟 WHATSAPP QUICK REMINDER HELPER ---
   const handleWhatsAppReminder = (lead, type = 'followup') => {
     if (!lead.mobileNo) {
-      alert('Mobile number not available!');
+      toast.error('Mobile number not available!');
       return;
     }
     let phone = lead.mobileNo.replace(/\D/g, '');
@@ -112,7 +118,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
       // 🛡️ Native Mock Location Check via Capacitor Geolocation
       const isMocked = position.coords.mocked || position.coords.isFromMockProvider;
       if (isMocked) {
-        alert("⚠️ Security Warning: Mock Location (Fake GPS) app detected! Please disable fake GPS tools to record visits or submit invoices.");
+        toast.error("⚠️ Security Warning: Mock Location (Fake GPS) app detected! Please disable fake GPS tools to record visits or submit invoices.");
         return { lat: null, lng: null, isMocked: true };
       }
 
@@ -860,7 +866,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         setModalDate('');
         setModalTime('');
       } else {
-        alert(data.message || 'Failed to update');
+        toast.error(data.message || 'Failed to update');
       }
     } catch (err) {
       console.error('Error updating lead:', err);
@@ -996,20 +1002,20 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] p-3 sm:p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6">
+    <div className="min-h-screen bg-[var(--color-background)] p-3 sm:p-4 md:p-8 transition-colors duration-300">
+      <div className="max-w-6xl mx-auto space-y-4 sm:space-y-6 animate-fade-in">
         
         {settledAlert && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-emerald-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center">
-              <span className="text-4xl">🎉</span>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-emerald-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center transform scale-100 animate-in zoom-in-95 duration-200">
+              <span className="text-4xl animate-bounce inline-block">🎉</span>
               <h3 className="text-lg font-extrabold text-emerald-600">Deal Fully Settled & Cleared!</h3>
               <p className="text-xs text-[var(--color-heading)]">
                 All outstanding dues for <strong>{settledAlert.institute}</strong> have been paid in full. Balance is now <strong>₹0 (Zero Due)</strong>. Both salesperson and account team have been notified successfully.
               </p>
               <button
                 onClick={() => { setSettledAlert(null); setActiveView('dashboard'); }}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer shadow-sm"
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer shadow-sm active:scale-95 transition"
               >
                 Okay, Return to Dashboard
               </button>
@@ -1019,9 +1025,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
         {/* 🚪 Logout Confirmation Modal */}
         {showLogoutModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center">
-              <span className="text-4xl">⚠️</span>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center transform scale-100 animate-in zoom-in-95 duration-200">
+              <span className="text-4xl animate-bounce inline-block">⚠️</span>
               <h3 className="text-lg font-extrabold text-[var(--color-heading)]">Confirm Logout</h3>
               <p className="text-xs text-[var(--color-body)]">
                 Are you sure you want to log out from the Salesperson Portal?
@@ -1029,7 +1035,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               <div className="flex gap-3 pt-2">
                 <button
                   onClick={() => setShowLogoutModal(false)}
-                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/50 text-[var(--color-heading)] py-3 rounded-xl text-xs font-semibold cursor-pointer border border-[var(--color-border)] transition"
+                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/60 text-[var(--color-heading)] py-3 rounded-xl text-xs font-semibold cursor-pointer border border-[var(--color-border)] transition active:scale-95"
                 >
                   Cancel
                 </button>
@@ -1038,7 +1044,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     setShowLogoutModal(false);
                     onLogout();
                   }}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer transition shadow-sm"
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer transition shadow-sm active:scale-95"
                 >
                   Confirm Logout
                 </button>
@@ -1048,10 +1054,10 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         )}
 
         {/* Header Section */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-6 rounded-3xl shadow-sm gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-6 rounded-3xl shadow-sm gap-4 transition-all duration-300 hover:shadow-md">
           <div className="space-y-1 min-w-0">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
               SALESPERSON PORTAL 
             </span>
             <h1 className="text-xl sm:text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1 truncate">
@@ -1069,7 +1075,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
             <div className="relative">
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] relative cursor-pointer hover:bg-[var(--color-border)]/50 transition flex items-center justify-center text-sm shadow-sm"
+                className="p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] relative cursor-pointer hover:bg-[var(--color-border)]/50 transition flex items-center justify-center text-sm shadow-sm active:scale-95"
                 title="View Follow-up & Demo Alerts"
               >
                 🔔
@@ -1081,7 +1087,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-[280px] max-w-[90vw] sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-3 max-h-[450px] overflow-y-auto text-xs">
+                <div className="absolute right-0 mt-2 w-[280px] max-w-[90vw] sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-3 max-h-[450px] overflow-y-auto text-xs animate-in zoom-in-95 duration-200">
                   <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2.5">
                     <strong className="text-[var(--color-heading)] font-bold">🔔 Today's Follow-up & Demo Alerts</strong>
                     <span className="text-[10px] text-[var(--color-body)]">{notifications.length} Total</span>
@@ -1097,11 +1103,20 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                       {notifications.map((n) => (
                         <div 
                           key={n._id || Math.random()} 
-                          className={`p-3 rounded-2xl border space-y-1 transition ${
-                            n.isRead 
-                              ? 'bg-[var(--color-surface)] border-[var(--color-border)] opacity-70' 
-                              : 'bg-emerald-500/10 border-emerald-500/30'
-                          }`}
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('token');
+                              await fetch(`${API_BASE}/api/salesperson/notifications/${n._id}/dismiss`, {
+                                method: 'PUT',
+                                headers: { Authorization: `Bearer ${token}` }
+                              });
+                              setNotifications(prev => prev.filter(item => item._id !== n._id));
+                            } catch (err) {
+                              console.error("Failed to dismiss notification:", err);
+                            }
+                          }}
+                          className="p-3 rounded-2xl border space-y-1 transition bg-emerald-500/10 border-emerald-500/30 cursor-pointer hover:bg-emerald-500/20 active:scale-98"
+                          title="Click to dismiss notification"
                         >
                           <div className="flex justify-between items-center gap-2">
                             <strong className="text-[var(--color-heading)] font-bold truncate">{n.title}</strong>
@@ -1110,6 +1125,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                             </span>
                           </div>
                           <p className="text-[var(--color-body)] font-medium break-words">{n.message}</p>
+                          <span className="text-[9px] text-emerald-600 block pt-1 font-semibold">Tap to dismiss ➔</span>
                         </div>
                       ))}
                     </div>
@@ -1120,7 +1136,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
             <button
               onClick={() => setShowLogoutModal(true)}
-              className="px-4 py-3 rounded-2xl text-xs font-semibold bg-red-500/15 hover:bg-red-500/25 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2 shadow-sm shrink-0"
+              className="px-4 py-3 rounded-2xl text-xs font-semibold bg-red-500/15 hover:bg-red-500/25 text-red-600 border border-red-500/20 transition-all duration-200 cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95"
             >
               Logout
             </button>
@@ -1132,32 +1148,32 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto scrollbar-thin">
             <button
               onClick={() => setActiveView('dashboard')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                activeView === 'dashboard' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95 ${
+                activeView === 'dashboard' ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
               📊 Dashboard & Dues
             </button>
             <button
               onClick={() => setActiveView('leads')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                activeView === 'leads' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95 ${
+                activeView === 'leads' ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
               📋 My Leads ({totalLeadsCount})
             </button>
             <button
               onClick={() => setActiveView('kanban')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                activeView === 'kanban' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95 ${
+                activeView === 'kanban' ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
               Manage Lead
             </button>
             <button
               onClick={() => setActiveView('calendar')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                activeView === 'calendar' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95 ${
+                activeView === 'calendar' ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20' : 'text-[var(--color-heading)] hover:bg-[var(--color-surface)]'
               }`}
             >
               📅 Calendar
@@ -1167,16 +1183,16 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           <div className="flex gap-2 w-full sm:w-auto justify-stretch sm:justify-end">
             <button
               onClick={() => setActiveView('lead-form')}
-              className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                activeView === 'lead-form' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
+              className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 ${
+                activeView === 'lead-form' ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
               }`}
             >
               ➕ Record Visit / New Lead
             </button>
             <button
               onClick={() => setActiveView('invoice-form')}
-              className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                activeView === 'invoice-form' ? 'bg-[var(--color-primary)] text-white shadow-sm' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
+              className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 ${
+                activeView === 'invoice-form' ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
               }`}
             >
               🧾 New Invoice / Installment
@@ -1185,49 +1201,49 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         </div>
 
         {activeView === 'dashboard' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div onClick={() => setActiveView('lead-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+              <div onClick={() => setActiveView('lead-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 flex items-center justify-between group">
                 <div>
                   <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">➕ Create / Visit Lead</h3>
                   <p className="text-xs text-[var(--color-body)] mt-1">Record client visit & meeting photo.</p>
                 </div>
-                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0">🎯</span>
+                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0 transition group-hover:scale-110">🎯</span>
               </div>
-              <div onClick={() => setActiveView('kanban')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+              <div onClick={() => setActiveView('kanban')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 flex items-center justify-between group">
                 <div>
                   <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">📌 Manage Lead</h3>
                   <p className="text-xs text-[var(--color-body)] mt-1">Manage leads across sales stages.</p>
                 </div>
-                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0">📋</span>
+                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0 transition group-hover:scale-110">📋</span>
               </div>
-              <div onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition flex items-center justify-between group">
+              <div onClick={() => setActiveView('invoice-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 flex items-center justify-between group">
                 <div>
                   <h3 className="text-sm font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">🧾 Submit Installment</h3>
                   <p className="text-xs text-[var(--color-body)] mt-1">Pay due amount & clear balance.</p>
                 </div>
-                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0">💳</span>
+                <span className="text-2xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0 transition group-hover:scale-110">💳</span>
               </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1 transition hover:shadow-md hover:-translate-y-0.5">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Total Deals</span>
                 <strong className="text-xl sm:text-2xl font-extrabold text-[var(--color-primary)]">{totalDealsCount}</strong>
               </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1 transition hover:shadow-md hover:-translate-y-0.5">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Active Leads</span>
                 <strong className="text-xl sm:text-2xl font-extrabold text-blue-600">{totalLeadsCount}</strong>
               </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1 transition hover:shadow-md hover:-translate-y-0.5">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Approved Invoices</span>
                 <strong className="text-xl sm:text-2xl font-extrabold text-emerald-600">{approvedDealsCount}</strong>
               </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm space-y-1 transition hover:shadow-md hover:-translate-y-0.5">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Pending Invoices</span>
                 <strong className="text-xl sm:text-2xl font-extrabold text-amber-600">{pendingDealsCount}</strong>
               </div>
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm col-span-2 sm:col-span-3 md:col-span-1 space-y-1">
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 shadow-sm col-span-2 sm:col-span-3 md:col-span-1 space-y-1 transition hover:shadow-md hover:-translate-y-0.5">
                 <span className="text-xs text-[var(--color-body)] block font-medium">Collected</span>
                 <strong className="text-xl sm:text-2xl font-extrabold text-emerald-600">₹{totalPaidCollected.toLocaleString('en-IN')}</strong>
               </div>
@@ -1245,7 +1261,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               </div>
 
               {loadingDeals ? (
-                <div className="text-center py-12 text-xs text-[var(--color-body)]">Loading institute dues...</div>
+                <div className="text-center py-12 text-xs text-[var(--color-body)] animate-pulse">Loading institute dues...</div>
               ) : myDeals.length === 0 ? (
                 <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
                   <p>No institute deals found yet.</p>
@@ -1253,7 +1269,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               ) : (
                 <div className="space-y-3">
                   {myDeals.map((deal) => (
-                    <div key={deal._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs">
+                    <div key={deal._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs transition hover:border-[var(--color-primary)]/40">
                       <div className="space-y-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <strong className="text-sm text-[var(--color-heading)] font-bold break-words">{deal.instituteName}</strong>
@@ -1277,7 +1293,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                         {deal.dueAmount > 0 ? (
                           <button
                             onClick={() => handlePayDueFromLedger(deal)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0"
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0 active:scale-95"
                           >
                             Pay Due ➔
                           </button>
@@ -1296,10 +1312,10 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         )}
 
         {activeView === 'leads' && (
-          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
+          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4 animate-fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
               <h3 className="text-base font-bold text-[var(--color-heading)]">📋 My Generated Leads & Visit Records</h3>
-              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center">
+              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition">
                 ➕ Record Visit / Add Lead
               </button>
             </div>
@@ -1312,7 +1328,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                   value={leadSearchQuery}
                   onChange={(e) => setLeadSearchQuery(e.target.value)}
                   placeholder="Search by institute name, contact person, mobile number..."
-                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3 pl-10 pr-16 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium"
+                  className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3 pl-10 pr-16 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
                 />
                 {leadSearchQuery && (
                   <button onClick={() => setLeadSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-4 text-xs text-[var(--color-body)] hover:text-[var(--color-heading)]">
@@ -1322,30 +1338,30 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               </div>
 
               <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
-                <button onClick={() => setLeadFilter('all')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'all' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('all')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${leadFilter === 'all' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   All Active ({activeLeadsList.length})
                 </button>
-                <button onClick={() => setLeadFilter('call')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'call' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('call')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${leadFilter === 'call' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   📞 To Call / Call Back
                 </button>
-                <button onClick={() => setLeadFilter('meeting')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'meeting' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('meeting')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${leadFilter === 'meeting' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   🤝 Meetings
                 </button>
-                <button onClick={() => setLeadFilter('demo-done')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'demo-done' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('demo-done')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${leadFilter === 'demo-done' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   ✅ Demo Done
                 </button>
-                <button onClick={() => setLeadFilter('demo-pending')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                <button onClick={() => setLeadFilter('demo-pending')} className={`text-xs px-4 py-2 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                   ⏳ Demo Pending
                 </button>
               </div>
             </div>
 
             {loadingLeads ? (
-              <div className="text-center py-12 text-xs text-[var(--color-body)]">Loading your leads...</div>
+              <div className="text-center py-12 text-xs text-[var(--color-body)] animate-pulse">Loading your leads...</div>
             ) : filteredLeads.length === 0 ? (
               <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
                 <p>No leads found matching your search or filter.</p>
-                <button onClick={() => { setLeadFilter('all'); setLeadSearchQuery(''); }} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl">Reset Search & Filters</button>
+                <button onClick={() => { setLeadFilter('all'); setLeadSearchQuery(''); }} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2 rounded-xl active:scale-95 transition">Reset Search & Filters</button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1373,7 +1389,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                       {lead.followUpDate && (
                         <div onClick={() => setSelectedLead(lead)} className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                           <span className="break-words">🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString('en-IN')} {lead.followUpTime ? `at ${lead.followUpTime}` : ''}</span>
-                          <button onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(lead, 'followup'); }} className="bg-[#25D366] text-white px-3.5 py-2 rounded-xl font-bold text-[10px] hover:opacity-90 cursor-pointer flex items-center gap-1.5 shadow-sm shrink-0">
+                          <button onClick={(e) => { e.stopPropagation(); handleWhatsAppReminder(lead, 'followup'); }} className="bg-[#25D366] text-white px-3.5 py-2 rounded-xl font-bold text-[10px] hover:opacity-90 cursor-pointer flex items-center gap-1.5 shadow-sm shrink-0 active:scale-95 transition">
                             <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                             WhatsApp
                           </button>
@@ -1386,8 +1402,8 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
             )}
 
             {selectedLead && (
-              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-50">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto transform scale-100 animate-in zoom-in-95 duration-200">
                   <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3 gap-2">
                     <div className="min-w-0">
                       <h3 className="text-base font-bold text-[var(--color-heading)] break-words">{selectedLead.instituteName}</h3>
@@ -1395,7 +1411,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                         <span className="text-[11px] text-emerald-600 font-semibold">Total Visits : {selectedLead.visitCount}</span>
                       )}
                     </div>
-                    <button onClick={() => { setSelectedLead(null); setFollowUpModalAction(null); }} className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs cursor-pointer shrink-0">✕</button>
+                    <button onClick={() => { setSelectedLead(null); setFollowUpModalAction(null); }} className="w-8 h-8 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs cursor-pointer shrink-0 active:scale-90 transition">✕</button>
                   </div>
 
                   <div className="space-y-2 text-xs text-[var(--color-heading)] break-words">
@@ -1416,7 +1432,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                       <label className="block text-[11px] font-semibold mb-1 text-[var(--color-primary)] uppercase">1. Demo Status</label>
                       <div className="flex gap-2 flex-wrap">
                         {['Not Given', 'Scheduled', 'Completed', 'Interested'].map((st) => (
-                          <button key={st} type="button" onClick={() => handleUpdateLeadStatus(selectedLead._id, null, st)} className={`px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer transition ${selectedLead.demoStatus === st ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] border-[var(--color-border)]'}`}>
+                          <button key={st} type="button" onClick={() => handleUpdateLeadStatus(selectedLead._id, null, st)} className={`px-3 py-1.5 rounded-xl text-xs font-medium border cursor-pointer transition active:scale-95 ${selectedLead.demoStatus === st ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] border-[var(--color-border)]'}`}>
                             {st === 'Completed' ? '✅ Completed' : st}
                           </button>
                         ))}
@@ -1438,7 +1454,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                         }));
                         setSelectedLead(null);
                         setActiveView('invoice-form');
-                      }} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-2xl text-xs transition cursor-pointer shadow-sm">
+                      }} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-2xl text-xs transition cursor-pointer shadow-sm active:scale-95">
                         🚀 Sales Punch (Generate Invoice & Close Lead)
                       </button>
                     </div>
@@ -1446,23 +1462,23 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     <div>
                       <label className="block text-[11px] font-semibold mb-1 text-[var(--color-primary)] uppercase">3. Update Lead Stage / Response</label>
                       <div className="grid grid-cols-2 gap-2">
-                        <button onClick={() => setFollowUpModalAction('Call Back')} className="bg-amber-500/10 text-amber-600 border border-amber-500/20 py-2.5 rounded-xl font-semibold cursor-pointer hover:bg-amber-500/20 transition">📞 Call Back</button>
-                        <button onClick={() => setFollowUpModalAction('Follow Up')} className="bg-blue-500/10 text-blue-600 border border-blue-500/20 py-2.5 rounded-xl font-semibold cursor-pointer hover:bg-blue-500/20 transition">🔔 Follow Up</button>
-                        <button onClick={() => handleUpdateLeadStatus(selectedLead._id, 'Not Interested', null)} className="bg-red-500/10 text-red-500 border border-red-500/20 py-2.5 rounded-xl font-semibold cursor-pointer hover:bg-red-500/20 transition">❌ Not Interested</button>
-                        <button onClick={() => handleUpdateLeadStatus(selectedLead._id, 'Deal Close', null)} className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 py-2.5 rounded-xl font-semibold cursor-pointer hover:bg-emerald-500/20 transition">🎉 Deal Close</button>
+                        <button onClick={() => setFollowUpModalAction('Call Back')} className="bg-amber-500/10 text-amber-600 border border-amber-500/20 py-2.5 rounded-xl font-semibold cursor-pointer hover:bg-amber-500/20 transition active:scale-95">📞 Call Back</button>
+                        <button onClick={() => setFollowUpModalAction('Follow Up')} className="bg-blue-500/10 text-blue-600 border border-blue-500/20 py-2.5 rounded-xl font-semibold cursor-pointer hover:bg-blue-500/20 transition active:scale-95">🔔 Follow Up</button>
+                        <button onClick={() => handleUpdateLeadStatus(selectedLead._id, 'Not Interested', null)} className="bg-red-500/10 text-red-500 border border-red-500/20 py-2.5 rounded-xl font-semibold cursor-pointer hover:bg-red-500/20 transition active:scale-95">❌ Not Interested</button>
+                        <button onClick={() => handleUpdateLeadStatus(selectedLead._id, 'Deal Close', null)} className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 py-2.5 rounded-xl font-semibold cursor-pointer hover:bg-emerald-500/20 transition active:scale-95">🎉 Deal Close</button>
                       </div>
 
                       {followUpModalAction && (
-                        <div className="mt-3 p-4 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-2xl space-y-3">
+                        <div className="mt-3 p-4 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-2xl space-y-3 animate-fade-in">
                           <p className="text-xs font-bold text-[var(--color-primary)]">Select Date & Time for {followUpModalAction}:</p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <input type="date" value={modalDate} onChange={(e) => setModalDate(e.target.value)} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
                             <input type="time" value={modalTime} onChange={(e) => setModalTime(e.target.value)} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
                           </div>
                           <button type="button" onClick={() => {
-                            if (!modalDate) { alert('Please select a date!'); return; }
+                            if (!modalDate) { toast.error('Please select a date!'); return; }
                             handleUpdateLeadStatus(selectedLead._id, followUpModalAction, null, modalDate, modalTime);
-                          }} className="w-full bg-[var(--color-primary)] text-white text-xs py-2.5 rounded-xl font-semibold cursor-pointer transition">
+                          }} className="w-full bg-[var(--color-primary)] text-white text-xs py-2.5 rounded-xl font-semibold cursor-pointer transition active:scale-95">
                             Save Reminder Date & Time
                           </button>
                         </div>
@@ -1476,13 +1492,13 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         )}
 
         {activeView === 'kanban' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fade-in">
             <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h3 className="text-base font-bold text-[var(--color-heading)]">Manage Lead</h3>
                 <p className="text-xs text-[var(--color-body)] mt-0.5">Visualize and move your leads smoothly across different stages of conversion.</p>
               </div>
-              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center">
+              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition">
                 ➕ Record Visit / Add Lead
               </button>
             </div>
@@ -1502,12 +1518,12 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     activeLeadsList
                       .filter(l => l.leadStatus === 'Active')
                       .map(lead => (
-                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words">
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words transition hover:border-[var(--color-primary)]/40">
                           <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
                           <p className="text-[var(--color-body)]">👤 {lead.contactPerson} | 📞 {lead.mobileNo}</p>
                           <p className="text-[var(--color-body)]">📍 {lead.city}, {lead.state}</p>
                           <div className="pt-2 flex justify-between items-center border-t border-[var(--color-border)] gap-2">
-                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition">
+                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition active:scale-95">
                               <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                               WhatsApp
                             </button>
@@ -1535,7 +1551,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     activeLeadsList
                       .filter(l => l.leadStatus === 'Call Back' || l.leadStatus === 'Follow Up')
                       .map(lead => (
-                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words">
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words transition hover:border-[var(--color-primary)]/40">
                           <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
                           <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
                           {lead.followUpDate && (
@@ -1544,7 +1560,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                             </p>
                           )}
                           <div className="pt-2 flex justify-between items-center border-t border-[var(--color-border)] gap-2">
-                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition">
+                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition active:scale-95">
                               <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                               WhatsApp
                             </button>
@@ -1572,12 +1588,12 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     activeLeadsList
                       .filter(l => l.demoStatus === 'Completed')
                       .map(lead => (
-                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words">
+                        <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words transition hover:border-[var(--color-primary)]/40">
                           <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
                           <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
                           <span className="inline-block bg-indigo-500/10 text-indigo-600 px-2 py-0.5 rounded-md font-semibold text-[10px]">Demo Successful</span>
                           <div className="pt-2 flex flex-col gap-2 border-t border-[var(--color-border)]">
-                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer text-center flex items-center justify-center gap-1.5 transition">
+                            <button onClick={() => handleWhatsAppReminder(lead, 'followup')} className="text-[10px] bg-[#25D366]/10 text-[#25D366] px-3 py-1.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer text-center flex items-center justify-center gap-1.5 transition active:scale-95">
                               <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                               WhatsApp Remind
                             </button>
@@ -1594,7 +1610,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                                 pincode: lead.pincode
                               }));
                               setActiveView('invoice-form');
-                            }} className="w-full text-center text-[10px] bg-emerald-600 text-white py-1.5 rounded-xl font-semibold hover:bg-emerald-700 cursor-pointer shadow-sm">
+                            }} className="w-full text-center text-[10px] bg-emerald-600 text-white py-1.5 rounded-xl font-semibold hover:bg-emerald-700 cursor-pointer shadow-sm active:scale-95 transition">
                               Convert to Deal (Invoice)
                             </button>
                           </div>
@@ -1616,7 +1632,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     <p className="text-xs text-[var(--color-body)] text-center py-8">No closed deals yet</p>
                   ) : (
                     myDeals.map(deal => (
-                      <div key={deal._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words">
+                      <div key={deal._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2 text-xs shadow-sm break-words transition hover:border-[var(--color-primary)]/40">
                         <strong className="text-sm text-[var(--color-heading)] block">{deal.instituteName}</strong>
                         <p className="text-[var(--color-body)]">📱 {deal.appName}</p>
                         <p className="text-emerald-600 font-extrabold">₹{deal.totalAmount?.toLocaleString('en-IN')}</p>
@@ -1633,7 +1649,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         )}
 
         {activeView === 'calendar' && (
-          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
+          <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4 animate-fade-in">
             <div className="border-b border-[var(--color-border)] pb-4">
               <h3 className="text-base font-bold text-[var(--color-heading)]">📅 Upcoming Follow-ups & Meetings Schedule</h3>
               <p className="text-xs text-[var(--color-body)] mt-1">Keep track of all client callbacks and meetings scheduled for upcoming dates.</p>
@@ -1642,7 +1658,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
             {myLeads.filter(l => l.followUpDate && l.leadStatus !== 'Not Interested' && l.leadStatus !== 'Deal Close').length === 0 ? (
               <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
                 <p>No active follow-up reminders scheduled yet.</p>
-                <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2.5 rounded-xl">Schedule a Follow-up</button>
+                <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs px-4 py-2.5 rounded-xl active:scale-95 transition">Schedule a Follow-up</button>
               </div>
             ) : (
               <div className="space-y-3">
@@ -1650,7 +1666,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                   .filter(l => l.followUpDate && l.leadStatus !== 'Not Interested' && l.leadStatus !== 'Deal Close')
                   .sort((a,b) => new Date(a.followUpDate) - new Date(b.followUpDate))
                   .map((lead) => (
-                  <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs">
+                  <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs transition hover:border-[var(--color-primary)]/40">
                     <div className="space-y-1.5 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="bg-[var(--color-primary)] text-white px-2.5 py-0.5 rounded-full font-bold text-[10px] uppercase tracking-wider">{lead.followUpAction || 'Call'}</span>
@@ -1662,7 +1678,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-[var(--color-border)]">
                       <button
                         onClick={() => handleWhatsAppReminder(lead, 'followup')}
-                        className="bg-[#25D366] hover:opacity-90 text-white px-4 py-2.5 rounded-xl font-bold text-[10px] cursor-pointer transition shadow-sm flex items-center gap-1.5 shrink-0"
+                        className="bg-[#25D366] hover:opacity-90 text-white px-4 py-2.5 rounded-xl font-bold text-[10px] cursor-pointer transition shadow-sm flex items-center gap-1.5 shrink-0 active:scale-95"
                       >
                         <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
                         WhatsApp Remind
@@ -1681,9 +1697,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         )}
 
         {activeView === 'lead-form' && (
-          <div>
-            {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.success}</div>}
-            {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.error}</div>}
+          <div className="animate-fade-in">
+            {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold animate-fade-in">{status.success}</div>}
+            {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-2xl mb-6 text-xs font-semibold animate-fade-in">{status.error}</div>}
 
             <form onSubmit={handleLeadSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 space-y-6 shadow-sm">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
@@ -1691,7 +1707,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                   <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">Record Visit / New Lead</h3>
                   <p className="text-[11px] text-[var(--color-body)] mt-0.5">Date and time are automatically recorded upon submission.</p>
                 </div>
-                <button type="button" onClick={handleAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2 shrink-0">
+                <button type="button" onClick={handleAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2 shrink-0 active:scale-95">
                   Locate Me
                 </button>
               </div>
@@ -1699,29 +1715,45 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Mobile Number (Auto-detects previous lead) *</label>
-                  <input type="tel" name="mobileNo" required value={leadFormData.mobileNo} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-semibold" placeholder="9876543210" />
+                  <PhoneInput
+                    country={'in'}
+                    value={leadFormData.mobileNo}
+                    onChange={(phone) => {
+                      const cleanPhone = phone.replace(/\D/g, '').slice(0, 12);
+                      handleLeadChange({ target: { name: 'mobileNo', value: cleanPhone } });
+                    }}
+                    inputProps={{
+                      name: 'mobileNo',
+                      required: true,
+                      autoFocus: false,
+                    }}
+                    containerClass="!w-full"
+                    inputClass="!w-full !bg-[var(--color-surface)] !border !border-[var(--color-border)] !rounded-2xl !py-3 !pl-14 !pr-3 !text-xs !text-[var(--color-heading)] !h-auto focus:!outline-none focus:!border-[var(--color-primary)] !font-semibold"
+                    buttonClass="!bg-[var(--color-surface)] !border !border-[var(--color-border)] !rounded-l-2xl !px-2"
+                    dropdownClass="!bg-[var(--color-card)] !text-[var(--color-heading)] !border !border-[var(--color-border)] !rounded-xl !shadow-xl"
+                  />
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Institute Name *</label>
-                  <input type="text" name="instituteName" required value={leadFormData.instituteName} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Global Public School" />
+                  <input type="text" name="instituteName" required value={leadFormData.instituteName} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="Global Public School" />
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Contact Person Name *</label>
-                  <input type="text" name="contactPerson" required value={leadFormData.contactPerson} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Mr. Rajesh Kumar" />
+                  <input type="text" name="contactPerson" required value={leadFormData.contactPerson} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="Mr. Rajesh Kumar" />
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Email Address (Optional)</label>
-                  <input type="email" name="email" value={leadFormData.email} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="director@school.com" />
+                  <input type="email" name="email" value={leadFormData.email} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="director@school.com" />
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Street Address (Optional)</label>
-                  <textarea name="address" rows="2" value={leadFormData.address} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Office No, Landmark"></textarea>
+                  <textarea name="address" rows="2" value={leadFormData.address} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="Office No, Landmark"></textarea>
                 </div>
 
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">State *</label>
-                  <select name="state" required value={leadStateCode} onChange={handleLeadStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] font-medium">
+                  <select name="state" required value={leadStateCode} onChange={handleLeadStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] font-medium cursor-pointer">
                     <option value="">Select State</option>
                     {indianStates.map((st) => (
                       <option key={st.isoCode} value={st.isoCode}>{st.name}</option>
@@ -1739,7 +1771,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     disabled={!leadStateCode}
                     value={leadFormData.city}
                     onChange={(e) => handleLeadCityChange(e.target.value)}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium disabled:opacity-50"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium disabled:opacity-50 transition"
                     placeholder="Type or select city..."
                   />
                   <datalist id="leadCityList">
@@ -1752,12 +1784,12 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode *</label>
                   {leadAvailablePincodes.length > 0 ? (
-                    <select name="pincode" required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] font-medium">
+                    <select name="pincode" required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] font-medium cursor-pointer">
                       <option value="">Select Pincode</option>
                       {leadAvailablePincodes.map((pin) => <option key={pin} value={pin}>{pin}</option>)}
                     </select>
                   ) : (
-                    <input type="text" name="pincode" maxLength={6} required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="6-digit Pincode" />
+                    <input type="text" name="pincode" maxLength={6} required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="6-digit Pincode" />
                   )}
                 </div>
 
@@ -1771,7 +1803,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
                       <label className="block font-medium mb-1 text-[var(--color-heading)]">Follow-up Action</label>
-                      <select name="followUpAction" value={leadFormData.followUpAction} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs font-medium">
+                      <select name="followUpAction" value={leadFormData.followUpAction} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs font-medium cursor-pointer">
                         <option value="Call">Call Back</option>
                         <option value="Next Meeting">Meeting Reschedule</option>
                         <option value="Demo">Demo</option>
@@ -1780,22 +1812,22 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     </div>
                     <div>
                       <label className="block font-medium mb-1 text-[var(--color-heading)]">Follow-up Date</label>
-                      <input type="date" name="followUpDate" value={leadFormData.followUpDate} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
+                      <input type="date" name="followUpDate" value={leadFormData.followUpDate} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs cursor-pointer" />
                     </div>
                     <div>
                       <label className="block font-medium mb-1 text-[var(--color-heading)]">Follow-up Time</label>
-                      <input type="time" name="followUpTime" value={leadFormData.followUpTime} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs" />
+                      <input type="time" name="followUpTime" value={leadFormData.followUpTime} onChange={handleLeadChange} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs cursor-pointer" />
                     </div>
                   </div>
                 </div>
 
                 <div className="md:col-span-2">
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Visit / Discussion Notes</label>
-                  <textarea name="notes" rows="3" value={leadFormData.notes} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" placeholder="Summary of this visit..."></textarea>
+                  <textarea name="notes" rows="3" value={leadFormData.notes} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="Summary of this visit..."></textarea>
                 </div>
               </div>
 
-              <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer disabled:opacity-50 shadow-sm text-xs">
+              <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer disabled:opacity-50 shadow-sm text-xs active:scale-95">
                 {status.loading ? 'Detecting Secure GPS & Saving Visit...' : 'Save Lead Visit & Follow-up'}
               </button>
             </form>
@@ -1803,14 +1835,14 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         )}
 
         {activeView === 'invoice-form' && (
-          <div>
-            {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.success}</div>}
-            {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-2xl mb-6 text-xs font-semibold">{status.error}</div>}
+          <div className="animate-fade-in">
+            {status.success && <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-4 rounded-2xl mb-6 text-xs font-semibold animate-fade-in">{status.success}</div>}
+            {status.error && <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-4 rounded-2xl mb-6 text-xs font-semibold animate-fade-in">{status.error}</div>}
 
             <form onSubmit={handleSubmit} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 space-y-6 shadow-sm">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--color-border)] pb-4">
                 <h3 className="text-sm font-bold text-[var(--color-primary)] uppercase tracking-wider">1. Client Details & Installment Ledger Lookup</h3>
-                <button type="button" onClick={handleInvoiceAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2 shrink-0">
+                <button type="button" onClick={handleInvoiceAutoDetectLocation} className="bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/25 text-xs px-4 py-2.5 rounded-2xl font-bold transition cursor-pointer flex items-center gap-2 shrink-0 active:scale-95">
                   Locate Me
                 </button>
               </div>
@@ -1825,7 +1857,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     required 
                     value={formData.instituteName} 
                     onChange={handleChange} 
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-semibold" 
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-semibold transition" 
                     placeholder="Type institute name..." 
                   />
                   <datalist id="existingInstitutes">
@@ -1838,23 +1870,39 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">App Name *</label>
-                  <input type="text" name="appName" required value={formData.appName} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" />
+                  <input type="text" name="appName" required value={formData.appName} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" />
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Mobile Number *</label>
-                  <input type="tel" name="mobileNo" required value={formData.mobileNo} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" />
+                  <PhoneInput
+                    country={'in'}
+                    value={formData.mobileNo}
+                    onChange={(phone) => {
+                      const cleanPhone = phone.replace(/\D/g, '').slice(0, 12);
+                      handleChange({ target: { name: 'mobileNo', value: cleanPhone } });
+                    }}
+                    inputProps={{
+                      name: 'mobileNo',
+                      required: true,
+                      autoFocus: false,
+                    }}
+                    containerClass="!w-full"
+                    inputClass="!w-full !bg-[var(--color-surface)] !border !border-[var(--color-border)] !rounded-2xl !py-3 !pl-14 !pr-3 !text-xs !text-[var(--color-heading)] !h-auto focus:!outline-none focus:!border-[var(--color-primary)] !font-semibold"
+                    buttonClass="!bg-[var(--color-surface)] !border !border-[var(--color-border)] !rounded-l-2xl !px-2"
+                    dropdownClass="!bg-[var(--color-card)] !text-[var(--color-heading)] !border !border-[var(--color-border)] !rounded-xl !shadow-xl"
+                  />
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Client Email *</label>
-                  <input type="email" name="email" required value={formData.email} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]" />
+                  <input type="email" name="email" required value={formData.email} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Street Address *</label>
-                  <textarea name="address" rows="2" required value={formData.address} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"></textarea>
+                  <textarea name="address" rows="2" required value={formData.address} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"></textarea>
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">State *</label>
-                  <select name="state" required value={selectedStateCode} onChange={handleInvoiceStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 font-medium">
+                  <select name="state" required value={selectedStateCode} onChange={handleInvoiceStateChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 font-medium cursor-pointer">
                     <option value="">Select State</option>
                     {indianStates.map((st) => <option key={st.isoCode} value={st.isoCode}>{st.name}</option>)}
                   </select>
@@ -1870,7 +1918,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     disabled={!selectedStateCode}
                     value={formData.city}
                     onChange={(e) => handleInvoiceCityChange(e.target.value)}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium disabled:opacity-50"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium disabled:opacity-50 transition"
                     placeholder="Type or select city..."
                   />
                   <datalist id="invoiceCityList">
@@ -1883,17 +1931,17 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode *</label>
                   {availablePincodes.length > 0 ? (
-                    <select name="pincode" required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 font-medium">
+                    <select name="pincode" required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 font-medium cursor-pointer">
                       <option value="">Select Pincode</option>
                       {availablePincodes.map(pin => <option key={pin} value={pin}>{pin}</option>)}
                     </select>
                   ) : (
-                    <input type="text" name="pincode" maxLength={6} required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)]" placeholder="Pincode" />
+                    <input type="text" name="pincode" maxLength={6} required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="Pincode" />
                   )}
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">GST Number</label>
-                  <input type="text" name="gstNo" value={formData.gstNo} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)]" placeholder="Optional" />
+                  <input type="text" name="gstNo" value={formData.gstNo} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="Optional" />
                 </div>
               </div>
 
@@ -1915,11 +1963,11 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                   <div>
                     <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Base Package Price (₹)</label>
-                    <input type="number" name="baseAmount" value={formData.baseAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)]" />
+                    <input type="number" name="baseAmount" value={formData.baseAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)] transition" />
                   </div>
                   <div>
                     <label className="block font-medium mb-1.5 text-emerald-600 font-bold">Installment Paid Now (₹) *</label>
-                    <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-emerald-500/50 rounded-2xl p-3 font-bold text-emerald-600 focus:outline-none" />
+                    <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-emerald-500/50 rounded-2xl p-3 font-bold text-emerald-600 focus:outline-none transition" />
                   </div>
                 </div>
 
@@ -1930,28 +1978,28 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, paymentMode: 'ONLINE' })}
-                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center ${formData.paymentMode === 'ONLINE' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
+                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center active:scale-95 ${formData.paymentMode === 'ONLINE' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
                     >
                       📱 Online / UPI
                     </button>
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, paymentMode: 'CASH' })}
-                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center ${formData.paymentMode === 'CASH' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
+                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center active:scale-95 ${formData.paymentMode === 'CASH' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
                     >
                       💵 Cash Payment
                     </button>
                     <button
                       type="button"
                       onClick={() => setFormData({ ...formData, paymentMode: 'CHEQUE' })}
-                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center ${formData.paymentMode === 'CHEQUE' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
+                      className={`p-3 rounded-xl font-bold border transition cursor-pointer text-center active:scale-95 ${formData.paymentMode === 'CHEQUE' ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
                     >
                       🏦 Cheque / DD
                     </button>
                   </div>
 
                   {formData.paymentMode === 'ONLINE' && (
-                    <div className="pt-2">
+                    <div className="pt-2 animate-fade-in">
                       <label className="block font-medium mb-1.5 text-[var(--color-heading)]">UTR / UPI Transaction ID (12 Digits) *</label>
                       <input
                         type="text"
@@ -1961,13 +2009,13 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                         value={formData.utrNumber}
                         onChange={handleChange}
                         placeholder="e.g. 419283746501"
-                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 font-mono text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 font-mono text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
                   )}
 
                   {formData.paymentMode === 'CASH' && (
-                    <div className="pt-2">
+                    <div className="pt-2 animate-fade-in">
                       <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Cash Receipt / Voucher Number *</label>
                       <input
                         type="text"
@@ -1976,13 +2024,13 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                         value={formData.receiptNo}
                         onChange={handleChange}
                         placeholder="e.g. CRZ-CASH-2026-001"
-                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                       />
                     </div>
                   )}
 
                   {formData.paymentMode === 'CHEQUE' && (
-                    <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in">
                       <div>
                         <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Cheque / DD Number (6 Digits) *</label>
                         <input
@@ -1993,7 +2041,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                           value={formData.chequeNo}
                           onChange={handleChange}
                           placeholder="e.g. 348219"
-                          className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 font-mono text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                          className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 font-mono text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                         />
                       </div>
                       <div>
@@ -2005,7 +2053,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                           value={formData.bankName}
                           onChange={handleChange}
                           placeholder="e.g. HDFC Bank, Main Branch"
-                          className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)]"
+                          className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
                         />
                       </div>
                     </div>
@@ -2015,15 +2063,15 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 <div className="p-4 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">
                   <label className="block text-[11px] font-semibold text-[var(--color-primary)] uppercase tracking-wider">🎁 Select Add-on Packages</label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-[var(--color-heading)]">
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
+                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] transition hover:border-[var(--color-primary)]">
                       <input type="checkbox" name="testModule" checked={addons.testModule} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
                       <span>Test Series Module (+₹5,000)</span>
                     </label>
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
+                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] transition hover:border-[var(--color-primary)]">
                       <input type="checkbox" name="windowApp" checked={addons.windowApp} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
                       <span>Windows App (+₹5,000)</span>
                     </label>
-                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
+                    <label className="flex items-center gap-2.5 cursor-pointer bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] transition hover:border-[var(--color-primary)]">
                       <input type="checkbox" name="iosApp" checked={addons.iosApp} onChange={handleAddonChange} className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" />
                       <span>iOS Mobile App (+₹45,000)</span>
                     </label>
@@ -2035,14 +2083,14 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                   <div className="flex gap-2">
                     <input type="text" value={couponInput} disabled={isCouponApplied} onChange={(e) => setCouponInput(e.target.value)} placeholder="FLAT50" className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-2.5 text-xs font-mono" />
                     {!isCouponApplied ? (
-                      <button type="button" onClick={handleApplyCoupon} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-xl cursor-pointer font-semibold shrink-0">Apply</button>
+                      <button type="button" onClick={handleApplyCoupon} className="bg-[var(--color-primary)] text-white text-xs px-5 py-2.5 rounded-xl cursor-pointer font-semibold shrink-0 active:scale-95 transition">Apply</button>
                     ) : (
-                      <button type="button" onClick={handleRemoveCoupon} className="bg-red-500/15 text-red-600 border border-red-500/20 text-xs px-5 py-2.5 rounded-xl cursor-pointer font-semibold shrink-0">Remove</button>
+                      <button type="button" onClick={handleRemoveCoupon} className="bg-red-500/15 text-red-600 border border-red-500/20 text-xs px-5 py-2.5 rounded-xl cursor-pointer font-semibold shrink-0 active:scale-95 transition">Remove</button>
                     )}
                   </div>
                   {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
                   {isCouponApplied && couponDetails && (
-                    <p className="text-xs text-emerald-600 font-medium mt-1">
+                    <p className="text-xs text-emerald-600 font-medium mt-1 animate-fade-in">
                       🎉 Coupon "{couponDetails.code}" applied! Discount added.
                     </p>
                   )}
@@ -2080,7 +2128,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
               </div>
 
-              <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer disabled:opacity-50 shadow-sm text-xs">
+              <button type="submit" disabled={status.loading} className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer disabled:opacity-50 shadow-sm text-xs active:scale-95">
                 {status.loading ? 'Submitting Installment & Updating Ledger...' : 'Submit Installment Payment & Update Due Balance'}
               </button>
             </form>

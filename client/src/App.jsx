@@ -10,6 +10,24 @@ function App() {
   const [token, setToken] = useState(null);
   const [role, setRole] = useState(null);
   const [userId, setUserId] = useState(null);
+  
+  // 🌟 Global Dark / Light Theme State Management
+  const [isDark, setIsDark] = useState(() => {
+    return localStorage.getItem('theme') === 'dark';
+  });
+
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (isDark) {
+      root.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      root.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  }, [isDark]);
+
+  const toggleTheme = () => setIsDark(!isDark);
 
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
@@ -44,9 +62,20 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-background)] font-[var(--font-body)] text-[var(--color-body)]">
+    <div className="min-h-screen bg-[var(--color-background)] font-[var(--font-body)] text-[var(--color-body)] transition-colors duration-300 relative">
       {/* 2. Add Toaster here */}
       <Toaster position="top-right" reverseOrder={false} />
+
+      {/* 🌟 Global Floating Theme Toggle Button (Visible across all dashboards/panels) */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={toggleTheme}
+          className="p-3.5 rounded-full bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-heading)] shadow-xl cursor-pointer transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center text-base"
+          title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+        >
+          {isDark ? '☀️' : '🌙'}
+        </button>
+      </div>
 
       {!token ? (
         <Login onLoginSuccess={handleLoginSuccess} />
