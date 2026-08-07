@@ -586,7 +586,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   };
 
   const handleLeadCityChange = async (cityName) => {
-    setLeadFormData((prev) => ({ ...prev, city: cityName, pincode: '' }));
+    setLeadFormData((prev) => ({ ...prev, city: cityName }));
     if (!cityName) return;
     try {
       const response = await fetch(`https://api.postalpincode.in/postoffice/${cityName}`);
@@ -634,7 +634,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   };
 
   const handleInvoiceCityChange = async (cName) => {
-    setFormData(prev => ({ ...prev, city: cName, pincode: '' }));
+    setFormData(prev => ({ ...prev, city: cName }));
     if (!cName) return;
     try {
       const response = await fetch(`https://api.postalpincode.in/postoffice/${cName}`);
@@ -1764,16 +1764,15 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
 
                 <div>
-                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City / District *</label>
+                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City / District (Type or Select) *</label>
                   <input
                     type="text"
                     name="city"
                     list="leadCityList"
                     required
-                    disabled={!leadStateCode}
                     value={leadFormData.city}
                     onChange={(e) => handleLeadCityChange(e.target.value)}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium disabled:opacity-50 transition"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
                     placeholder="Type or select city..."
                   />
                   <datalist id="leadCityList">
@@ -1784,7 +1783,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
 
                 <div>
-                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode *</label>
+                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode (Type or Search) *</label>
                   <input
                     type="text"
                     name="pincode"
@@ -1919,16 +1918,15 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
 
                 <div>
-                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City *</label>
+                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">City (Type or Select) *</label>
                   <input
                     type="text"
                     name="city"
                     list="invoiceCityList"
                     required
-                    disabled={!selectedStateCode}
                     value={formData.city}
                     onChange={(e) => handleInvoiceCityChange(e.target.value)}
-                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium disabled:opacity-50 transition"
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
                     placeholder="Type or select city..."
                   />
                   <datalist id="invoiceCityList">
@@ -1939,7 +1937,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
 
                 <div>
-                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode *</label>
+                  <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode (Type or Search) *</label>
                   <input
                     type="text"
                     name="pincode"
