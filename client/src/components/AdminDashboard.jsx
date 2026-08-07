@@ -22,6 +22,9 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [tasksList, setTasksList] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // --- 🚪 Logout Confirmation Modal State ---
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
   // 🔍 Search & Filter States
   const [directorySearch, setDirectorySearch] = useState("");
   const [employeeSearch, setEmployeeSearch] = useState("");
@@ -601,6 +604,36 @@ const AdminDashboard = ({ userId, onLogout }) => {
     <div className="min-h-screen bg-[var(--color-background)] p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-6">
         
+        {/* 🚪 Logout Confirmation Modal */}
+        {showLogoutModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center">
+              <span className="text-4xl">⚠️</span>
+              <h3 className="text-lg font-extrabold text-[var(--color-heading)]">Confirm Logout</h3>
+              <p className="text-xs text-[var(--color-body)]">
+                Are you sure you want to log out from the Admin Portal?
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowLogoutModal(false)}
+                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/50 text-[var(--color-heading)] py-3 rounded-xl text-xs font-semibold cursor-pointer border border-[var(--color-border)] transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLogoutModal(false);
+                    onLogout();
+                  }}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer transition shadow-sm"
+                >
+                  Confirm Logout
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm gap-4">
           <div className="space-y-1">
@@ -616,7 +649,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
             </p>
           </div>
           <button
-            onClick={onLogout}
+            onClick={() => setShowLogoutModal(true)}
             className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 transition cursor-pointer flex items-center gap-2"
           >
             Logout

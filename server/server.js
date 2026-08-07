@@ -45,7 +45,12 @@ const io = new Server(server, {
 
 // --- Security & Proxy Setup ---
 app.set("trust proxy", 1);
-app.use(helmet());
+
+// 🛡️ FIX: Enabled cross-origin resource policy so frontend can load uploaded images/files from backend
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
+
 app.use(cors());
 app.use(express.json());
 
@@ -146,7 +151,7 @@ const locationLogSchema = new mongoose.Schema({
   latitude: { type: Number, required: true },
   longitude: { type: Number, required: true },
   date: { type: String, required: true, index: true }, // Format: 'YYYY-MM-DD'
-  isMocked: { type: Boolean, default: false },        // 👈 Anti-Bypass Security Flag
+  isMocked: { type: Boolean, default: false },         // 👈 Anti-Bypass Security Flag
   timestamp: { type: Date, default: Date.now },
 });
 const LocationLog = mongoose.model("LocationLog", locationLogSchema);
