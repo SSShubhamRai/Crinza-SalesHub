@@ -1023,23 +1023,25 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           </div>
         )}
 
-        {/* 🚪 Logout Confirmation Modal */}
+        {/* 🚪 Logout Confirmation Modal (Mobile APK & Browser Centered) */}
         {showLogoutModal && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center transform scale-100 animate-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fade-in" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, margin: 0 }}>
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-sm w-full mx-auto my-auto space-y-4 shadow-2xl text-center transform transition-all scale-100 animate-in zoom-in-95 duration-200">
               <span className="text-4xl animate-bounce inline-block">⚠️</span>
               <h3 className="text-lg font-extrabold text-[var(--color-heading)]">Confirm Logout</h3>
-              <p className="text-xs text-[var(--color-body)]">
+              <p className="text-xs text-[var(--color-body)] leading-relaxed">
                 Are you sure you want to log out from the Salesperson Portal?
               </p>
               <div className="flex gap-3 pt-2">
                 <button
+                  type="button"
                   onClick={() => setShowLogoutModal(false)}
                   className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/60 text-[var(--color-heading)] py-3 rounded-xl text-xs font-semibold cursor-pointer border border-[var(--color-border)] transition active:scale-95"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setShowLogoutModal(false);
                     onLogout();
@@ -1783,14 +1785,22 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode *</label>
-                  {leadAvailablePincodes.length > 0 ? (
-                    <select name="pincode" required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] font-medium cursor-pointer">
-                      <option value="">Select Pincode</option>
-                      {leadAvailablePincodes.map((pin) => <option key={pin} value={pin}>{pin}</option>)}
-                    </select>
-                  ) : (
-                    <input type="text" name="pincode" maxLength={6} required value={leadFormData.pincode} onChange={handleLeadChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="6-digit Pincode" />
-                  )}
+                  <input
+                    type="text"
+                    name="pincode"
+                    list="leadPincodeList"
+                    maxLength={6}
+                    required
+                    value={leadFormData.pincode}
+                    onChange={handleLeadChange}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
+                    placeholder="Type or search pincode..."
+                  />
+                  <datalist id="leadPincodeList">
+                    {leadAvailablePincodes.map((pin) => (
+                      <option key={pin} value={pin} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div>
@@ -1930,14 +1940,22 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">Pincode *</label>
-                  {availablePincodes.length > 0 ? (
-                    <select name="pincode" required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 font-medium cursor-pointer">
-                      <option value="">Select Pincode</option>
-                      {availablePincodes.map(pin => <option key={pin} value={pin}>{pin}</option>)}
-                    </select>
-                  ) : (
-                    <input type="text" name="pincode" maxLength={6} required value={formData.pincode} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 focus:outline-none focus:border-[var(--color-primary)] transition" placeholder="Pincode" />
-                  )}
+                  <input
+                    type="text"
+                    name="pincode"
+                    list="invoicePincodeList"
+                    maxLength={6}
+                    required
+                    value={formData.pincode}
+                    onChange={handleChange}
+                    className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
+                    placeholder="Type or search pincode..."
+                  />
+                  <datalist id="invoicePincodeList">
+                    {availablePincodes.map((pin) => (
+                      <option key={pin} value={pin} />
+                    ))}
+                  </datalist>
                 </div>
                 <div>
                   <label className="block font-medium mb-1.5 text-[var(--color-heading)]">GST Number</label>
