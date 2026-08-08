@@ -432,9 +432,9 @@ const Login = ({ onLoginSuccess }) => {
             <h1 className="text-2xl sm:text-3xl font-black text-[var(--color-heading)] tracking-tight">
               Welcome Back
             </h1>
-            <p className="text-xs text-[var(--color-body)] font-medium">
+            {/* <p className="text-xs text-[var(--color-body)] font-medium">
               Sign in to access your Crinza Sales Portal
-            </p>
+            </p> */}
           </div>
         </div>
 

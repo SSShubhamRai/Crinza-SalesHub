@@ -102,6 +102,18 @@ const AdminDashboard = ({ userId, onLogout }) => {
   });
   const [couponStatus, setCouponStatus] = useState({ success: "", error: "" });
 
+  // --- 📱 LOCK BODY SCROLL WHEN MODALS ARE OPEN ---
+  useEffect(() => {
+    if (showLogoutModal || selectedEmpLogs || transferModalDeal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [showLogoutModal, selectedEmpLogs, transferModalDeal]);
+
   // --- SOCKET.IO CONNECTION ---
   useEffect(() => {
     socketRef.current = io(API_BASE, {
@@ -716,8 +728,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
           </div>
         </div>
 
-        {/* Navigation Tabs Bar */}
-        <div className="flex gap-2 p-1.5 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm overflow-x-auto">
+        {/* Navigation Tabs Bar (Desktop) */}
+        <div className="hidden md:flex gap-2 p-1.5 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm overflow-x-auto">
           <button
             onClick={() => setActiveTab("tracker")}
             className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
@@ -725,46 +737,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
             }`}
           >
             📋 Task Tracker
-          </button>
-          <button
-            onClick={() => setActiveTab("live-tracking")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
-              activeTab === "live-tracking" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
-            }`}
-          >
-            🛰️ Live Tracking & Travel
-          </button>
-          <button
-            onClick={() => setActiveTab("security-alerts")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap relative active:scale-95 ${
-              activeTab === "security-alerts" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
-            }`}
-          >
-            🚨 Security & Spoofing {spoofingAlerts.length > 0 && <span className="ml-1 bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px] font-extrabold animate-pulse">{spoofingAlerts.length}</span>}
-          </button>
-          <button
-            onClick={() => setActiveTab("broadcast")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
-              activeTab === "broadcast" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
-            }`}
-          >
-            📢 Team Broadcast
-          </button>
-          <button
-            onClick={() => setActiveTab("leads-export")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
-              activeTab === "leads-export" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
-            }`}
-          >
-            📊 Leads Report & Excel Export
-          </button>
-          <button
-            onClick={() => setActiveTab("directory")}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
-              activeTab === "directory" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
-            }`}
-          >
-            👥 Team Directory & Deals
           </button>
           <button
             onClick={() => setActiveTab("employees")}
@@ -775,12 +747,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
             ➕ Manage Team
           </button>
           <button
-            onClick={() => setActiveTab("transfer")}
+            onClick={() => setActiveTab("directory")}
             className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
-              activeTab === "transfer" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+              activeTab === "directory" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
             }`}
           >
-            🔄 Transfer Leads
+            👥 Team Directory & Deals
           </button>
           <button
             onClick={() => setActiveTab("coupons")}
@@ -790,6 +762,65 @@ const AdminDashboard = ({ userId, onLogout }) => {
           >
             🎟️ Discount Coupons
           </button>
+          <button
+            onClick={() => setActiveTab("transfer")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "transfer" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            🔄 Transfer Leads
+          </button>
+          <button
+            onClick={() => setActiveTab("broadcast")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "broadcast" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            📢 Team Broadcast
+          </button>
+          <button
+            onClick={() => setActiveTab("live-tracking")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "live-tracking" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            🛰️ Live Tracking & Travel
+          </button>
+          <button
+            onClick={() => setActiveTab("leads-export")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "leads-export" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            📊 Leads Report & Excel Export
+          </button>
+          <button
+            onClick={() => setActiveTab("security-alerts")}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap relative active:scale-95 ${
+              activeTab === "security-alerts" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            🚨 Security & Spoofing {spoofingAlerts.length > 0 && <span className="ml-1 bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px] font-extrabold animate-pulse">{spoofingAlerts.length}</span>}
+          </button>
+        </div>
+
+        {/* Mobile Navigation Dropdown */}
+        <div className="block md:hidden w-full">
+          <select
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value)}
+            className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-3.5 text-xs text-[var(--color-heading)] font-bold focus:outline-none focus:border-[var(--color-primary)] shadow-sm cursor-pointer"
+          >
+            <option value="tracker">📋 Task Tracker</option>
+            <option value="employees">➕ Manage Team</option>
+            <option value="directory">👥 Team Directory & Deals</option>
+            <option value="coupons">🎟️ Discount Coupons</option>
+            <option value="transfer">🔄 Transfer Leads</option>
+            <option value="broadcast">📢 Team Broadcast</option>
+            <option value="live-tracking">🛰️ Live Tracking & Travel</option>
+            <option value="leads-export">📊 Leads Report & Excel Export</option>
+            <option value="security-alerts">🚨 Security & Spoofing ({spoofingAlerts.length})</option>
+          </select>
         </div>
 
         {loading ? (
@@ -887,464 +918,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 1.5: LIVE TRACKING & TRAVEL HISTORY */}
-            {activeTab === "live-tracking" && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
-                  <div>
-                    <h3 className="text-sm font-bold text-[var(--color-heading)]">
-                      🛰️ Salesperson Live Location & Travel History
-                    </h3>
-                    <p className="text-xs text-[var(--color-body)] mt-0.5">
-                      View live position, select past dates, total distance, and exact place names.
-                    </p>
-                  </div>
-
-                  {/* Controls: Date Picker & Employee Selector */}
-                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    <input
-                      type="date"
-                      value={trackerDate}
-                      max={new Date().toISOString().split('T')[0]}
-                      onChange={(e) => {
-                        setTrackerDate(e.target.value);
-                        if (selectedTrackerEmp) {
-                          fetchSalespersonTravelHistory(selectedTrackerEmp, e.target.value);
-                        }
-                      }}
-                      className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
-                    />
-
-                    <select
-                      value={selectedTrackerEmp}
-                      onChange={(e) => {
-                        setSelectedTrackerEmp(e.target.value);
-                        if (e.target.value) {
-                          fetchSalespersonTravelHistory(e.target.value, trackerDate);
-                        }
-                      }}
-                      className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
-                    >
-                      <option value="">-- Choose Salesperson --</option>
-                      {employees
-                        .filter((emp) => emp.role === "salesperson")
-                        .map((emp) => (
-                          <option key={emp.userId} value={emp.userId}>
-                            {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                </div>
-
-                {!selectedTrackerEmp ? (
-                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
-                    <span className="text-3xl animate-bounce">📍</span>
-                    <h3 className="text-sm font-bold text-[var(--color-heading)]">No Salesperson Selected</h3>
-                    <p className="text-xs text-[var(--color-body)]">Please choose a salesperson from the dropdown above to view their live GPS status and travel report.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
-                      <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
-                      {liveLocations[selectedTrackerEmp] ? (
-                        <div className="space-y-3 text-xs text-[var(--color-heading)]">
-                          <p>Lat/Lng: <strong className="font-mono">{liveLocations[selectedTrackerEmp].latitude.toFixed(4)}, {liveLocations[selectedTrackerEmp].longitude.toFixed(4)}</strong></p>
-                          <p className="text-[var(--color-body)]">Last Ping: {new Date(liveLocations[selectedTrackerEmp].timestamp).toLocaleTimeString('en-IN')}</p>
-                          <a
-                            href={`https://www.google.com/maps?q=${liveLocations[selectedTrackerEmp].latitude},${liveLocations[selectedTrackerEmp].longitude}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm active:scale-95"
-                          >
-                            🗺️ Open Live Position on Map
-                          </a>
-                        </div>
-                      ) : (
-                        <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
-                          Waiting for continuous live GPS ping from app...
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4 transition-all hover:shadow-md">
-                      <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                        <h4 className="text-sm font-bold text-[var(--color-heading)]">🛣️ Travel Summary for {trackerDate}</h4>
-                        <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-xl font-extrabold text-xs">
-                          Total Distance: {travelData.totalDistanceKm || 0} KM
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-[var(--color-body)]">
-                        Route history logged: <strong>{travelData.routePoints?.length || 0}</strong> coordinate pings recorded.
-                      </p>
-
-                      <div className="max-h-64 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)] text-xs">
-                        {travelData.routePoints?.length === 0 ? (
-                          <div className="py-8 text-center text-[var(--color-body)]">No route coordinates logged for this date.</div>
-                        ) : (
-                          travelData.routePoints?.map((pt, idx) => {
-                            const pointKey = pt._id || `${pt.latitude}-${pt.longitude}-${idx}`;
-                            if (!resolvedAddresses[pointKey]) {
-                              resolvePlaceName(pt.latitude, pt.longitude, pointKey);
-                            }
-                            return (
-                              <div key={pointKey} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] gap-2 transition hover:border-[var(--color-primary)]/40">
-                                <div className="space-y-0.5">
-                                  <span className="font-bold text-[var(--color-heading)] flex items-center gap-1">
-                                    📍 {resolvedAddresses[pointKey] || `GPS Point (${pt.latitude.toFixed(3)}, ${pt.longitude.toFixed(3)})`}
-                                  </span>
-                                  <span className="text-[10px] text-[var(--color-body)] font-mono">
-                                    Lat: {pt.latitude.toFixed(5)}, Lng: {pt.longitude.toFixed(5)}
-                                  </span>
-                                </div>
-                                <span className="text-[var(--color-body)] whitespace-nowrap">
-                                  ⏰ {new Date(pt.timestamp).toLocaleTimeString('en-IN')}
-                                </span>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB: SECURITY ALERTS & SPOOFING LOGS */}
-            {activeTab === "security-alerts" && (
-              <div className="bg-[var(--color-card)] border border-red-500/30 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 animate-fade-in">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
-                  <div>
-                    <h3 className="text-base font-bold text-red-600 flex items-center gap-2">
-                      <span>🚨</span> Live Mock Location / Spoofing Security Logs
-                    </h3>
-                    <p className="text-xs text-[var(--color-body)] mt-0.5">Real-time flags triggered when salespersons attempt to bypass location restrictions using fake GPS.</p>
-                  </div>
-                  <span className="bg-red-500/10 text-red-600 border border-red-500/20 px-3 py-1.5 rounded-xl font-extrabold text-xs">
-                    Total Flags: {spoofingAlerts.length}
-                  </span>
-                </div>
-
-                {spoofingAlerts.length === 0 ? (
-                  <div className="py-16 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] space-y-2">
-                    <span className="text-2xl">🛡️</span>
-                    <p>No spoofing or fake GPS attempts detected in the current active session.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {spoofingAlerts.map((alert, idx) => (
-                      <div key={idx} className="bg-red-500/5 border border-red-500/30 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs transition hover:bg-red-500/10">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <strong className="text-sm text-red-600 font-bold">Salesperson ID: {alert.salespersonId}</strong>
-                            <span className="bg-red-500 text-white px-2 py-0.5 rounded-md text-[10px] font-bold animate-pulse">Mock Detected</span>
-                          </div>
-                          <p className="text-[var(--color-heading)]">📍 Coordinates flagged: <span className="font-mono">{alert.latitude?.toFixed(4)}, {alert.longitude?.toFixed(4)}</span></p>
-                          <p className="text-[var(--color-body)]">⏰ Timestamp: {new Date(alert.timestamp || Date.now()).toLocaleString('en-IN')}</p>
-                        </div>
-                        <a
-                          href={`https://www.google.com/maps?q=${alert.latitude},${alert.longitude}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold transition shadow-sm text-center active:scale-95"
-                        >
-                          🗺️ View Flagged Location
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB: TEAM BROADCAST ANNOUNCEMENTS */}
-            {activeTab === "broadcast" && (
-              <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
-                  <div>
-                    <h3 className="text-base font-bold text-[var(--color-primary)] flex items-center gap-2">
-                      <span>📢</span> Send Live Broadcast Announcement
-                    </h3>
-                    <p className="text-xs text-[var(--color-body)] mt-1">
-                      Instantly push real-time alerts, daily goals, or important updates to all active salesperson apps.
-                    </p>
-                  </div>
-
-                  <form onSubmit={handleSendBroadcast} className="space-y-4 text-xs">
-                    <div>
-                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Priority Level *</label>
-                      <select
-                        value={broadcastMsg.priority}
-                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, priority: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
-                      >
-                        <option value="normal">🟢 Normal Update</option>
-                        <option value="important">🟡 Important Notice</option>
-                        <option value="urgent">🔴 Urgent / Emergency</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Headline / Title *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g., Evening Team Sync-up at 6 PM"
-                        value={broadcastMsg.title}
-                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, title: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Message Details *</label>
-                      <textarea
-                        required
-                        rows="4"
-                        placeholder="Type your complete announcement here..."
-                        value={broadcastMsg.message}
-                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, message: e.target.value })}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] resize-none transition"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={isBroadcasting}
-                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs disabled:opacity-50 active:scale-95"
-                    >
-                      {isBroadcasting ? "Broadcasting to Team..." : "🚀 Push Broadcast to All Devices"}
-                    </button>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* TAB 1.6: LEADS REPORT & EXCEL EXPORT */}
-            {activeTab === "leads-export" && (
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-6 animate-fade-in">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
-                  <div>
-                    <h3 className="text-base font-bold text-[var(--color-heading)]">📊 Leads Report & Excel Export</h3>
-                    <p className="text-xs text-[var(--color-body)] mt-0.5">Filter team leads by status & date range and download spreadsheet reports.</p>
-                  </div>
-                  <button
-                    onClick={() => downloadCSV(filteredSystemLeads, `Leads_Report_${adminLeadFilter}_${exportStartDate || 'all'}_to_${exportEndDate || 'all'}.csv`)}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-5 py-3 rounded-2xl font-semibold transition cursor-pointer shadow-sm flex items-center gap-2 active:scale-95 hover:shadow-md"
-                  >
-                    📥 Download Excel (.CSV) Report ({filteredSystemLeads.length})
-                  </button>
-                </div>
-
-                {/* 📅 Date Range Filter Controls */}
-                <div className="flex flex-wrap items-center gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-[var(--color-body)]">Start Date:</span>
-                    <input
-                      type="date"
-                      value={exportStartDate}
-                      onChange={(e) => setExportStartDate(e.target.value)}
-                      className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
-                    />
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-[var(--color-body)]">End Date:</span>
-                    <input
-                      type="date"
-                      value={exportEndDate}
-                      onChange={(e) => setExportEndDate(e.target.value)}
-                      className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
-                    />
-                  </div>
-
-                  {(exportStartDate || exportEndDate) && (
-                    <button
-                      onClick={() => { setExportStartDate(""); setExportEndDate(""); }}
-                      className="text-red-500 hover:underline font-semibold cursor-pointer ml-auto"
-                    >
-                      Clear Dates ✕
-                    </button>
-                  )}
-                </div>
-
-                {/* Filter Status Buttons */}
-                <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => setAdminLeadFilter("all")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "all" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    All Leads ({allSystemLeads.length})
-                  </button>
-                  <button onClick={() => setAdminLeadFilter("call-back")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "call-back" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    📞 Call Back ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("call") || l.followUpAction?.toLowerCase().includes("call")).length})
-                  </button>
-                  <button onClick={() => setAdminLeadFilter("next-meeting")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "next-meeting" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    🤝 Next Meeting ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("meeting") || l.followUpAction?.toLowerCase().includes("meeting")).length})
-                  </button>
-                  <button onClick={() => setAdminLeadFilter("not-interested")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "not-interested" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    ❌ Not Interested ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("not interested")).length})
-                  </button>
-                  <button onClick={() => setAdminLeadFilter("deal-closed")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "deal-closed" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
-                    🎉 Deal Closed ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("deal close") || l.leadStatus?.toLowerCase().includes("closed")).length})
-                  </button>
-                </div>
-
-                {loadingSystemLeads ? (
-                  <div className="py-16 text-center text-xs text-[var(--color-body)] animate-pulse">Loading all team leads...</div>
-                ) : filteredSystemLeads.length === 0 ? (
-                  <div className="py-16 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
-                    No leads found for this filter category and date range.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {filteredSystemLeads.map((lead) => (
-                      <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs transition hover:border-[var(--color-primary)]/40">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <strong className="text-sm text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
-                            <span className="bg-purple-500/10 text-purple-600 border border-purple-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold">👤 {lead.salespersonName}</span>
-                          </div>
-                          <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold">{lead.mobileNo}</a></p>
-                          <p className="text-[var(--color-heading)]">📍 Location: {lead.city || 'N/A'}, {lead.state || 'N/A'} | 📅 Date: {lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : 'N/A')}</p>
-
-                          {/* 🌟 MEETING PHOTO PREVIEW IN LEADS REPORT */}
-                          {lead.meetingPhoto && (
-                            <div className="pt-1 flex items-center gap-3">
-                              <img
-                                src={`${API_BASE}/${lead.meetingPhoto}`}
-                                alt="Meeting Proof"
-                                className="w-16 h-16 object-cover rounded-xl border border-[var(--color-border)] shadow-sm bg-black/5 transition hover:scale-105"
-                                onError={(e) => {
-                                  e.target.onerror = null;
-                                  e.target.src = "https://placehold.co/100?text=Preview";
-                                }}
-                              />
-                              <div>
-                                <p className="text-[10px] text-[var(--color-body)] font-mono mb-1">📸 {lead.meetingPhoto}</p>
-                                <a
-                                  href={`${API_BASE}/${lead.meetingPhoto}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-block bg-[var(--color-primary)] text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition shadow-sm active:scale-95"
-                                >
-                                  🔍 Open Full Image
-                                </a>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <span className="bg-blue-500/10 text-blue-600 border border-blue-500/25 px-3 py-1 rounded-full font-bold text-[10px] uppercase tracking-wider">
-                          {lead.leadStatus || 'Active'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* TAB 3: TEAM DIRECTORY */}
-            {activeTab === "directory" && (
-              <div className="space-y-6 animate-fade-in">
-                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
-                  <div>
-                    <h3 className="text-sm font-bold text-[var(--color-heading)]">
-                      Search Salesperson & Deal Records
-                    </h3>
-                    <p className="text-xs text-[var(--color-body)] mt-0.5">
-                      Look up salesperson performance, revenue history, and deal pipelines.
-                    </p>
-                  </div>
-                  <div className="w-full sm:w-80 relative">
-                    <input
-                      type="text"
-                      placeholder="Search by Salesperson Name or ID..."
-                      value={directorySearch}
-                      onChange={(e) => setDirectorySearch(e.target.value)}
-                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl pl-10 pr-4 py-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
-                    />
-                    <span className="absolute left-3.5 top-3.5 text-xs text-[var(--color-body)]">🔍</span>
-                  </div>
-                </div>
-
-                <h3 className="text-base font-bold text-[var(--color-heading)]">
-                  Salesperson Cards & Deal Summaries ({filteredDirectoryStats.length})
-                </h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {filteredDirectoryStats.map((stat) => {
-                    const matchedEmp = employees.find((e) => e.userId === stat.salespersonId);
-                    return (
-                      <div
-                        key={stat.salespersonId || "unassigned"}
-                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 hover:border-[var(--color-primary)]/40 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5"
-                      >
-                        <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-                          <div>
-                            <h4 className="font-extrabold text-[var(--color-heading)] text-base">
-                              {matchedEmp?.name ? `${matchedEmp.name}` : (stat.salespersonId || "Unassigned")}
-                            </h4>
-                            <span className="text-[10px] text-[var(--color-body)] font-mono">
-                              ID: {stat.salespersonId || "N/A"}
-                            </span>
-                          </div>
-                          <span className="text-[10px] bg-[var(--color-surface)] px-3 py-1 rounded-xl border border-[var(--color-border)] font-semibold">
-                            {stat.totalDeals} Deals
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2 text-center text-xs bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-border)]">
-                          <div>
-                            <span className="text-[10px] text-[var(--color-body)] block">Approved</span>
-                            <strong className="text-emerald-600 text-sm">{stat.approvedDeals}</strong>
-                          </div>
-                          <div className="border-x border-[var(--color-border)]">
-                            <span className="text-[10px] text-[var(--color-body)] block">Pending</span>
-                            <strong className="text-amber-600 text-sm">{stat.pendingDeals}</strong>
-                          </div>
-                          <div>
-                            <span className="text-[10px] text-[var(--color-body)] block">Rejected</span>
-                            <strong className="text-red-500 text-sm">{stat.rejectedDeals}</strong>
-                          </div>
-                        </div>
-
-                        <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] text-xs space-y-1.5 font-medium">
-                          <div className="flex justify-between">
-                            <span className="text-[var(--color-body)]">Total Revenue:</span>
-                            <strong className="text-[var(--color-heading)]">₹{stat.totalBusiness?.toLocaleString("en-IN") || 0}</strong>
-                          </div>
-                          <div className="flex justify-between text-emerald-600">
-                            <span>Collected:</span>
-                            <strong>₹{stat.totalPaid?.toLocaleString("en-IN") || 0}</strong>
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2 pt-1">
-                          <button
-                            onClick={() => handleViewEmployeeDetails(stat.salespersonId || "null")}
-                            className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border border-purple-500/20 text-xs py-2.5 rounded-xl font-semibold transition cursor-pointer text-center active:scale-95"
-                          >
-                            👁️ View Deals History
-                          </button>
-
-                          {stat.salespersonId && stat.salespersonId !== "Unassigned" && stat.salespersonId !== userId && (
-                            <button
-                              onClick={() => handleDeleteEmployee(stat.salespersonId)}
-                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-3.5 py-2.5 rounded-xl font-semibold transition cursor-pointer active:scale-95"
-                            >
-                              ❌
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* TAB 4: MANAGE TEAM */}
+            {/* TAB 2: MANAGE TEAM */}
             {activeTab === "employees" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
@@ -1512,141 +1086,107 @@ const AdminDashboard = ({ userId, onLogout }) => {
               </div>
             )}
 
-            {/* TAB 5: TRANSFER LEADS */}
-            {activeTab === "transfer" && (
-              <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
+            {/* TAB 3: TEAM DIRECTORY & DEALS */}
+            {activeTab === "directory" && (
+              <div className="space-y-6 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
                   <div>
-                    <h3 className="text-base font-bold text-[var(--color-primary)]">
-                      🔄 Transfer Leads
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">
+                      Search Salesperson & Deal Records
                     </h3>
-                    <p className="text-xs text-[var(--color-body)] mt-1">
-                      Select a source salesperson to view their active leads, choose specific leads using checkboxes, and reassign them to another salesperson.
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">
+                      Look up salesperson performance, revenue history, and deal pipelines.
                     </p>
                   </div>
+                  <div className="w-full sm:w-80 relative">
+                    <input
+                      type="text"
+                      placeholder="Search by Salesperson Name or ID..."
+                      value={directorySearch}
+                      onChange={(e) => setDirectorySearch(e.target.value)}
+                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl pl-10 pr-4 py-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
+                    />
+                    <span className="absolute left-3.5 top-3.5 text-xs text-[var(--color-body)]">🔍</span>
+                  </div>
+                </div>
 
-                  {transferStatus.success && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3.5 rounded-2xl text-xs font-semibold animate-fade-in">
-                      {transferStatus.success}
-                    </div>
-                  )}
-                  {transferStatus.error && (
-                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3.5 rounded-2xl text-xs font-semibold animate-fade-in">
-                      {transferStatus.error}
-                    </div>
-                  )}
+                <h3 className="text-base font-bold text-[var(--color-heading)]">
+                  Salesperson Cards & Deal Summaries ({filteredDirectoryStats.length})
+                </h3>
 
-                  <form onSubmit={handleExecuteGranularTransfer} className="space-y-4 text-xs">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
-                          Source Salesperson (From) *
-                        </label>
-                        <select
-                          required
-                          value={transferData.fromSalesperson}
-                          onChange={(e) => {
-                            setTransferData({ ...transferData, fromSalesperson: e.target.value });
-                            if (e.target.value) fetchSalespersonLeadsForTransfer(e.target.value);
-                          }}
-                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
-                        >
-                          <option value="">Select Salesperson to pick leads from</option>
-                          <option value="null">Unassigned / Deleted (null)</option>
-                          {employees
-                            .filter((emp) => emp.role === "salesperson")
-                            .map((emp) => (
-                              <option key={emp.userId} value={emp.userId}>
-                                {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredDirectoryStats.map((stat) => {
+                    const matchedEmp = employees.find((e) => e.userId === stat.salespersonId);
+                    return (
+                      <div
+                        key={stat.salespersonId || "unassigned"}
+                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 hover:border-[var(--color-primary)]/40 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5"
+                      >
+                        <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
+                          <div>
+                            <h4 className="font-extrabold text-[var(--color-heading)] text-base">
+                              {matchedEmp?.name ? `${matchedEmp.name}` : (stat.salespersonId || "Unassigned")}
+                            </h4>
+                            <span className="text-[10px] text-[var(--color-body)] font-mono">
+                              ID: {stat.salespersonId || "N/A"}
+                            </span>
+                          </div>
+                          <span className="text-[10px] bg-[var(--color-surface)] px-3 py-1 rounded-xl border border-[var(--color-border)] font-semibold">
+                            {stat.totalDeals} Deals
+                          </span>
+                        </div>
 
-                      <div>
-                        <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
-                          Target Salesperson (To) *
-                        </label>
-                        <select
-                          required
-                          value={transferData.toSalesperson}
-                          onChange={(e) => setTransferData({ ...transferData, toSalesperson: e.target.value })}
-                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
-                        >
-                          <option value="">Select Salesperson to assign leads to</option>
-                          {employees
-                            .filter((emp) => emp.role === "salesperson")
-                            .map((emp) => (
-                              <option key={emp.userId} value={emp.userId}>
-                                {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    </div>
+                        <div className="grid grid-cols-3 gap-2 text-center text-xs bg-[var(--color-surface)] p-3 rounded-2xl border border-[var(--color-border)]">
+                          <div>
+                            <span className="text-[10px] text-[var(--color-body)] block">Approved</span>
+                            <strong className="text-emerald-600 text-sm">{stat.approvedDeals}</strong>
+                          </div>
+                          <div className="border-x border-[var(--color-border)]">
+                            <span className="text-[10px] text-[var(--color-body)] block">Pending</span>
+                            <strong className="text-amber-600 text-sm">{stat.pendingDeals}</strong>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-[var(--color-body)] block">Rejected</span>
+                            <strong className="text-red-500 text-sm">{stat.rejectedDeals}</strong>
+                          </div>
+                        </div>
 
-                    {transferData.fromSalesperson && (
-                      <div className="space-y-3 pt-4 border-t border-[var(--color-border)] animate-fade-in">
-                        <div className="flex justify-between items-center">
-                          <h4 className="font-bold text-[var(--color-heading)]">
-                            Select Leads to Transfer ({selectedLeadIds.length} selected)
-                          </h4>
-                          {sourceLeads.length > 0 && (
+                        <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] text-xs space-y-1.5 font-medium">
+                          <div className="flex justify-between">
+                            <span className="text-[var(--color-body)]">Total Revenue:</span>
+                            <strong className="text-[var(--color-heading)]">₹{stat.totalBusiness?.toLocaleString("en-IN") || 0}</strong>
+                          </div>
+                          <div className="flex justify-between text-emerald-600">
+                            <span>Collected:</span>
+                            <strong>₹{stat.totalPaid?.toLocaleString("en-IN") || 0}</strong>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            onClick={() => handleViewEmployeeDetails(stat.salespersonId || "null")}
+                            className="flex-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 border border-purple-500/20 text-xs py-2.5 rounded-xl font-semibold transition cursor-pointer text-center active:scale-95"
+                          >
+                            👁️ View Deals History
+                          </button>
+
+                          {stat.salespersonId && stat.salespersonId !== "Unassigned" && stat.salespersonId !== userId && (
                             <button
-                              type="button"
-                              onClick={handleSelectAllLeads}
-                              className="text-xs text-[var(--color-primary)] font-semibold hover:underline cursor-pointer"
+                              onClick={() => handleDeleteEmployee(stat.salespersonId)}
+                              className="bg-red-500/10 hover:bg-red-500/20 text-red-600 border border-red-500/20 text-xs px-3.5 py-2.5 rounded-xl font-semibold transition cursor-pointer active:scale-95"
                             >
-                              {selectedLeadIds.length === sourceLeads.length ? "Deselect All" : "Select All"}
+                              ❌
                             </button>
                           )}
                         </div>
-
-                        {loadingSourceLeads ? (
-                          <div className="py-8 text-center text-xs text-[var(--color-body)] animate-pulse">Loading leads...</div>
-                        ) : sourceLeads.length === 0 ? (
-                          <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
-                            No active leads found for this salesperson.
-                          </div>
-                        ) : (
-                          <div className="max-h-60 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)]">
-                            {sourceLeads.map((lead) => (
-                              <label
-                                key={lead._id}
-                                className="flex items-center justify-between p-3 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition cursor-pointer text-xs"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedLeadIds.includes(lead._id)}
-                                    onChange={() => handleToggleLeadSelection(lead._id)}
-                                    className="w-4 h-4 accent-[var(--color-primary)] cursor-pointer"
-                                  />
-                                  <div>
-                                    <strong className="text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
-                                    <span className="text-[var(--color-body)] ml-2">({lead.city || "N/A"})</span>
-                                  </div>
-                                </div>
-                                <span className="text-[var(--color-body)] font-medium">📞 {lead.mobileNo || 'N/A'}</span>
-                              </label>
-                            ))}
-                          </div>
-                        )}
                       </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs active:scale-95"
-                    >
-                      Transfer Selected Leads ({selectedLeadIds.length})
-                    </button>
-                  </form>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            {/* TAB 6: COUPONS */}
+            {/* TAB 4: DISCOUNT COUPONS */}
             {activeTab === "coupons" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
@@ -1795,6 +1335,497 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* TAB 5: TRANSFER LEADS */}
+            {activeTab === "transfer" && (
+              <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--color-primary)]">
+                      🔄 Transfer Leads
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)] mt-1">
+                      Select a source salesperson to view their active leads, choose specific leads using checkboxes, and reassign them to another salesperson.
+                    </p>
+                  </div>
+
+                  {transferStatus.success && (
+                    <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 p-3.5 rounded-2xl text-xs font-semibold animate-fade-in">
+                      {transferStatus.success}
+                    </div>
+                  )}
+                  {transferStatus.error && (
+                    <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3.5 rounded-2xl text-xs font-semibold animate-fade-in">
+                      {transferStatus.error}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleExecuteGranularTransfer} className="space-y-4 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
+                          Source Salesperson (From) *
+                        </label>
+                        <select
+                          required
+                          value={transferData.fromSalesperson}
+                          onChange={(e) => {
+                            setTransferData({ ...transferData, fromSalesperson: e.target.value });
+                            if (e.target.value) fetchSalespersonLeadsForTransfer(e.target.value);
+                          }}
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
+                        >
+                          <option value="">Select Salesperson to pick leads from</option>
+                          <option value="null">Unassigned / Deleted (null)</option>
+                          {employees
+                            .filter((emp) => emp.role === "salesperson")
+                            .map((emp) => (
+                              <option key={emp.userId} value={emp.userId}>
+                                {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
+                          Target Salesperson (To) *
+                        </label>
+                        <select
+                          required
+                          value={transferData.toSalesperson}
+                          onChange={(e) => setTransferData({ ...transferData, toSalesperson: e.target.value })}
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
+                        >
+                          <option value="">Select Salesperson to assign leads to</option>
+                          {employees
+                            .filter((emp) => emp.role === "salesperson")
+                            .map((emp) => (
+                              <option key={emp.userId} value={emp.userId}>
+                                {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {transferData.fromSalesperson && (
+                      <div className="space-y-3 pt-4 border-t border-[var(--color-border)] animate-fade-in">
+                        <div className="flex justify-between items-center">
+                          <h4 className="font-bold text-[var(--color-heading)]">
+                            Select Leads to Transfer ({selectedLeadIds.length} selected)
+                          </h4>
+                          {sourceLeads.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleSelectAllLeads}
+                              className="text-xs text-[var(--color-primary)] font-semibold hover:underline cursor-pointer"
+                            >
+                              {selectedLeadIds.length === sourceLeads.length ? "Deselect All" : "Select All"}
+                            </button>
+                          )}
+                        </div>
+
+                        {loadingSourceLeads ? (
+                          <div className="py-8 text-center text-xs text-[var(--color-body)] animate-pulse">Loading leads...</div>
+                        ) : sourceLeads.length === 0 ? (
+                          <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+                            No active leads found for this salesperson.
+                          </div>
+                        ) : (
+                          <div className="max-h-60 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)]">
+                            {sourceLeads.map((lead) => (
+                              <label
+                                key={lead._id}
+                                className="flex items-center justify-between p-3 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition cursor-pointer text-xs"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedLeadIds.includes(lead._id)}
+                                    onChange={() => handleToggleLeadSelection(lead._id)}
+                                    className="w-4 h-4 accent-[var(--color-primary)] cursor-pointer"
+                                  />
+                                  <div>
+                                    <strong className="text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
+                                    <span className="text-[var(--color-body)] ml-2">({lead.city || "N/A"})</span>
+                                  </div>
+                                </div>
+                                <span className="text-[var(--color-body)] font-medium">📞 {lead.mobileNo || 'N/A'}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs active:scale-95"
+                    >
+                      Transfer Selected Leads ({selectedLeadIds.length})
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 6: TEAM BROADCAST */}
+            {activeTab === "broadcast" && (
+              <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5">
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--color-primary)] flex items-center gap-2">
+                      <span>📢</span> Send Live Broadcast Announcement
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)] mt-1">
+                      Instantly push real-time alerts, daily goals, or important updates to all active salesperson apps.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleSendBroadcast} className="space-y-4 text-xs">
+                    <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Priority Level *</label>
+                      <select
+                        value={broadcastMsg.priority}
+                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, priority: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] cursor-pointer"
+                      >
+                        <option value="normal">🟢 Normal Update</option>
+                        <option value="important">🟡 Important Notice</option>
+                        <option value="urgent">🔴 Urgent / Emergency</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Headline / Title *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g., Evening Team Sync-up at 6 PM"
+                        value={broadcastMsg.title}
+                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, title: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">Message Details *</label>
+                      <textarea
+                        required
+                        rows="4"
+                        placeholder="Type your complete announcement here..."
+                        value={broadcastMsg.message}
+                        onChange={(e) => setBroadcastMsg({ ...broadcastMsg, message: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] resize-none transition"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isBroadcasting}
+                      className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold py-3.5 rounded-2xl transition cursor-pointer shadow-sm text-xs disabled:opacity-50 active:scale-95"
+                    >
+                      {isBroadcasting ? "Broadcasting to Team..." : "🚀 Push Broadcast to All Devices"}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 7: LIVE TRACKING & TRAVEL */}
+            {activeTab === "live-tracking" && (
+              <div className="space-y-6 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">
+                      🛰️ Salesperson Live Location & Travel History
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">
+                      View live position, select past dates, total distance, and exact place names.
+                    </p>
+                  </div>
+
+                  {/* Controls: Date Picker & Employee Selector */}
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <input
+                      type="date"
+                      value={trackerDate}
+                      max={new Date().toISOString().split('T')[0]}
+                      onChange={(e) => {
+                        setTrackerDate(e.target.value);
+                        if (selectedTrackerEmp) {
+                          fetchSalespersonTravelHistory(selectedTrackerEmp, e.target.value);
+                        }
+                      }}
+                      className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                    />
+
+                    <select
+                      value={selectedTrackerEmp}
+                      onChange={(e) => {
+                        setSelectedTrackerEmp(e.target.value);
+                        if (e.target.value) {
+                          fetchSalespersonTravelHistory(e.target.value, trackerDate);
+                        }
+                      }}
+                      className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                    >
+                      <option value="">-- Choose Salesperson --</option>
+                      {employees
+                        .filter((emp) => emp.role === "salesperson")
+                        .map((emp) => (
+                          <option key={emp.userId} value={emp.userId}>
+                            {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+
+                {!selectedTrackerEmp ? (
+                  <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
+                    <span className="text-3xl animate-bounce">📍</span>
+                    <h3 className="text-sm font-bold text-[var(--color-heading)]">No Salesperson Selected</h3>
+                    <p className="text-xs text-[var(--color-body)]">Please choose a salesperson from the dropdown above to view their live GPS status and travel report.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
+                      <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
+                      {liveLocations[selectedTrackerEmp] ? (
+                        <div className="space-y-3 text-xs text-[var(--color-heading)]">
+                          <p>Lat/Lng: <strong className="font-mono">{liveLocations[selectedTrackerEmp].latitude.toFixed(4)}, {liveLocations[selectedTrackerEmp].longitude.toFixed(4)}</strong></p>
+                          <p className="text-[var(--color-body)]">Last Ping: {new Date(liveLocations[selectedTrackerEmp].timestamp).toLocaleTimeString('en-IN')}</p>
+                          <a
+                            href={`https://www.google.com/maps?q=${liveLocations[selectedTrackerEmp].latitude},${liveLocations[selectedTrackerEmp].longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm active:scale-95"
+                          >
+                            🗺️ Open Live Position on Map
+                          </a>
+                        </div>
+                      ) : (
+                        <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+                          Waiting for continuous live GPS ping from app...
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4 transition-all hover:shadow-md">
+                      <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
+                        <h4 className="text-sm font-bold text-[var(--color-heading)]">🛣️ Travel Summary for {trackerDate}</h4>
+                        <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-xl font-extrabold text-xs">
+                          Total Distance: {travelData.totalDistanceKm || 0} KM
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-[var(--color-body)]">
+                        Route history logged: <strong>{travelData.routePoints?.length || 0}</strong> coordinate pings recorded.
+                      </p>
+
+                      <div className="max-h-64 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)] text-xs">
+                        {travelData.routePoints?.length === 0 ? (
+                          <div className="py-8 text-center text-[var(--color-body)]">No route coordinates logged for this date.</div>
+                        ) : (
+                          travelData.routePoints?.map((pt, idx) => {
+                            const pointKey = pt._id || `${pt.latitude}-${pt.longitude}-${idx}`;
+                            if (!resolvedAddresses[pointKey]) {
+                              resolvePlaceName(pt.latitude, pt.longitude, pointKey);
+                            }
+                            return (
+                              <div key={pointKey} className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] gap-2 transition hover:border-[var(--color-primary)]/40">
+                                <div className="space-y-0.5">
+                                  <span className="font-bold text-[var(--color-heading)] flex items-center gap-1">
+                                    📍 {resolvedAddresses[pointKey] || `GPS Point (${pt.latitude.toFixed(3)}, ${pt.longitude.toFixed(3)})`}
+                                  </span>
+                                  <span className="text-[10px] text-[var(--color-body)] font-mono">
+                                    Lat: {pt.latitude.toFixed(5)}, Lng: {pt.longitude.toFixed(5)}
+                                  </span>
+                                </div>
+                                <span className="text-[var(--color-body)] whitespace-nowrap">
+                                  ⏰ {new Date(pt.timestamp).toLocaleTimeString('en-IN')}
+                                </span>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 8: LEADS REPORT & EXCEL EXPORT */}
+            {activeTab === "leads-export" && (
+              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-6 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-[var(--color-heading)]">📊 Leads Report & Excel Export</h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">Filter team leads by status & date range and download spreadsheet reports.</p>
+                  </div>
+                  <button
+                    onClick={() => downloadCSV(filteredSystemLeads, `Leads_Report_${adminLeadFilter}_${exportStartDate || 'all'}_to_${exportEndDate || 'all'}.csv`)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-5 py-3 rounded-2xl font-semibold transition cursor-pointer shadow-sm flex items-center gap-2 active:scale-95 hover:shadow-md"
+                  >
+                    📥 Download Excel (.CSV) Report ({filteredSystemLeads.length})
+                  </button>
+                </div>
+
+                {/* 📅 Date Range Filter Controls */}
+                <div className="flex flex-wrap items-center gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-[var(--color-body)]">Start Date:</span>
+                    <input
+                      type="date"
+                      value={exportStartDate}
+                      onChange={(e) => setExportStartDate(e.target.value)}
+                      className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-[var(--color-body)]">End Date:</span>
+                    <input
+                      type="date"
+                      value={exportEndDate}
+                      onChange={(e) => setExportEndDate(e.target.value)}
+                      className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+                    />
+                  </div>
+
+                  {(exportStartDate || exportEndDate) && (
+                    <button
+                      onClick={() => { setExportStartDate(""); setExportEndDate(""); }}
+                      className="text-red-500 hover:underline font-semibold cursor-pointer ml-auto"
+                    >
+                      Clear Dates ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Status Buttons */}
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => setAdminLeadFilter("all")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "all" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    All Leads ({allSystemLeads.length})
+                  </button>
+                  <button onClick={() => setAdminLeadFilter("call-back")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "call-back" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    📞 Call Back ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("call") || l.followUpAction?.toLowerCase().includes("call")).length})
+                  </button>
+                  <button onClick={() => setAdminLeadFilter("next-meeting")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "next-meeting" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    🤝 Next Meeting ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("meeting") || l.followUpAction?.toLowerCase().includes("meeting")).length})
+                  </button>
+                  <button onClick={() => setAdminLeadFilter("not-interested")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "not-interested" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    ❌ Not Interested ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("not interested")).length})
+                  </button>
+                  <button onClick={() => setAdminLeadFilter("deal-closed")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "deal-closed" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
+                    🎉 Deal Closed ({allSystemLeads.filter(l => l.leadStatus?.toLowerCase().includes("deal close") || l.leadStatus?.toLowerCase().includes("closed")).length})
+                  </button>
+                </div>
+
+                {loadingSystemLeads ? (
+                  <div className="py-16 text-center text-xs text-[var(--color-body)] animate-pulse">Loading all team leads...</div>
+                ) : filteredSystemLeads.length === 0 ? (
+                  <div className="py-16 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+                    No leads found for this filter category and date range.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredSystemLeads.map((lead) => (
+                      <div key={lead._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs transition hover:border-[var(--color-primary)]/40">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <strong className="text-sm text-[var(--color-heading)] font-bold">{lead.instituteName}</strong>
+                            <span className="bg-purple-500/10 text-purple-600 border border-purple-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold">👤 {lead.salespersonName}</span>
+                          </div>
+                          <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold">{lead.mobileNo}</a></p>
+                          <p className="text-[var(--color-heading)]">📍 Location: {lead.city || 'N/A'}, {lead.state || 'N/A'} | 📅 Date: {lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : 'N/A')}</p>
+
+                          {/* 🌟 MEETING PHOTO PREVIEW IN LEADS REPORT */}
+                          {lead.meetingPhoto && (
+                            <div className="pt-1 flex items-center gap-3">
+                              <img
+                                src={`${API_BASE}/${lead.meetingPhoto}`}
+                                alt="Meeting Proof"
+                                className="w-16 h-16 object-cover rounded-xl border border-[var(--color-border)] shadow-sm bg-black/5 transition hover:scale-105"
+                                onError={(e) => {
+                                  e.target.onerror = null;
+                                  e.target.src = "https://placehold.co/100?text=Preview";
+                                }}
+                              />
+                              <div>
+                                <p className="text-[10px] text-[var(--color-body)] font-mono mb-1">📸 {lead.meetingPhoto}</p>
+                                <a
+                                  href={`${API_BASE}/${lead.meetingPhoto}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-block bg-[var(--color-primary)] text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition shadow-sm active:scale-95"
+                                >
+                                  🔍 Open Full Image
+                                </a>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <span className="bg-blue-500/10 text-blue-600 border border-blue-500/25 px-3 py-1 rounded-full font-bold text-[10px] uppercase tracking-wider">
+                          {lead.leadStatus || 'Active'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB 9: SECURITY & SPOOFING */}
+            {activeTab === "security-alerts" && (
+              <div className="bg-[var(--color-card)] border border-red-500/30 rounded-3xl p-6 md:p-8 shadow-sm space-y-6 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-red-600 flex items-center gap-2">
+                      <span>🚨</span> Live Mock Location / Spoofing Security Logs
+                    </h3>
+                    <p className="text-xs text-[var(--color-body)] mt-0.5">Real-time flags triggered when salespersons attempt to bypass location restrictions using fake GPS.</p>
+                  </div>
+                  <span className="bg-red-500/10 text-red-600 border border-red-500/20 px-3 py-1.5 rounded-xl font-extrabold text-xs">
+                    Total Flags: {spoofingAlerts.length}
+                  </span>
+                </div>
+
+                {spoofingAlerts.length === 0 ? (
+                  <div className="py-16 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] space-y-2">
+                    <span className="text-2xl">🛡️</span>
+                    <p>No spoofing or fake GPS attempts detected in the current active session.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {spoofingAlerts.map((alert, idx) => (
+                      <div key={idx} className="bg-red-500/5 border border-red-500/30 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs transition hover:bg-red-500/10">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <strong className="text-sm text-red-600 font-bold">Salesperson ID: {alert.salespersonId}</strong>
+                            <span className="bg-red-500 text-white px-2 py-0.5 rounded-md text-[10px] font-bold animate-pulse">Mock Detected</span>
+                          </div>
+                          <p className="text-[var(--color-heading)]">📍 Coordinates flagged: <span className="font-mono">{alert.latitude?.toFixed(4)}, {alert.longitude?.toFixed(4)}</span></p>
+                          <p className="text-[var(--color-body)]">⏰ Timestamp: {new Date(alert.timestamp || Date.now()).toLocaleString('en-IN')}</p>
+                        </div>
+                        <a
+                          href={`https://www.google.com/maps?q=${alert.latitude},${alert.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-bold transition shadow-sm text-center active:scale-95"
+                        >
+                          🗺️ View Flagged Location
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>
