@@ -224,7 +224,7 @@ io.on("connection", (socket) => {
 
     if (activeUserSessions[userId] && activeUserSessions[userId] !== socket.id) {
       io.to(activeUserSessions[userId]).emit("force_logout", {
-        message: "Aapne yeh ID kisi doosre device par login kar li hai, isliye yahan se session expire ho gaya hai.",
+        message: "Session expired. Logged in on another device.",
       });
     }
 
@@ -775,7 +775,7 @@ app.post("/api/boss/transfer-single-deal", verifyToken, async (req, res) => {
     const updatedDeal = await Invoice.findByIdAndUpdate(
       dealId,
       { $set: { salespersonId: newSalespersonId } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedDeal) return res.status(404).json({ message: "Deal not found" });
@@ -1150,7 +1150,6 @@ const handleInvoiceSubmission = async (req, res) => {
     let ocrStatus = "PENDING";
     let ocrMessage = "Manual review required";
 
-    // 🌟 1. DUPLICATE UTR CHECK (Pending & Approved dono mein)
     if (paymentMode === 'ONLINE' && utrNumber) {
       const existingUtrCheck = await Invoice.findOne({ 
         utrNumber: utrNumber, 
@@ -1163,14 +1162,13 @@ const handleInvoiceSubmission = async (req, res) => {
       }
     }
 
-    // 🌟 2. SYNCHRONOUS TESSERACT OCR SCAN & MATCHING
     if (paymentMode === 'ONLINE' && req.file && utrNumber && ocrStatus !== "RED") {
       try {
         console.log("🔍 Running AI OCR Scan on payment proof...");
         const { data: { text } } = await Tesseract.recognize(req.file.path, 'eng');
         console.log("📄 OCR Extracted Text:", text);
 
-        const cleanedText = text.replace(/[\s,]/g, ''); // Remove spaces and commas for robust matching
+        const cleanedText = text.replace(/[\s,]/g, '');
         const isAmountMatched = cleanedText.includes(claimedPaid.toString());
         const isUtrMatched = cleanedText.includes(utrNumber);
 
@@ -1217,10 +1215,6 @@ const handleInvoiceSubmission = async (req, res) => {
     });
 
     await newInvoice.save();
-
-    if (Number(req.body.dueAmount) === 0) {
-      console.log(`🎉 Deal Fully Settled for Institute: ${req.body.instituteName}`);
-    }
 
     res
       .status(201)
@@ -1326,7 +1320,7 @@ app.put("/api/invoices/update/:id", verifyToken, async (req, res) => {
     const updatedInvoice = await Invoice.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      { new: true },
+      { returnDocument: 'after' },
     );
     res.json({ message: "Invoice updated!", invoice: updatedInvoice });
   } catch (err) {
@@ -1362,7 +1356,6 @@ app.post("/api/invoices/reject/:id", verifyToken, async (req, res) => {
 // --- 👤 SALESPERSON SPECIFIC ROUTES ---
 // =========================================================================
 
-// 🔔 Salesperson Notifications Route (Fixes 404 Error)
 app.get("/api/salesperson/notifications", verifyToken, async (req, res) => {
   try {
     const tasks = await Task.find({ 
@@ -1384,14 +1377,13 @@ app.get("/api/salesperson/notifications", verifyToken, async (req, res) => {
   }
 });
 
-// 🔔 Dismiss / Mark Task Notification as Read/Completed
 app.put("/api/salesperson/notifications/:id/dismiss", verifyToken, async (req, res) => {
   try {
     const taskId = req.params.id;
     const task = await Task.findOneAndUpdate(
       { _id: taskId, salespersonId: req.user.userId },
       { $set: { status: "completed" } },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!task) {
@@ -1593,7 +1585,8 @@ app.post(
   },
 );
 
-app.put("/api/salesperson/leads/:id", verifyToken, async (req, res) => {
+// 🌟 UPDATED LEAD PUT ROUTE WITH FILE UPLOAD SUPPORT FOR DEMO COMPLETION PROOFS
+app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto"), async (req, res) => {
   try {
     const {
       demoStatus,
@@ -1604,23 +1597,39 @@ app.put("/api/salesperson/leads/:id", verifyToken, async (req, res) => {
       followUpAction,
     } = req.body;
 
+    const updateFields = {
+      demoStatus,
+      leadStatus,
+      notes,
+      followUpDate,
+      followUpTime,
+      followUpAction,
+    };
+
+    if (req.file) {
+      updateFields.meetingPhoto = req.file.path.replace(/\\/g, "/");
+    }
+
     const updatedLead = await Lead.findByIdAndUpdate(
       req.params.id,
-      {
-        $set: {
-          demoStatus,
-          leadStatus,
-          notes,
-          followUpDate,
-          followUpTime,
-          followUpAction,
-        },
-      },
-      { new: true },
+      { $set: updateFields },
+      { returnDocument: 'after' },
     );
 
     if (!updatedLead)
       return res.status(404).json({ message: "Lead not found" });
+    
+    // If follow-up date was updated, optionally log or update task
+    if (followUpDate) {
+      await Task.create({
+        salespersonId: req.user.userId,
+        instituteName: updatedLead.instituteName,
+        taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call",
+        notes: notes || `Rescheduled follow-up`,
+        dueDate: followUpDate,
+      });
+    }
+
     res.json({ message: "Lead updated successfully!", lead: updatedLead });
   } catch (err) {
     res
