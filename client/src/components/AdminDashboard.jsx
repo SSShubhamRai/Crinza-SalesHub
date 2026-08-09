@@ -4,13 +4,52 @@
  * =========================================================================
  * Description: Allows admin to track live tasks, live location, total distance,
  * manage team, coupons, advanced lead filters, Excel/CSV data export, real-time 
- * Mock Location / Spoofing Security Alerts, and Live Broadcast Announcements.
- * Enhanced with: Glassmorphism, Micro-Interactions, Smooth Transitions, & Polish.
+ * Mock Location / Spoofing Security Alerts, Live Broadcast Announcements, 
+ * and Daily Shift / Attendance Tracker with Start Location Names.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import ReactDOM from "react-dom"
 import { io } from "socket.io-client";
 import toast from "react-hot-toast";
+
+// --- 🚪 LOGOUT MODAL COMPONENT ---
+const LogoutModal = ({ show, onClose, onConfirm }) => {
+  if (!show) return null;
+
+  return ReactDOM.createPortal(
+    <div 
+      className="fixed inset-0 z-[999999] bg-black/75 backdrop-blur-md overflow-y-auto flex items-center justify-center p-4 animate-fade-in"
+      style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+    >
+      <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-sm w-full my-auto space-y-5 shadow-2xl text-center transform transition-all scale-100 animate-in zoom-in-95 duration-200">
+        <span className="text-5xl animate-bounce inline-block">⚠️</span>
+        <h3 className="text-lg sm:text-xl font-extrabold text-[var(--color-heading)]">Confirm Logout</h3>
+        <p className="text-xs sm:text-sm text-[var(--color-body)] leading-relaxed">
+          Are you sure you want to log out from the Admin Portal?
+        </p>
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/60 text-[var(--color-heading)] py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer border border-[var(--color-border)] transition active:scale-95 min-h-[46px]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[46px]"
+          >
+            Confirm Logout
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 
 const AdminDashboard = ({ userId, onLogout }) => {
   const API_BASE = import.meta.env.PROD
@@ -42,7 +81,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [exportEndDate, setExportEndDate] = useState("");
 
   const [selectedEmpLogs, setSelectedEmpLogs] = useState(null);
-  const [loadingLogs, setLoadingLoadingLogs] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   // 🔄 Single Deal Transfer Popup States
   const [transferModalDeal, setTransferModalDeal] = useState(null);
@@ -56,6 +95,9 @@ const AdminDashboard = ({ userId, onLogout }) => {
   const [liveLocations, setLiveLocations] = useState({});
   const [resolvedAddresses, setResolvedAddresses] = useState({});
 
+  // ⏱️ Salesperson Shift & Attendance State for Admin Tracker
+  const [shiftData, setShiftData] = useState(null);
+
   // 🚨 Security & Spoofing Alerts State
   const [spoofingAlerts, setSpoofingAlerts] = useState([]);
 
@@ -68,11 +110,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
   const socketRef = useRef(null);
 
-  // New Employee Form State
+  // New Employee Form State (Updated with phone for WhatsApp)
   const [newEmp, setNewEmp] = useState({
     userId: "",
     name: "",
     email: "",
+    phone: "",
     password: "",
     role: "salesperson",
   });
@@ -146,7 +189,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
     };
   }, [API_BASE]);
 
-  // --- FETCH TRAVEL HISTORY WITH DATE SUPPORT ---
+  // --- FETCH TRAVEL HISTORY & SHIFT INFO WITH DATE SUPPORT ---
   const fetchSalespersonTravelHistory = useCallback(async (empId, dateVal) => {
     if (!empId) return;
     try {
@@ -161,6 +204,23 @@ const AdminDashboard = ({ userId, onLogout }) => {
       }
     } catch (err) {
       console.error("Failed to fetch travel history:", err);
+    }
+  }, [API_BASE, trackerDate]);
+
+  const fetchSalespersonShiftInfo = useCallback(async (empId, dateVal) => {
+    if (!empId) return;
+    try {
+      const token = localStorage.getItem("token");
+      const targetDate = dateVal || trackerDate;
+      const res = await fetch(`${API_BASE}/api/boss/salesperson-shift/${empId}?date=${targetDate}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShiftData(data.session);
+      }
+    } catch (err) {
+      console.error("Failed to fetch shift info:", err);
     }
   }, [API_BASE, trackerDate]);
 
@@ -192,11 +252,12 @@ const AdminDashboard = ({ userId, onLogout }) => {
   useEffect(() => {
     if (activeTab === "live-tracking" && selectedTrackerEmp) {
       fetchSalespersonTravelHistory(selectedTrackerEmp, trackerDate);
+      fetchSalespersonShiftInfo(selectedTrackerEmp, trackerDate);
     }
     if (activeTab === "leads-export") {
       fetchAllSystemLeads();
     }
-  }, [selectedTrackerEmp, trackerDate, activeTab, fetchSalespersonTravelHistory, fetchAllSystemLeads]);
+  }, [selectedTrackerEmp, trackerDate, activeTab, fetchSalespersonTravelHistory, fetchSalespersonShiftInfo, fetchAllSystemLeads]);
 
   // 🗺️ Helper to convert Lat/Lng to Place Name with Rate-Limit & Resource Protection
   const resolvePlaceName = async (lat, lon, pointKey) => {
@@ -245,7 +306,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
         setCoupons(couponList);
       }
 
-      // Fetch Global KPI Summary if API exists
       const kpiRes = await fetch(`${API_BASE}/api/boss/kpi-summary`, { headers });
       if (kpiRes.ok) {
         const kpiData = await kpiRes.json();
@@ -303,7 +363,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
   };
 
   const handleViewEmployeeDetails = async (empUserId) => {
-    setLoadingLoadingLogs(true);
+    setLoadingLogs(true);
     setSelectedEmpLogs({ userId: empUserId, deals: [] });
     try {
       const token = localStorage.getItem("token");
@@ -319,7 +379,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
       console.error("Error fetching employee logs:", err);
       toast.error("Failed to fetch activity logs");
     } finally {
-      setLoadingLoadingLogs(false);
+      setLoadingLogs(false);
     }
   };
 
@@ -380,13 +440,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Creation failed");
 
-      const successMsg = `${newEmp.role === "accountant" ? "Accountant" : "Salesperson"} ${newEmp.name} created successfully!`;
+      const successMsg = data.message || `${newEmp.role === "accountant" ? "Accountant" : "Salesperson"} ${newEmp.name} created successfully!`;
       toast.success(successMsg);
       setEmpStatus({ success: successMsg, error: "" });
       setNewEmp({
         userId: "",
         name: "",
         email: "",
+        phone: "",
         password: "",
         role: "salesperson",
       });
@@ -619,7 +680,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
     const lStatus = lead.leadStatus?.toLowerCase() || "";
     const fAction = lead.followUpAction?.toLowerCase() || "";
 
-    // 1. Status Filter Check
     let matchesStatus = true;
     if (adminLeadFilter === "call-back") {
       matchesStatus = lStatus.includes("call") || fAction.includes("call");
@@ -631,7 +691,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
       matchesStatus = lStatus.includes("deal close") || lStatus.includes("closed");
     }
 
-    // 2. Date Range Filter Check
     let matchesDate = true;
     const leadDateStr = lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : "");
     
@@ -650,34 +709,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
       <div className="max-w-6xl mx-auto space-y-6 animate-fade-in">
         
         {/* 🚪 Logout Confirmation Modal */}
-        {showLogoutModal && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in transition-all">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-4 shadow-2xl text-center transform scale-100 animate-in zoom-in-95 duration-200">
-              <span className="text-4xl animate-bounce inline-block">⚠️</span>
-              <h3 className="text-lg font-extrabold text-[var(--color-heading)]">Confirm Logout</h3>
-              <p className="text-xs text-[var(--color-body)]">
-                Are you sure you want to log out from the Admin Portal?
-              </p>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowLogoutModal(false)}
-                  className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/60 text-[var(--color-heading)] py-3 rounded-xl text-xs font-semibold cursor-pointer border border-[var(--color-border)] transition active:scale-95"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    setShowLogoutModal(false);
-                    onLogout();
-                  }}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-xs font-semibold cursor-pointer transition shadow-sm active:scale-95"
-                >
-                  Confirm Logout
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <LogoutModal show={showLogoutModal} onClose={() => setShowLogoutModal(false)} onConfirm={() => { setShowLogoutModal(false); onLogout(); }} />
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-6 rounded-3xl shadow-sm gap-4 transition-all duration-300 hover:shadow-md">
@@ -970,6 +1002,17 @@ const AdminDashboard = ({ userId, onLogout }) => {
                       />
                     </div>
                     <div>
+                      <label className="block font-medium mb-1 text-[var(--color-heading)]">WhatsApp Phone No (with Country Code) *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. +919876543210"
+                        value={newEmp.phone}
+                        onChange={(e) => setNewEmp({ ...newEmp, phone: e.target.value })}
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
+                      />
+                    </div>
+                    <div>
                       <label className="block font-medium mb-1 text-[var(--color-heading)]">User ID / Code *</label>
                       <input
                         type="text"
@@ -1056,7 +1099,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                             </div>
                             {emp.email && (
                               <p className="text-[var(--color-body)] mt-0.5">
-                                {emp.email}
+                                {emp.email} {emp.phone ? `| 📱 ${emp.phone}` : ''}
                               </p>
                             )}
                           </div>
@@ -1548,7 +1591,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
                     </p>
                   </div>
 
-                  {/* Controls: Date Picker & Employee Selector */}
                   <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                     <input
                       type="date"
@@ -1558,6 +1600,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         setTrackerDate(e.target.value);
                         if (selectedTrackerEmp) {
                           fetchSalespersonTravelHistory(selectedTrackerEmp, e.target.value);
+                          fetchSalespersonShiftInfo(selectedTrackerEmp, e.target.value);
                         }
                       }}
                       className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
@@ -1569,6 +1612,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         setSelectedTrackerEmp(e.target.value);
                         if (e.target.value) {
                           fetchSalespersonTravelHistory(e.target.value, trackerDate);
+                          fetchSalespersonShiftInfo(e.target.value, trackerDate);
                         }
                       }}
                       className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
@@ -1593,28 +1637,55 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
-                      <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
-                      {liveLocations[selectedTrackerEmp] ? (
-                        <div className="space-y-3 text-xs text-[var(--color-heading)]">
-                          <p>Lat/Lng: <strong className="font-mono">{liveLocations[selectedTrackerEmp].latitude.toFixed(4)}, {liveLocations[selectedTrackerEmp].longitude.toFixed(4)}</strong></p>
-                          <p className="text-[var(--color-body)]">Last Ping: {new Date(liveLocations[selectedTrackerEmp].timestamp).toLocaleTimeString('en-IN')}</p>
-                          <a
-                            href={`https://www.google.com/maps?q=${liveLocations[selectedTrackerEmp].latitude},${liveLocations[selectedTrackerEmp].longitude}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm active:scale-95"
-                          >
-                            🗺️ Open Live Position on Map
-                          </a>
-                        </div>
-                      ) : (
-                        <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
-                          Waiting for continuous live GPS ping from app...
-                        </div>
-                      )}
+                    {/* Column 1: Live GPS Status & Shift Timings */}
+                    <div className="space-y-6">
+                      <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
+                        <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
+                        {liveLocations[selectedTrackerEmp] ? (
+                          <div className="space-y-3 text-xs text-[var(--color-heading)]">
+                            <p>Lat/Lng: <strong className="font-mono">{liveLocations[selectedTrackerEmp].latitude.toFixed(4)}, {liveLocations[selectedTrackerEmp].longitude.toFixed(4)}</strong></p>
+                            <p className="text-[var(--color-body)]">Last Ping: {new Date(liveLocations[selectedTrackerEmp].timestamp).toLocaleTimeString('en-IN')}</p>
+                            <a
+                              href={`https://www.google.com/maps?q=${liveLocations[selectedTrackerEmp].latitude},${liveLocations[selectedTrackerEmp].longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm active:scale-95"
+                            >
+                              🗺️ Open Live Position on Map
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+                            Waiting for continuous live GPS ping from app...
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ⏱️ Shift & Attendance Card with Start Location Name */}
+                      <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
+                        <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">⏱️ Shift & Attendance Status</h4>
+                        {shiftData ? (
+                          <div className="space-y-2 text-xs sm:text-sm text-[var(--color-heading)]">
+                            <p>Shift Status: <strong className={shiftData.status === 'STARTED' ? 'text-emerald-600 font-extrabold' : 'text-amber-600 font-extrabold'}>{shiftData.status}</strong></p>
+                            
+                            {(shiftData.startAddress || shiftData.locationName) && (
+                              <p className="text-xs font-semibold text-[var(--color-primary)] truncate">
+                                📍 Start Location: <strong className="text-[var(--color-heading)] truncate">{shiftData.startAddress || shiftData.locationName}</strong>
+                              </p>
+                            )}
+
+                            <p>🕒 Start Time: <strong>{new Date(shiftData.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</strong></p>
+                            <p>🏁 End Time: <strong>{shiftData.endTime ? new Date(shiftData.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : 'Still Active / Not Ended'}</strong></p>
+                          </div>
+                        ) : (
+                          <div className="py-6 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+                            No shift started by this employee on this date.
+                          </div>
+                        )}
+                      </div>
                     </div>
 
+                    {/* Column 2 & 3: Travel Summary */}
                     <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4 transition-all hover:shadow-md">
                       <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
                         <h4 className="text-sm font-bold text-[var(--color-heading)]">🛣️ Travel Summary for {trackerDate}</h4>
@@ -1627,7 +1698,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
                         Route history logged: <strong>{travelData.routePoints?.length || 0}</strong> coordinate pings recorded.
                       </p>
 
-                      <div className="max-h-64 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)] text-xs">
+                      <div className="max-h-80 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)] text-xs">
                         {travelData.routePoints?.length === 0 ? (
                           <div className="py-8 text-center text-[var(--color-body)]">No route coordinates logged for this date.</div>
                         ) : (
@@ -1676,7 +1747,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   </button>
                 </div>
 
-                {/* 📅 Date Range Filter Controls */}
                 <div className="flex flex-wrap items-center gap-3 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] text-xs">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-[var(--color-body)]">Start Date:</span>
@@ -1708,7 +1778,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
                   )}
                 </div>
 
-                {/* Filter Status Buttons */}
                 <div className="flex gap-2 flex-wrap">
                   <button onClick={() => setAdminLeadFilter("all")} className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${adminLeadFilter === "all" ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm" : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"}`}>
                     All Leads ({allSystemLeads.length})
@@ -1745,7 +1814,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
                           <p className="text-[var(--color-body)]">👤 Contact: {lead.contactPerson} | 📞 <a href={`tel:${lead.mobileNo}`} className="text-[var(--color-primary)] font-bold">{lead.mobileNo}</a></p>
                           <p className="text-[var(--color-heading)]">📍 Location: {lead.city || 'N/A'}, {lead.state || 'N/A'} | 📅 Date: {lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : 'N/A')}</p>
 
-                          {/* 🌟 MEETING PHOTO PREVIEW IN LEADS REPORT */}
                           {lead.meetingPhoto && (
                             <div className="pt-1 flex items-center gap-3">
                               <img
@@ -1833,8 +1901,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
         {/* MODAL VIEW FOR EMPLOYEE DEALS & LOCATION LOGS */}
         {selectedEmpLogs && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-3xl w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto transform scale-100 animate-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-start sm:items-center justify-center p-4 z-50 overflow-y-auto animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-3xl w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl my-8 transform scale-100 animate-in zoom-in-95 duration-200">
               <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
                 <div>
                   <h3 className="text-lg font-extrabold text-[var(--color-primary)]">
@@ -1946,8 +2014,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
         {/* SINGLE DEAL TRANSFER POPUP */}
         {transferModalDeal && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
-            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-md w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl transform scale-100 animate-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-start sm:items-center justify-center p-4 z-50 overflow-y-auto animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl max-w-md w-full p-6 md:p-8 text-[var(--color-heading)] space-y-4 shadow-2xl my-8 transform scale-100 animate-in zoom-in-95 duration-200">
               <div>
                 <h3 className="text-base font-bold text-[var(--color-primary)]">
                   Reassign Deal

@@ -8,9 +8,7 @@
  * multi-visit tracking, true partial installment due ledger system, 
  * Capacitor native Mock Location / Anti-Bypass security, Kanban Pipeline View, 
  * WhatsApp Quick Reminders with Logo, 🔔 Real-time In-App Notifications, 
- * and 📢 Live Team Broadcast Announcement Listener.
- * Enhanced with: Multi-step Invoice Wizard, Skeleton Loaders, UI/UX Polish,
- * Mobile Horizontal Snap Kanban, and Optimized GPS Battery Tracking.
+ * 📢 Live Team Broadcast Announcement Listener, and ⏱️ Day Start/End Shift Control.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -24,6 +22,39 @@ import toast from 'react-hot-toast';
 
 // 🌟 Safe fallback for Vite CommonJS interop
 const PhoneInput = ReactPhoneInput.default || ReactPhoneInput;
+
+// --- 🌟 CATEGORY LIST CONFIGURATION ---
+const CATEGORY_OPTIONS = [
+  "NEET",
+  "JEE Mains",
+  "Law & Judiciary Exams",
+  "Other Courses",
+  "Test Series & Mock Tests",
+  "Abacus & Mental Maths",
+  "Stock Market & Trading",
+  "Skill Development Courses",
+  "Fitness, Yoga & Wellness",
+  "Entrance Exam Preparation",
+  "Pharmacy Exams",
+  "Agriculture Exams",
+  "Computer & Technical Skills",
+  "Designing & Digital Marketing",
+  "Coding & Programming",
+  "College Courses",
+  "School & Academics Courses",
+  "CA, CS & CMA Courses",
+  "Teaching Exams",
+  "Railway, Police & Defence Exams",
+  "SSC & Government Job Exams",
+  "UPSC Exams",
+  "PSC Exams",
+  "Engineering Entrance Exams",
+  "Study Abroad & English Tests",
+  "UGC NET Exams",
+  "MBA Entrance Exams",
+  "Banking Exams",
+  "Software Development"
+];
 
 // --- 🌟 REUSABLE WHATSAPP SVG COMPONENT ---
 const WhatsAppIcon = ({ className = "w-4 h-4 fill-current" }) => (
@@ -100,9 +131,47 @@ const LogoutModal = ({ show, onClose, onConfirm }) => {
   );
 };
 
+// --- 🛑 END DAY CONFIRMATION MODAL ---
+const EndDayConfirmModal = ({ show, onClose, onConfirm }) => {
+  if (!show) return null;
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fade-in" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}>
+      <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 sm:p-8 max-w-sm w-full mx-auto my-auto space-y-5 shadow-2xl text-center transform transition-all scale-100 animate-in zoom-in-95 duration-200">
+        <span className="text-5xl animate-bounce inline-block">🛑</span>
+        <h3 className="text-lg sm:text-xl font-extrabold text-[var(--color-heading)]">End Day Confirmation</h3>
+        <p className="text-xs sm:text-sm text-[var(--color-body)] leading-relaxed">
+          Are you sure you want to end your working day? Once ended, no further entries are allowed today.
+        </p>
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 bg-[var(--color-surface)] hover:bg-[var(--color-border)]/60 text-[var(--color-heading)] py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer border border-[var(--color-border)] transition active:scale-95 min-h-[46px]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[46px]"
+          >
+            Confirm End Day
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SalespersonForm = ({ userId, username, onLogout }) => {
   // --- Navigation & View States ---
   const [activeView, setActiveView] = useState('dashboard');
+
+  // --- ⏱️ Day Shift Attendance States ---
+  const [dayStatus, setDayStatus] = useState('LOADING'); // 'LOADING' | 'NOT_STARTED' | 'ACTIVE' | 'ENDED'
+  const [startLocationName, setStartLocationName] = useState(''); // 👈 Start location address name state
+  const [daySummaryModal, setDaySummaryModal] = useState(null);
+  const [showEndDayModal, setShowEndDayModal] = useState(false); // 👈 Modal State for End Day Confirmation
 
   // --- Deals & Leads Data States ---
   const [myDeals, setMyDeals] = useState([]);
@@ -163,6 +232,104 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const API_BASE = import.meta.env.PROD
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
+
+  // --- ⏱️ CHECK DAY SHIFT STATUS ---
+  const checkDayStatus = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/api/salesperson/day-status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        if (data.status === 'STARTED') {
+          setDayStatus('ACTIVE');
+          setStartLocationName(data.startAddress || data.locationName || '');
+        } else if (data.status === 'ENDED') {
+          setDayStatus('ENDED');
+          setStartLocationName(data.startAddress || data.locationName || '');
+        } else {
+          setDayStatus('NOT_STARTED');
+          setStartLocationName('');
+        }
+      }
+    } catch (err) {
+      console.error("Failed to check day status:", err);
+    }
+  }, [API_BASE]);
+
+  // --- ⏱️ START DAY HANDLER ---
+  const handleStartDay = async () => {
+    setStatus({ loading: true, success: '', error: '' });
+    const { lat, lng, isMocked } = await getSecureLocation();
+    
+    if (isMocked) {
+      setStatus({ loading: false, success: '', error: 'Mock location detected! Day start blocked.' });
+      return;
+    }
+
+    try {
+      // Reverse geocode to resolve human-readable place name
+      let addressName = '';
+      try {
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
+        const geoData = await geoRes.json();
+        if (geoData && geoData.display_name) {
+          addressName = geoData.display_name;
+        }
+      } catch (geoErr) {
+        console.warn("Reverse geocode warning:", geoErr);
+      }
+
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/api/salesperson/start-day`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ latitude: lat, longitude: lng, startAddress: addressName })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to start day');
+
+      toast.success("🚀 Working day started successfully!");
+      setDayStatus('ACTIVE');
+      setStartLocationName(data.startAddress || addressName || 'GPS Location Recorded');
+      setStatus({ loading: false, success: '', error: '' });
+    } catch (err) {
+      setStatus({ loading: false, success: '', error: err.message });
+      toast.error(err.message);
+    }
+  };
+
+  // --- ⏱️ EXECUTE END DAY API CALL ---
+  const executeEndDay = async () => {
+    setShowEndDayModal(false);
+    setStatus({ loading: true, success: '', error: '' });
+    const { lat, lng, isMocked } = await getSecureLocation();
+
+    if (isMocked) {
+      setStatus({ loading: false, success: '', error: 'Mock location detected! Action blocked.' });
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/api/salesperson/end-day`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ latitude: lat, longitude: lng })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to end day');
+
+      setDayStatus('ENDED');
+      setDaySummaryModal(data.summary);
+      setStatus({ loading: false, success: '', error: '' });
+      toast.success("Day ended successfully. Entries are now locked for today.");
+    } catch (err) {
+      setStatus({ loading: false, success: '', error: err.message });
+      toast.error(err.message);
+    }
+  };
 
   // --- 🌟 FETCH NOTIFICATIONS HOOK ---
   const fetchSalespersonNotifications = useCallback(async () => {
@@ -321,6 +488,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const initialFormData = {
     instituteName: '',
     appName: '',
+    categories: [], 
+    youtubeLink: '', 
+    instagramLink: '', 
     mobileNo: '',
     email: '',
     pincode: '',
@@ -374,6 +544,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   
   const [addons, setAddons] = useState(initialAddons);
   const [file, setFile] = useState(null);
+  const [logoFile, setLogoFile] = useState(null); 
   const [meetingPhotoFile, setMeetingPhotoFile] = useState(null);
   const [meetingPhotoPreview, setMeetingPhotoPreview] = useState(null);
 
@@ -432,7 +603,8 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     fetchMyDeals();
     fetchMyLeads();
     fetchSalespersonNotifications();
-  }, [fetchMyDeals, fetchMyLeads, fetchSalespersonNotifications]);
+    checkDayStatus();
+  }, [fetchMyDeals, fetchMyLeads, fetchSalespersonNotifications, checkDayStatus]);
 
   const indianStates = State.getStatesOfCountry('IN');
   const citiesOfSelectedState = selectedStateCode ? City.getCitiesOfState('IN', selectedStateCode) : [];
@@ -740,6 +912,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           ...prev,
           instituteName: targetData.instituteName,
           appName: targetData.appName || prev.appName,
+          categories: targetData.categories || (targetData.category ? [targetData.category] : prev.categories),
+          youtubeLink: targetData.youtubeLink || prev.youtubeLink,
+          instagramLink: targetData.instagramLink || prev.instagramLink,
           mobileNo: targetData.mobileNo || '',
           email: targetData.email || '',
           address: targetData.address || '',
@@ -765,6 +940,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
       ...initialFormData,
       instituteName: deal.instituteName || '',
       appName: deal.appName || '',
+      categories: deal.categories || (deal.category ? [deal.category] : []),
+      youtubeLink: deal.youtubeLink || '',
+      instagramLink: deal.instagramLink || '',
       mobileNo: deal.mobileNo || '',
       email: deal.email || '',
       address: deal.address || '',
@@ -788,6 +966,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   };
 
   const handleFileChange = (e) => setFile(e.target.files[0]);
+  const handleLogoFileChange = (e) => setLogoFile(e.target.files[0]);
   
   const handleMeetingPhotoChange = (e) => {
     const uploadedFile = e.target.files[0];
@@ -960,6 +1139,10 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
   const handleLeadSubmit = async (e) => {
     e.preventDefault();
+    if (dayStatus !== 'ACTIVE') {
+      toast.error('Action Blocked: You must start your working day first!');
+      return;
+    }
     if (!meetingPhotoFile) {
       setStatus({ loading: false, success: '', error: 'Please upload the meeting photo!' });
       return;
@@ -1023,8 +1206,16 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (dayStatus !== 'ACTIVE') {
+      toast.error('Action Blocked: You must start your working day first!');
+      return;
+    }
     if (!file) {
       setStatus({ loading: false, success: '', error: 'Please upload payment proof!' });
+      return;
+    }
+    if (!formData.categories || formData.categories.length === 0) {
+      toast.error('Please select at least one category!');
       return;
     }
 
@@ -1038,9 +1229,18 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
     const processSubmission = async (latitude = null, longitude = null) => {
       const data = new FormData();
-      Object.keys(formData).forEach((key) => data.append(key, formData[key]));
+      Object.keys(formData).forEach((key) => {
+        if (key === 'categories') {
+          data.append('categories', JSON.stringify(formData.categories));
+        } else {
+          data.append(key, formData[key]);
+        }
+      });
       data.append('dueAmount', dueAmount);
       data.append('paymentProof', file);
+      if (logoFile) {
+        data.append('logoProof', logoFile);
+      }
       data.append('addons', JSON.stringify(addons));
 
       if (latitude && longitude) {
@@ -1068,6 +1268,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         setSelectedStateCode('');
         setAddons(initialAddons);
         setFile(null);
+        setLogoFile(null);
         setIsCouponApplied(false);
         setCouponInput('');
         setCouponDetails(null);
@@ -1094,6 +1295,33 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         
         <SettlementModal settledAlert={settledAlert} onClose={() => { setSettledAlert(null); setActiveView('dashboard'); }} />
         <LogoutModal show={showLogoutModal} onClose={() => setShowLogoutModal(false)} onConfirm={() => { setShowLogoutModal(false); onLogout(); }} />
+        <EndDayConfirmModal show={showEndDayModal} onClose={() => setShowEndDayModal(false)} onConfirm={executeEndDay} />
+
+        {/* --- ⏱️ DAILY PERFORMANCE SUMMARY FLASH REPORT MODAL --- */}
+        {daySummaryModal && (
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in">
+            <div className="bg-[var(--color-card)] border border-emerald-500/50 rounded-3xl p-6 sm:p-8 max-w-md w-full space-y-5 shadow-2xl text-center transform scale-100 animate-in zoom-in-95 duration-200">
+              <span className="text-5xl animate-bounce inline-block">📋</span>
+              <h3 className="text-lg sm:text-xl font-extrabold text-[var(--color-heading)]">Daily Performance Summary</h3>
+              
+              <div className="grid grid-cols-2 gap-3 text-left text-xs sm:text-sm bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] text-[var(--color-heading)]">
+                <p>⏱️ Start Time: <strong>{daySummaryModal.startTime}</strong></p>
+                <p>🏁 End Time: <strong>{daySummaryModal.endTime}</strong></p>
+                <p>⏳ Working Hours: <strong>{daySummaryModal.workingHours}</strong></p>
+                <p>📍 Total Visits: <strong className="text-blue-600">{daySummaryModal.totalVisits}</strong></p>
+                <p>💰 Collections: <strong className="text-emerald-600">₹{daySummaryModal.totalCollected?.toLocaleString('en-IN')}</strong></p>
+                <p>🛣️ Distance: <strong className="text-purple-600">{daySummaryModal.totalDistanceKm} KM</strong></p>
+              </div>
+
+              <button
+                onClick={() => setDaySummaryModal(null)}
+                className="w-full bg-[var(--color-primary)] hover:opacity-90 text-white py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95"
+              >
+                Close Report & Return
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-6 rounded-3xl shadow-sm gap-4 transition-all duration-300 hover:shadow-md">
@@ -1129,7 +1357,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-[300px] max-w-[92vw] sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-3 max-h-[450px] overflow-y-auto text-xs animate-in zoom-in-95 duration-200">
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-24px)] bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-3 max-h-[450px] overflow-y-auto text-xs animate-in zoom-in-95 duration-200">
                   <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2.5">
                     <strong className="text-[var(--color-heading)] font-bold">🔔 Today's Follow-up & Demo Alerts</strong>
                     <div className="flex items-center gap-2">
@@ -1194,6 +1422,53 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           </div>
         </div>
 
+        {/* --- ⏱️ DAY START / END ATTENDANCE & SHIFT CONTROL BAR --- */}
+        <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-5 rounded-3xl shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3.5 w-full sm:w-auto">
+            <span className="text-3xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0">⏰</span>
+            <div>
+              <h3 className="text-xs sm:text-sm font-bold text-[var(--color-heading)] uppercase tracking-wider">Shift & Attendance Status</h3>
+              <p className="text-xs text-[var(--color-body)] mt-0.5">
+                {dayStatus === 'LOADING' && 'Checking day status...'}
+                {dayStatus === 'NOT_STARTED' && '⏳ Day not started. Click "Start Day" to capture GPS location and unlock leads & invoices.'}
+                {dayStatus === 'ACTIVE' && '🟢 Shift Active. GPS active and system entries are fully enabled.'}
+                {dayStatus === 'ENDED' && '🔒 Shift Ended for today. Entries are locked until tomorrow.'}
+              </p>
+              {startLocationName && (
+                <p className="text-xs font-semibold text-[var(--color-primary)] mt-1.5 flex items-center gap-1.5 truncate">
+                  📍 <span>Start Location:</span> <strong className="text-[var(--color-heading)] truncate">{startLocationName}</strong>
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="w-full sm:w-auto flex justify-end shrink-0">
+            {dayStatus === 'NOT_STARTED' && (
+              <button
+                onClick={handleStartDay}
+                disabled={status.loading}
+                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[46px] disabled:opacity-50"
+              >
+                {status.loading ? 'Capturing GPS...' : '🚀 Start Day'}
+              </button>
+            )}
+            {dayStatus === 'ACTIVE' && (
+              <button
+                onClick={() => setShowEndDayModal(true)}
+                disabled={status.loading}
+                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[46px] disabled:opacity-50"
+              >
+                {status.loading ? 'Processing...' : '🛑 End Day'}
+              </button>
+            )}
+            {dayStatus === 'ENDED' && (
+              <span className="w-full sm:w-auto text-center bg-gray-500/10 text-gray-500 border border-gray-500/20 px-6 py-3.5 rounded-2xl font-bold text-xs sm:text-sm">
+                Day Completed 🏁
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Navigation Tabs */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm">
           <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 w-full sm:w-auto scrollbar-thin">
@@ -1233,7 +1508,13 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
           <div className="flex gap-2 w-full sm:w-auto justify-stretch sm:justify-end">
             <button
-              onClick={() => setActiveView('lead-form')}
+              onClick={() => {
+                if (dayStatus !== 'ACTIVE') {
+                  toast.error('Please start your day first!');
+                  return;
+                }
+                setActiveView('lead-form');
+              }}
               className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 min-h-[44px] ${
                 activeView === 'lead-form' ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
               }`}
@@ -1241,7 +1522,14 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               ➕ Record Visit / New Lead
             </button>
             <button
-              onClick={() => { setInvoiceStep(1); setActiveView('invoice-form'); }}
+              onClick={() => {
+                if (dayStatus !== 'ACTIVE') {
+                  toast.error('Please start your day first!');
+                  return;
+                }
+                setInvoiceStep(1); 
+                setActiveView('invoice-form'); 
+              }}
               className={`flex-1 sm:flex-initial px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 min-h-[44px] ${
                 activeView === 'invoice-form' ? 'bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border border-[var(--color-border)] hover:bg-[var(--color-border)]/50'
               }`}
@@ -1254,7 +1542,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         {activeView === 'dashboard' && (
           <div className="space-y-6 animate-fade-in">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div onClick={() => setActiveView('lead-form')} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 flex items-center justify-between group">
+              <div onClick={() => { if (dayStatus !== 'ACTIVE') { toast.error('Start day first!'); return; } setActiveView('lead-form'); }} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 flex items-center justify-between group">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">➕ Create / Visit Lead</h3>
                   <p className="text-xs sm:text-sm text-[var(--color-body)] mt-1">Record client visit & meeting photo.</p>
@@ -1268,7 +1556,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 </div>
                 <span className="text-3xl p-3.5 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0 transition group-hover:scale-110">📋</span>
               </div>
-              <div onClick={() => { setInvoiceStep(1); setActiveView('invoice-form'); }} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 flex items-center justify-between group">
+              <div onClick={() => { if (dayStatus !== 'ACTIVE') { toast.error('Start day first!'); return; } setInvoiceStep(1); setActiveView('invoice-form'); }} className="bg-[var(--color-card)] border border-[var(--color-border)] hover:border-[var(--color-primary)] p-5 sm:p-6 rounded-3xl shadow-sm cursor-pointer transition-all duration-300 hover:shadow-md hover:-translate-y-1 flex items-center justify-between group">
                 <div>
                   <h3 className="text-sm sm:text-base font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">🧾 Submit Installment</h3>
                   <p className="text-xs sm:text-sm text-[var(--color-body)] mt-1">Pay due amount & clear balance.</p>
@@ -1343,7 +1631,13 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                         {deal.dueAmount > 0 ? (
                           <button
-                            onClick={() => handlePayDueFromLedger(deal)}
+                            onClick={() => {
+                              if (dayStatus !== 'ACTIVE') {
+                                toast.error('Start day first!');
+                                return;
+                              }
+                              handlePayDueFromLedger(deal);
+                            }}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0 active:scale-95 min-h-[44px]"
                           >
                             Pay Due ➔
@@ -1366,7 +1660,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4 animate-fade-in">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
               <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">📋 My Generated Leads & Visit Records</h3>
-              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]">
+              <button onClick={() => { if (dayStatus !== 'ACTIVE') { toast.error('Start day first!'); return; } setActiveView('lead-form'); }} className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]">
                 ➕ Record Visit / New Lead
               </button>
             </div>
@@ -1537,7 +1831,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                           <input 
                             type="file" 
                             accept="image/*" 
-                            capture="environment"
                             onChange={(e) => setDemoProofFile(e.target.files[0])} 
                             className="block w-full text-xs text-[var(--color-body)] cursor-pointer" 
                           />
@@ -1552,6 +1845,10 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                     <div>
                       <button type="button" onClick={async () => {
+                        if (dayStatus !== 'ACTIVE') {
+                          toast.error('Start day first!');
+                          return;
+                        }
                         await handleUpdateLeadStatus(selectedLead._id, 'Deal Close', null);
                         setFormData((prev) => ({
                           ...prev,
@@ -1610,7 +1907,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">Manage Lead</h3>
                 <p className="text-xs sm:text-sm text-[var(--color-body)] mt-0.5">Visualize and move your leads smoothly across different stages of conversion.</p>
               </div>
-              <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]">
+              <button onClick={() => { if (dayStatus !== 'ACTIVE') { toast.error('Start day first!'); return; } setActiveView('lead-form'); }} className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]">
                 ➕ Record Visit / Add Lead
               </button>
             </div>
@@ -1710,6 +2007,10 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                               WhatsApp Remind
                             </button>
                             <button onClick={async () => {
+                              if (dayStatus !== 'ACTIVE') {
+                                toast.error('Start day first!');
+                                return;
+                              }
                               await handleUpdateLeadStatus(lead._id, 'Deal Close', null);
                               setFormData((prev) => ({
                                 ...prev,
@@ -1771,7 +2072,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
             {myLeads.filter(l => l.followUpDate && l.leadStatus !== 'Not Interested' && l.leadStatus !== 'Deal Close').length === 0 ? (
               <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs sm:text-sm text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
                 <p>No active follow-up reminders scheduled yet.</p>
-                <button onClick={() => setActiveView('lead-form')} className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-xl active:scale-95 transition">Schedule a Follow-up</button>
+                <button onClick={() => { if (dayStatus !== 'ACTIVE') { toast.error('Start day first!'); return; } setActiveView('lead-form'); }} className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-xl active:scale-95 transition">Schedule a Follow-up</button>
               </div>
             ) : (
               <div className="space-y-3.5">
@@ -1921,7 +2222,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                   <input 
                     type="file" 
                     accept="image/*" 
-                    capture="environment" 
                     required 
                     onChange={handleMeetingPhotoChange} 
                     className="block w-full text-xs sm:text-sm text-[var(--color-body)] file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" 
@@ -2027,6 +2327,90 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                       <label className="block font-medium mb-2 text-[var(--color-heading)]">App Name *</label>
                       <input type="text" name="appName" required value={formData.appName} onChange={handleChange} className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3.5 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" />
                     </div>
+
+                    {/* 🌟 Multi-Select Categories Section (Compulsory) */}
+                    <div className="md:col-span-2 p-4 sm:p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">
+                      <div className="flex justify-between items-center">
+                        <label className="block font-bold text-[var(--color-heading)] uppercase text-xs sm:text-sm">
+                          Categories (Select one or multiple) <span className="text-red-500">*</span>
+                        </label>
+                        <span className="text-xs text-[var(--color-primary)] font-medium">
+                          {formData.categories.length} Selected
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto p-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl scrollbar-thin">
+                        {CATEGORY_OPTIONS.map((cat) => {
+                          const isChecked = formData.categories.includes(cat);
+                          return (
+                            <label 
+                              key={cat} 
+                              className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition text-xs ${
+                                isChecked 
+                                  ? 'bg-[var(--color-primary)]/10 border-[var(--color-primary)] text-[var(--color-heading)] font-semibold' 
+                                  : 'bg-[var(--color-surface)] border-[var(--color-border)] text-[var(--color-body)] hover:border-[var(--color-primary)]/40'
+                              }`}
+                            >
+                              <input 
+                                type="checkbox" 
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setFormData(prev => {
+                                    const current = prev.categories || [];
+                                    if (checked) {
+                                      return { ...prev, categories: [...current, cat] };
+                                    } else {
+                                      return { ...prev, categories: current.filter(item => item !== cat) };
+                                    }
+                                  });
+                                }}
+                                className="w-4 h-4 accent-[var(--color-primary)] rounded cursor-pointer" 
+                              />
+                              <span className="truncate">{cat}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {formData.categories.length === 0 && (
+                        <p className="text-[11px] text-amber-600 font-medium">⚠️ Please select at least one category.</p>
+                      )}
+                    </div>
+
+                    {/* 🌟 Optional Logo Upload */}
+                    <div>
+                      <label className="block font-medium mb-2 text-[var(--color-heading)]">Logo (Optional)</label>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleLogoFileChange} 
+                        className="block w-full text-xs sm:text-sm text-[var(--color-body)] file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[var(--color-surface)] file:text-[var(--color-heading)] file:border file:border-[var(--color-border)] cursor-pointer" 
+                      />
+                    </div>
+
+                    {/* 🌟 Optional Social Media Links */}
+                    <div>
+                      <label className="block font-medium mb-2 text-[var(--color-heading)]">YouTube Link (Optional)</label>
+                      <input 
+                        type="url" 
+                        name="youtubeLink" 
+                        value={formData.youtubeLink} 
+                        onChange={handleChange} 
+                        placeholder="https://youtube.com/@channel" 
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3.5 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" 
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-medium mb-2 text-[var(--color-heading)]">Instagram Link (Optional)</label>
+                      <input 
+                        type="url" 
+                        name="instagramLink" 
+                        value={formData.instagramLink} 
+                        onChange={handleChange} 
+                        placeholder="https://instagram.com/profile" 
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3.5 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition" 
+                      />
+                    </div>
+
                     <div>
                       <label className="block font-medium mb-2 text-[var(--color-heading)]">Mobile Number *</label>
                       <PhoneInput
@@ -2085,7 +2469,17 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                   </div>
 
                   <div className="flex justify-end pt-4">
-                    <button type="button" onClick={() => setInvoiceStep(2)} className="bg-[var(--color-primary)] text-white px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer shadow-sm active:scale-95 transition min-h-[46px]">
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        if (!formData.categories || formData.categories.length === 0) {
+                          toast.error('Please select at least one category before proceeding.');
+                          return;
+                        }
+                        setInvoiceStep(2);
+                      }} 
+                      className="bg-[var(--color-primary)] text-white px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer shadow-sm active:scale-95 transition min-h-[46px]"
+                    >
                       Next: Financials & Add-ons ➔
                     </button>
                   </div>
@@ -2151,7 +2545,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                   <div className="flex justify-between pt-4">
                     <button type="button" onClick={() => setInvoiceStep(1)} className="bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer min-h-[46px]">
-                      ➔ Back
+                      ← Back
                     </button>
                     <button type="button" onClick={() => setInvoiceStep(3)} className="bg-[var(--color-primary)] text-white px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer shadow-sm active:scale-95 transition min-h-[46px]">
                       Next: Payment Mode ➔
@@ -2162,25 +2556,34 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
               {invoiceStep === 3 && (
                 <div className="space-y-4 sm:space-y-5 animate-fade-in">
-                  <h4 className="text-xs sm:text-sm font-bold text-[var(--color-heading)] uppercase">3. Payment Mode & Proof Upload</h4>
+                  <h4 className="text-xs sm:text-sm font-bold text-[var(--color-heading)] uppercase">3. Payment Mode & Proof Submission</h4>
 
                   <div className="p-4 sm:p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3.5">
                     <label className="block text-xs sm:text-sm font-semibold text-[var(--color-primary)] uppercase">💳 Select Payment Mode *</label>
-                    <div className="grid grid-cols-3 gap-3 text-xs sm:text-sm">
-                      {['ONLINE', 'CASH', 'CHEQUE'].map((mode) => (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs sm:text-sm">
+                      {['ONLINE', 'NEFT', 'CASH', 'CHEQUE'].map((mode) => (
                         <button
                           key={mode}
                           type="button"
                           onClick={() => setFormData({ ...formData, paymentMode: mode })}
                           className={`p-3.5 rounded-xl font-bold border transition cursor-pointer text-center min-h-[46px] ${formData.paymentMode === mode ? 'bg-[var(--color-primary)] text-white border-transparent shadow-sm' : 'bg-[var(--color-card)] text-[var(--color-heading)] border-[var(--color-border)]'}`}
                         >
-                          {mode === 'ONLINE' ? '📱 Online / UPI' : mode === 'CASH' ? '💵 Cash' : '🏦 Cheque'}
+                          {mode === 'ONLINE' ? '📱 Online / UPI' : mode === 'NEFT' ? '🌐 NEFT / Txn' : mode === 'CASH' ? '💵 Cash' : '🏦 Cheque'}
                         </button>
                       ))}
                     </div>
 
-                    {formData.paymentMode === 'ONLINE' && (
-                      <input type="text" name="utrNumber" maxLength={12} required value={formData.utrNumber} onChange={handleChange} placeholder="Enter 12-digit UTR ID..." className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3.5 font-mono text-xs sm:text-sm mt-3" />
+                    {(formData.paymentMode === 'ONLINE' || formData.paymentMode === 'NEFT') && (
+                      <input 
+                        type="text" 
+                        name="utrNumber" 
+                        maxLength={16} 
+                        required 
+                        value={formData.utrNumber} 
+                        onChange={handleChange} 
+                        placeholder={formData.paymentMode === 'NEFT' ? "Enter NEFT / Bank Reference Number..." : "Enter 12-digit UTR ID..."} 
+                        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3.5 font-mono text-xs sm:text-sm mt-3" 
+                      />
                     )}
                     {formData.paymentMode === 'CASH' && (
                       <input type="text" name="receiptNo" required value={formData.receiptNo} onChange={handleChange} placeholder="Cash Receipt / Voucher Number..." className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3.5 text-xs sm:text-sm mt-3" />
@@ -2208,7 +2611,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                   <div className="flex justify-between pt-4">
                     <button type="button" onClick={() => setInvoiceStep(2)} className="bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer min-h-[46px]">
-                      ➔ Back
+                      ← Back
                     </button>
                     <button type="submit" disabled={status.loading} className="bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold px-8 py-3.5 rounded-2xl transition cursor-pointer disabled:opacity-50 shadow-sm text-xs sm:text-sm active:scale-95 min-h-[46px]">
                       {status.loading ? 'Submitting & Updating Ledger...' : 'Submit Installment Payment 🚀'}

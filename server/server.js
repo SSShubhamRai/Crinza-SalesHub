@@ -2,7 +2,7 @@
  * =========================================================================
  * 🚀 CRINZA INVOICE & LEAD MANAGEMENT SYSTEM - BACKEND SERVER (`server.js`)
  * =========================================================================
- * Fully Updated with KPI Summary, Single Deal Transfer, & Advanced Invoice Payload Handling
+ * Fully Updated with Day Start/End Shift Control, Start Location Address Saving, Distance Tracking, KPI Summary, & Admin Shift API
  */
 
 const express = require("express");
@@ -158,6 +158,28 @@ const locationLogSchema = new mongoose.Schema({
 const LocationLog = mongoose.model("LocationLog", locationLogSchema);
 
 // =========================================================================
+// --- ⏱️ DAY START / END ATTENDANCE & SHIFT SCHEMA ---
+// =========================================================================
+const daySessionSchema = new mongoose.Schema({
+  salespersonId: { type: String, required: true, index: true },
+  date: { type: String, required: true, index: true }, // Format: 'YYYY-MM-DD'
+  status: { type: String, enum: ["STARTED", "ENDED"], default: "STARTED" },
+  startTime: { type: Date, default: Date.now },
+  startLocation: {
+    latitude: Number,
+    longitude: Number,
+  },
+  startAddress: { type: String, default: "" }, // 👈 Storing human-readable start location name
+  endTime: { type: Date },
+  endLocation: {
+    latitude: Number,
+    longitude: Number,
+  },
+  totalDistanceKm: { type: Number, default: 0 },
+});
+const DaySession = mongoose.model("DaySession", daySessionSchema);
+
+// =========================================================================
 // --- 📐 Haversine Formula Helper & Drift Filtering (200m Threshold) ---
 // =========================================================================
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -212,13 +234,11 @@ io.use((socket, next) => {
   });
 });
 
-// 🌟 Track active sessions across all roles (Admin, Salesperson, Accountant): { userId: socketId }
 const activeUserSessions = {};
 
 io.on("connection", (socket) => {
   console.log(`🔌 Authenticated Client Connected: ${socket.id} (${socket.user.userId})`);
 
-  // 🌟 Register user session to enforce single device login per ID
   socket.on("register_user", ({ userId }) => {
     if (!userId) return;
 
@@ -232,7 +252,6 @@ io.on("connection", (socket) => {
     console.log(`👤 Active Session Registered for: ${userId} (${socket.id})`);
   });
 
-  // Salesperson sends continuous live location updates with 200m Jitter & Teleportation Anti-Bypass Filter
   socket.on("update_location", async (data) => {
     try {
       const { salespersonId, latitude, longitude } = data;
@@ -253,7 +272,6 @@ io.on("connection", (socket) => {
         const distanceKm = calculateDistance(lastLog.latitude, lastLog.longitude, latitude, longitude);
         const timeDiffHours = (currentTime - new Date(lastLog.timestamp)) / (1000 * 60 * 60);
 
-        // 1. Jitter Filter: Agar user 200 meters (0.2 KM) ke daayre mein hi baitha hai
         if (distanceKm < 0.2) {
           io.emit("live_location_broadcast", {
             salespersonId,
@@ -265,7 +283,6 @@ io.on("connection", (socket) => {
           return; 
         }
 
-        // 2. 🛡️ Impossible Speed / Teleportation Check (e.g., speed > 150 km/h)
         if (timeDiffHours > 0) {
           const speedKmh = distanceKm / timeDiffHours;
           if (speedKmh > 150) {
@@ -693,7 +710,6 @@ app.post("/api/auth/reset-password-otp", async (req, res) => {
 // --- 👑 BOSS / ADMIN OPERATIONS API ROUTES ---
 // =========================================================================
 
-// 📢 Broadcast Message API Route
 app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
@@ -714,7 +730,6 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
 
     await newBroadcast.save();
 
-    // 🌟 Instant WebSocket push to all connected users
     io.emit("team_broadcast", {
       title,
       message,
@@ -729,7 +744,6 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
   }
 });
 
-// 🌟 Global KPI Summary API Route for Admin Dashboard Cards
 app.get("/api/boss/kpi-summary", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
@@ -761,7 +775,6 @@ app.get("/api/boss/kpi-summary", verifyToken, async (req, res) => {
   }
 });
 
-// 🌟 Single Deal Transfer API Route
 app.post("/api/boss/transfer-single-deal", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
@@ -822,6 +835,23 @@ app.get(
     }
   },
 );
+
+// 🌟 Admin API to fetch salesperson's day session shift timings & status
+app.get("/api/boss/salesperson-shift/:salespersonId", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+
+    const { salespersonId } = req.params;
+    const queryDate = req.query.date || new Date().toISOString().split("T")[0];
+
+    const session = await DaySession.findOne({ salespersonId, date: queryDate });
+    res.json({ success: true, session: session || null });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch shift details", error: err.message });
+  }
+});
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -1045,14 +1075,18 @@ app.delete("/api/boss/coupons/:id", verifyToken, async (req, res) => {
   }
 });
 
+// =========================================================================
+// --- ➕ CREATE EMPLOYEE WITH WELCOME EMAIL & PHONE SAVING ---
+// =========================================================================
 app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
       return res.status(403).json({ message: "Access denied!" });
     }
-    const { userId, name, email, password, role } = req.body;
+
+    const { userId, name, email, phone, password, role } = req.body;
     if (!userId || !name || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ message: "All required fields must be filled!" });
     }
 
     const existingUser = await User.findOne({ userId });
@@ -1065,16 +1099,70 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
       userId,
       name,
       email,
+      phone: phone || "",
       password: hashedPassword,
       role: role || "salesperson",
     });
 
     await newEmp.save();
-    res.status(201).json({ message: "Employee created successfully!" });
+
+    let emailSent = false;
+
+    // 1️⃣ 📧 Send Professional Welcome Email
+    try {
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS,
+        },
+        tls: { rejectUnauthorized: false },
+      });
+
+      // const loginPortalUrl = process.env.FRONTEND_URL || "https://crinza-saleshub.onrender.com";
+
+      const mailOptions = {
+        from: `"Crinza Management Team" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: `Welcome to Crinza Technologies - Your Portal Credentials`,
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 25px; color: #1e293b; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #f8fafc;">
+            <h2 style="color: #4f46e5; text-align: center; margin-bottom: 5px;">Welcome Aboard, ${name}! 🎉</h2>
+            <p style="text-align: center; color: #64748b; font-size: 13px; margin-top: 0;">We are thrilled to have you join our growing team.</p>
+            
+            <p>Hello <strong>${name}</strong>,</p>
+            <p>Your official account has been successfully created on the <strong>Crinza One Portal</strong> as a <strong>${(role || 'salesperson').toUpperCase()}</strong>.</p>
+            
+            <div style="background: #ffffff; padding: 18px; border-radius: 12px; border: 1px solid #cbd5e1; margin: 20px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+              <p style="margin: 8px 0;"><strong>👤 User ID / Code:</strong> <span style="font-family: monospace; color: #4f46e5; font-size: 15px; font-weight: bold;">${userId}</span></p>
+              <p style="margin: 8px 0;"><strong>🔑 Temporary Password:</strong> <span style="font-family: monospace; color: #d97706; font-size: 15px; font-weight: bold;">${password}</span></p>
+              // <p style="margin: 8px 0;"><strong>🌐 Login Portal Link:</strong> <a href="${loginPortalUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">Click here to access portal</a></p>
+            </div>
+
+            <p style="color: #475569; font-size: 13px; line-height: 1.5;">Please keep your login credentials secure and confidential. Log in to start your shifts, track your leads, and manage your daily activities.</p>
+            
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+            <p style="margin: 0; font-size: 12px; color: #94a3b8; text-align: center;">Best Regards,<br><strong>Crinza Technologies Administration</strong></p>
+          </div>
+        `,
+      };
+
+      await transporter.sendMail(mailOptions);
+      emailSent = true;
+    } catch (emailErr) {
+      console.error("🔥 Welcome Email Error:", emailErr.message);
+    }
+
+    res.status(201).json({ 
+      success: true, 
+      message: `Employee ${name} created successfully! ${emailSent ? '📧 Welcome Email Sent.' : ''}`,
+      emailSent
+    });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to create employee", error: err.message });
+    res.status(500).json({ message: "Failed to create employee", error: err.message });
   }
 });
 
@@ -1126,10 +1214,16 @@ app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- 🧾 INVOICE & BILLING API ROUTES (FIXED SYNCHRONOUS OCR VERIFICATION) ---
+// --- 🧾 INVOICE & BILLING API ROUTES ---
 // =========================================================================
 const handleInvoiceSubmission = async (req, res) => {
   try {
+    const today = new Date().toISOString().split("T")[0];
+    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+    if (!session || session.status !== "STARTED") {
+      return res.status(403).json({ message: "Action Blocked: You must start your day first before submitting invoices!" });
+    }
+
     const invoiceId = "CRINZA-" + Date.now().toString().slice(-6);
 
     let parsedAddons = { testModule: false, windowApp: false, iosApp: false };
@@ -1356,6 +1450,97 @@ app.post("/api/invoices/reject/:id", verifyToken, async (req, res) => {
 // --- 👤 SALESPERSON SPECIFIC ROUTES ---
 // =========================================================================
 
+// --- ⏱️ DAY START / END SHIFT API ROUTES ---
+app.get("/api/salesperson/day-status", verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+    
+    if (!session) {
+      return res.json({ status: "NOT_STARTED", session: null });
+    }
+    res.json({ 
+      status: session.status, 
+      startAddress: session.startAddress || "", // 👈 Returning start address to frontend
+      session 
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch day status", error: err.message });
+  }
+});
+
+app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const existing = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+
+    if (existing && existing.status === "STARTED") {
+      return res.status(400).json({ message: "Working day has already been started today!" });
+    }
+    if (existing && existing.status === "ENDED") {
+      return res.status(400).json({ message: "You have already ended your day today. Cannot restart." });
+    }
+
+    const { latitude, longitude, startAddress } = req.body; // 👈 Accepting startAddress from frontend
+    const newSession = new DaySession({
+      salespersonId: req.user.userId,
+      date: today,
+      status: "STARTED",
+      startTime: new Date(),
+      startLocation: { latitude: Number(latitude) || 0, longitude: Number(longitude) || 0 },
+      startAddress: startAddress || "" // 👈 Saving startAddress
+    });
+
+    await newSession.save();
+    res.status(201).json({ success: true, message: "Day started successfully!", startAddress: newSession.startAddress, session: newSession });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to start day", error: err.message });
+  }
+});
+
+app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split("T")[0];
+    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today, status: "STARTED" });
+
+    if (!session) {
+      return res.status(400).json({ message: "No active day session found to end!" });
+    }
+
+    const { latitude, longitude } = req.body;
+
+    const routeLogs = await LocationLog.find({ salespersonId: req.user.userId, date: today }).sort({ timestamp: 1 });
+    const computedDistance = calculateValidDistance(routeLogs);
+
+    session.status = "ENDED";
+    session.endTime = new Date();
+    session.endLocation = { latitude: Number(latitude) || 0, longitude: Number(longitude) || 0 };
+    session.totalDistanceKm = computedDistance;
+    await session.save();
+
+    const totalVisitsToday = await Lead.countDocuments({ salespersonId: req.user.userId, leadDate: today });
+    const approvedInvoicesToday = await Invoice.find({ salespersonId: req.user.userId, status: "approved" });
+    
+    const totalCollectedToday = approvedInvoicesToday.reduce((acc, inv) => acc + (inv.paidAmount || 0), 0);
+    const workingHours = ((session.endTime - new Date(session.startTime)) / (1000 * 60 * 60)).toFixed(1);
+
+    res.json({
+      success: true,
+      message: "Day ended successfully. Entries are now locked for today.",
+      summary: {
+        startTime: new Date(session.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        endTime: new Date(session.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        workingHours: `${workingHours} hrs`,
+        totalVisits: totalVisitsToday,
+        totalCollected: totalCollectedToday,
+        totalDistanceKm: computedDistance
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to end day", error: err.message });
+  }
+});
+
 app.get("/api/salesperson/notifications", verifyToken, async (req, res) => {
   try {
     const tasks = await Task.find({ 
@@ -1456,6 +1641,12 @@ app.post(
   upload.single("meetingPhoto"),
   async (req, res) => {
     try {
+      const today = new Date().toISOString().split("T")[0];
+      const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+      if (!session || session.status !== "STARTED") {
+        return res.status(403).json({ message: "Action Blocked: You must start your working day first before recording visits or leads!" });
+      }
+
       const {
         instituteName,
         contactPerson,
@@ -1585,9 +1776,14 @@ app.post(
   },
 );
 
-// 🌟 UPDATED LEAD PUT ROUTE WITH FILE UPLOAD SUPPORT FOR DEMO COMPLETION PROOFS
 app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto"), async (req, res) => {
   try {
+    const today = new Date().toISOString().split("T")[0];
+    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+    if (!session || session.status !== "STARTED") {
+      return res.status(403).json({ message: "Action Blocked: Working day must be active to update leads!" });
+    }
+
     const {
       demoStatus,
       leadStatus,
@@ -1619,7 +1815,6 @@ app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto")
     if (!updatedLead)
       return res.status(404).json({ message: "Lead not found" });
     
-    // If follow-up date was updated, optionally log or update task
     if (followUpDate) {
       await Task.create({
         salespersonId: req.user.userId,
@@ -1683,6 +1878,6 @@ app.post("/api/coupons/verify", verifyToken, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(
-    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Single Session Control & Broadcast Enabled`,
+    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Day Shift Control & Broadcast Enabled`,
   );
 });
