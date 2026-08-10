@@ -324,11 +324,9 @@ io.on("connection", (socket) => {
 });
 
 // =========================================================================
-// --- 📄 PDF GENERATOR HELPER ---
-// =========================================================================
-// =========================================================================
 // --- 📄 PDF GENERATOR HELPER (Updated for Render using @sparticuz/chromium) ---
 // =========================================================================
+
 const createInvoicePDF = async (data) => {
   let browser;
   try {
@@ -344,19 +342,33 @@ const createInvoicePDF = async (data) => {
       logoBase64 = `data:image/jpeg;base64,${logoBuffer.toString("base64")}`;
     }
 
-    // 🌟 Render-compatible Puppeteer Setup
     const puppeteer = require("puppeteer-core");
-    const chromium = require("@sparticuz/chromium");
+    
+    // Check karein ki app Render (Production) par hai ya Localhost par
+    if (process.env.NODE_ENV === "production" || process.env.RENDER) {
+      const chromium = require("@sparticuz/chromium");
+      chromium.setGraphicsMode = false;
 
-    // Optional configuration for sparticuz chromium
-    chromium.setGraphicsMode = false;
+      browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+    } else {
+      // 🌟 Localhost (Windows / Mac) ke liye system ka installed Chrome use karega
+      const localExecutablePath = process.platform === 'win32'
+        ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+        : process.platform === 'darwin'
+        ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+        : '/usr/bin/google-chrome';
 
-    browser = await puppeteer.launch({
-      args: chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
-    });
+      browser = await puppeteer.launch({
+        executablePath: localExecutablePath,
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+      });
+    }
 
     const page = await browser.newPage();
 
@@ -445,7 +457,7 @@ const createInvoicePDF = async (data) => {
             <tr>
               <td>${data.appName} License (Base Price)</td>
               <td>${data.packageValidity}</td>
-              <td>₹${(data.baseAmount || data.totalAmount || 0).toLocaleString("en-IN")}</td>
+              <td>₹${(data.baseAmount || data.totalCode || data.totalAmount || 0).toLocaleString("en-IN")}</td>
             </tr>
             ${addonRows}
             ${discountRow}
@@ -484,7 +496,7 @@ const createInvoicePDF = async (data) => {
 };
 
 // =========================================================================
-// --- 📧 EMAIL SENDER HELPER ---
+// --- 📧 EMAIL SENDER HELPER (Updated with family: 4 for IPv4 fix) ---
 // =========================================================================
 const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
   try {
@@ -493,6 +505,7 @@ const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
+      family: 4, // 👈 Forced IPv4 to prevent ENETUNREACH error on Render
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -650,6 +663,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
+      family: 4, // 👈 Forced IPv4 here too
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -1125,6 +1139,7 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
         host: "smtp.gmail.com",
         port: 465,
         secure: true,
+        family: 4, // 👈 Forced IPv4 here too
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS,
