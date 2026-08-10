@@ -326,6 +326,9 @@ io.on("connection", (socket) => {
 // =========================================================================
 // --- 📄 PDF GENERATOR HELPER ---
 // =========================================================================
+// =========================================================================
+// --- 📄 PDF GENERATOR HELPER (Updated for Render using @sparticuz/chromium) ---
+// =========================================================================
 const createInvoicePDF = async (data) => {
   let browser;
   try {
@@ -341,11 +344,18 @@ const createInvoicePDF = async (data) => {
       logoBase64 = `data:image/jpeg;base64,${logoBuffer.toString("base64")}`;
     }
 
-    const puppeteer = require("puppeteer");
+    // 🌟 Render-compatible Puppeteer Setup
+    const puppeteer = require("puppeteer-core");
+    const chromium = require("@sparticuz/chromium");
+
+    // Optional configuration for sparticuz chromium
+    chromium.setGraphicsMode = false;
+
     browser = await puppeteer.launch({
-      headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
@@ -1122,7 +1132,7 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
         tls: { rejectUnauthorized: false },
       });
 
-      // const loginPortalUrl = process.env.FRONTEND_URL || "https://crinza-saleshub.onrender.com";
+      const loginPortalUrl = process.env.FRONTEND_URL || "https://crinza-saleshub.onrender.com";
 
       const mailOptions = {
         from: `"Crinza Management Team" <${process.env.EMAIL_USER}>`,
@@ -1139,7 +1149,7 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
             <div style="background: #ffffff; padding: 18px; border-radius: 12px; border: 1px solid #cbd5e1; margin: 20px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
               <p style="margin: 8px 0;"><strong>👤 User ID / Code:</strong> <span style="font-family: monospace; color: #4f46e5; font-size: 15px; font-weight: bold;">${userId}</span></p>
               <p style="margin: 8px 0;"><strong>🔑 Temporary Password:</strong> <span style="font-family: monospace; color: #d97706; font-size: 15px; font-weight: bold;">${password}</span></p>
-              // <p style="margin: 8px 0;"><strong>🌐 Login Portal Link:</strong> <a href="${loginPortalUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">Click here to access portal</a></p>
+              <p style="margin: 8px 0;"><strong>🌐 Login Portal Link:</strong> <a href="${loginPortalUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">Click here to access portal</a></p>
             </div>
 
             <p style="color: #475569; font-size: 13px; line-height: 1.5;">Please keep your login credentials secure and confidential. Log in to start your shifts, track your leads, and manage your daily activities.</p>
