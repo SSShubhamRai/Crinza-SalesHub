@@ -1237,7 +1237,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         }
       });
       data.append('dueAmount', dueAmount);
-      data.append('paymentProof', file);
+      data.append('paymentProof', file); // 👈 Correct Multer field name matched with backend
       if (logoFile) {
         data.append('logoProof', logoFile);
       }
@@ -1282,7 +1282,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           setStatus({ loading: false, success: '', error: '' });
         }, 2500);
       } catch (err) {
-        setStatus({ loading: false, success: '', error: err.response?.data?.message || 'Submission failed' });
+        setStatus({ loading: false, success: '', error: err.response?.data?.message || err.message || 'Submission failed' });
       }
     };
 
