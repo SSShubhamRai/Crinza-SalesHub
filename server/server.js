@@ -2,7 +2,7 @@
  * =========================================================================
  * 🚀 CRINZA INVOICE & LEAD MANAGEMENT SYSTEM - BACKEND SERVER (`server.js`)
  * =========================================================================
- * Fully Updated with Day Start/End Shift Control, Start Location Address Saving, Distance Tracking, KPI Summary, & Admin Shift API
+ * Fully Updated with Crinza API Integration for Invoices & Employee Welcome Emails (Buffer Fixed)
  */
 
 const express = require("express");
@@ -17,7 +17,8 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto"); // 🌟 Token & OTP hashing ke liye zaroori
-const axios = require("axios"); // 🌟 OSRM API call ke liye axios zaroori hai
+const axios = require("axios"); // 🌟 OSRM & Crinza API call ke liye axios zaroori hai
+const FormData = require("form-data"); // 🌟 Multipart/form-data attachments ke liye zaroori hai
 const Tesseract = require("tesseract.js"); // 🌟 AI OCR Payment Proof Verification ke liye
 require("dotenv").config();
 
@@ -324,7 +325,7 @@ io.on("connection", (socket) => {
 });
 
 // =========================================================================
-// --- 📄 PDF GENERATOR HELPER (Updated for Render using @sparticuz/chromium) ---
+// --- 📄 PDF GENERATOR HELPER (Updated with Buffer Fix) ---
 // =========================================================================
 
 const createInvoicePDF = async (data) => {
@@ -480,9 +481,11 @@ const createInvoicePDF = async (data) => {
     `;
 
     await page.setContent(htmlContent, { waitUntil: "domcontentloaded" });
-    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true });
+    const rawPdf = await page.pdf({ format: "A4", printBackground: true });
     await page.close();
-    return pdfBuffer;
+    
+    // 🌟 Explicitly convert to Node.js Buffer for form-data compatibility
+    return Buffer.from(rawPdf);
   } catch (err) {
     console.error("🔥 [PDF Error]:", err);
     throw err;
@@ -496,40 +499,39 @@ const createInvoicePDF = async (data) => {
 };
 
 // =========================================================================
-// --- 📧 EMAIL SENDER HELPER (Updated with family: 4 for IPv4 fix) ---
+// --- 📧 EMAIL SENDER HELPER (Updated with Crinza Custom API) ---
 // =========================================================================
-const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId) => {
+const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId, instituteName) => {
   try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      family: 4, // 👈 Forced IPv4 to prevent ENETUNREACH error on Render
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      tls: { rejectUnauthorized: false },
+    const form = new FormData();
+
+    form.append('sendTo', clientEmail);
+    form.append('message', `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+        <h3 style="color: #4f46e5;">Hello ${instituteName || 'Valued Client'},</h3>
+        <p>Please find attached your official invoice and ledger statement (<strong>#${invoiceId}</strong>) for your Crinza subscription.</p>
+        <p>Thank you for choosing Crinza Technologies!</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+        <p style="font-size: 12px; color: #64748b;">Best Regards,<br><strong>Crinza Technologies Billing Dept</strong></p>
+      </div>
+    `);
+
+    form.append('attachments', pdfBuffer, {
+      filename: `Invoice_${invoiceId}.pdf`,
+      contentType: 'application/pdf',
     });
 
-    const mailOptions = {
-      from: `"Crinza Billing Dept" <${process.env.EMAIL_USER}>`,
-      to: clientEmail,
-      subject: `Crinza Invoice/Ledger #${invoiceId} for Your Service`,
-      text: `Hello,\n\nPlease find attached the official invoice & ledger statement (#${invoiceId}) for your subscription.\n\nThank you!\nCrinza Technologies`,
-      attachments: [
-        {
-          filename: `Invoice_${invoiceId}.pdf`,
-          content: pdfBuffer,
-          contentType: "application/pdf",
-        },
-      ],
-    };
+    const response = await axios.post('https://api.crinza.com/api/v1/contact/message', form, {
+      headers: {
+        ...form.getHeaders(),
+        'Origin': 'https://crinza.com',
+      },
+    });
 
-    await transporter.sendMail(mailOptions);
+    console.log(`✅ Invoice email successfully dispatched via Crinza API for #${invoiceId}:`, response.data);
+    return true;
   } catch (err) {
-    console.error("🔥 [Email Error]:", err);
+    console.error("🔥 [Crinza API Email Error]:", err.response?.data || err.message);
     throw err;
   }
 };
@@ -663,7 +665,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
-      family: 4, // 👈 Forced IPv4 here too
+      family: 4,
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -1100,7 +1102,7 @@ app.delete("/api/boss/coupons/:id", verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// --- ➕ CREATE EMPLOYEE WITH WELCOME EMAIL & PHONE SAVING ---
+// --- ➕ CREATE EMPLOYEE WITH WELCOME EMAIL (VIA CRINZA API) ---
 // =========================================================================
 app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
   try {
@@ -1132,58 +1134,49 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
 
     let emailSent = false;
 
-    // 1️⃣ 📧 Send Professional Welcome Email
+    // 1️⃣ 📧 Send Professional Welcome Email via Crinza API
     try {
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
-        family: 4, // 👈 Forced IPv4 here too
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
+      const loginPortalUrl = process.env.FRONTEND_URL || "https://crinza-saleshub.onrender.com";
+      const form = new FormData();
+
+      form.append('sendTo', email);
+      form.append('message', `
+        <div style="font-family: Arial, sans-serif; padding: 25px; color: #1e293b; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #f8fafc;">
+          <h2 style="color: #4f46e5; text-align: center; margin-bottom: 5px;">Welcome Aboard, ${name}! 🎉</h2>
+          <p style="text-align: center; color: #64748b; font-size: 13px; margin-top: 0;">We are thrilled to have you join our growing team.</p>
+          
+          <p>Hello <strong>${name}</strong>,</p>
+          <p>Your official account has been successfully created on the <strong>Crinza One Portal</strong> as a <strong>${(role || 'salesperson').toUpperCase()}</strong>.</p>
+          
+          <div style="background: #ffffff; padding: 18px; border-radius: 12px; border: 1px solid #cbd5e1; margin: 20px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <p style="margin: 8px 0;"><strong>👤 User ID / Code:</strong> <span style="font-family: monospace; color: #4f46e5; font-size: 15px; font-weight: bold;">${userId}</span></p>
+            <p style="margin: 8px 0;"><strong>🔑 Temporary Password:</strong> <span style="font-family: monospace; color: #d97706; font-size: 15px; font-weight: bold;">${password}</span></p>
+            <p style="margin: 8px 0;"><strong>🌐 Login Portal Link:</strong> <a href="${loginPortalUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">Click here to access portal</a></p>
+          </div>
+
+          <p style="color: #475569; font-size: 13px; line-height: 1.5;">Please keep your login credentials secure and confidential. Log in to start your shifts, track your leads, and manage your daily activities.</p>
+          
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+          <p style="margin: 0; font-size: 12px; color: #94a3b8; text-align: center;">Best Regards,<br><strong>Crinza Technologies Administration</strong></p>
+        </div>
+      `);
+
+      const response = await axios.post('https://api.crinza.com/api/v1/contact/message', form, {
+        headers: {
+          ...form.getHeaders(),
+          'Origin': 'https://crinza.com',
         },
-        tls: { rejectUnauthorized: false },
       });
 
-      const loginPortalUrl = process.env.FRONTEND_URL || "https://crinza-saleshub.onrender.com";
-
-      const mailOptions = {
-        from: `"Crinza Management Team" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: `Welcome to Crinza Technologies - Your Portal Credentials`,
-        html: `
-          <div style="font-family: Arial, sans-serif; padding: 25px; color: #1e293b; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #f8fafc;">
-            <h2 style="color: #4f46e5; text-align: center; margin-bottom: 5px;">Welcome Aboard, ${name}! 🎉</h2>
-            <p style="text-align: center; color: #64748b; font-size: 13px; margin-top: 0;">We are thrilled to have you join our growing team.</p>
-            
-            <p>Hello <strong>${name}</strong>,</p>
-            <p>Your official account has been successfully created on the <strong>Crinza One Portal</strong> as a <strong>${(role || 'salesperson').toUpperCase()}</strong>.</p>
-            
-            <div style="background: #ffffff; padding: 18px; border-radius: 12px; border: 1px solid #cbd5e1; margin: 20px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-              <p style="margin: 8px 0;"><strong>👤 User ID / Code:</strong> <span style="font-family: monospace; color: #4f46e5; font-size: 15px; font-weight: bold;">${userId}</span></p>
-              <p style="margin: 8px 0;"><strong>🔑 Temporary Password:</strong> <span style="font-family: monospace; color: #d97706; font-size: 15px; font-weight: bold;">${password}</span></p>
-              <p style="margin: 8px 0;"><strong>🌐 Login Portal Link:</strong> <a href="${loginPortalUrl}" target="_blank" style="color: #2563eb; text-decoration: underline;">Click here to access portal</a></p>
-            </div>
-
-            <p style="color: #475569; font-size: 13px; line-height: 1.5;">Please keep your login credentials secure and confidential. Log in to start your shifts, track your leads, and manage your daily activities.</p>
-            
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-            <p style="margin: 0; font-size: 12px; color: #94a3b8; text-align: center;">Best Regards,<br><strong>Crinza Technologies Administration</strong></p>
-          </div>
-        `,
-      };
-
-      await transporter.sendMail(mailOptions);
+      console.log(`✅ Welcome email dispatched via Crinza API for employee ${userId}:`, response.data);
       emailSent = true;
     } catch (emailErr) {
-      console.error("🔥 Welcome Email Error:", emailErr.message);
+      console.error("🔥 Welcome Email API Error:", emailErr.response?.data || emailErr.message);
     }
 
     res.status(201).json({ 
       success: true, 
-      message: `Employee ${name} created successfully! ${emailSent ? '📧 Welcome Email Sent.' : ''}`,
+      message: `Employee ${name} created successfully! ${emailSent ? '📧 Welcome Email Sent via Crinza API.' : ''}`,
       emailSent
     });
   } catch (err) {
@@ -1406,15 +1399,19 @@ app.post("/api/invoices/approve/:id", verifyToken, async (req, res) => {
     const invoice = await Invoice.findById(req.params.id);
     if (!invoice) return res.status(404).json({ message: "Invoice not found" });
 
+    // 1️⃣ Generate PDF Buffer
     const pdfBuffer = await createInvoicePDF(invoice);
-    await sendInvoiceEmail(invoice.email, pdfBuffer, invoice.invoiceId);
 
+    // 2️⃣ Send via Crinza Custom Message/Contact API
+    await sendInvoiceEmail(invoice.email, pdfBuffer, invoice.invoiceId, invoice.instituteName);
+
+    // 3️⃣ Update Invoice Status in DB
     invoice.status = "approved";
     invoice.approvedBy = req.user.userId;
     await invoice.save();
 
     res.json({
-      message: `Invoice #${invoice.invoiceId} Approved & Emailed successfully!`,
+      message: `Invoice #${invoice.invoiceId} Approved & Emailed successfully via Crinza API!`,
     });
   } catch (err) {
     res
@@ -1486,7 +1483,7 @@ app.get("/api/salesperson/day-status", verifyToken, async (req, res) => {
     }
     res.json({ 
       status: session.status, 
-      startAddress: session.startAddress || "", // 👈 Returning start address to frontend
+      startAddress: session.startAddress || "", 
       session 
     });
   } catch (err) {
@@ -1506,14 +1503,14 @@ app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
       return res.status(400).json({ message: "You have already ended your day today. Cannot restart." });
     }
 
-    const { latitude, longitude, startAddress } = req.body; // 👈 Accepting startAddress from frontend
+    const { latitude, longitude, startAddress } = req.body;
     const newSession = new DaySession({
       salespersonId: req.user.userId,
       date: today,
       status: "STARTED",
       startTime: new Date(),
       startLocation: { latitude: Number(latitude) || 0, longitude: Number(longitude) || 0 },
-      startAddress: startAddress || "" // 👈 Saving startAddress
+      startAddress: startAddress || ""
     });
 
     await newSession.save();
@@ -1903,6 +1900,6 @@ app.post("/api/coupons/verify", verifyToken, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(
-    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Day Shift Control & Broadcast Enabled`,
+    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Day Shift Control & Crinza API Email Dispatch Enabled`,
   );
 });

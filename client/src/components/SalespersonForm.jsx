@@ -1423,12 +1423,12 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         </div>
 
         {/* --- ⏱️ DAY START / END ATTENDANCE & SHIFT CONTROL BAR --- */}
-        <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-5 rounded-3xl shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3.5 w-full sm:w-auto">
+        <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-6 md:p-7 rounded-3xl shadow-sm flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+          <div className="flex items-start sm:items-center gap-3.5 w-full sm:w-auto min-w-0 flex-1">
             <span className="text-3xl p-3 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0">⏰</span>
-            <div>
+            <div className="min-w-0 flex-1">
               <h3 className="text-xs sm:text-sm font-bold text-[var(--color-heading)] uppercase tracking-wider">Shift & Attendance Status</h3>
-              <p className="text-xs text-[var(--color-body)] mt-0.5">
+              <p className="text-xs text-[var(--color-body)] mt-0.5 leading-relaxed">
                 {dayStatus === 'LOADING' && 'Checking day status...'}
                 {dayStatus === 'NOT_STARTED' && '⏳ Day not started. Click "Start Day" to capture GPS location and unlock leads & invoices.'}
                 {dayStatus === 'ACTIVE' && '🟢 Shift Active. GPS active and system entries are fully enabled.'}
@@ -1436,18 +1436,18 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               </p>
               {startLocationName && (
                 <p className="text-xs font-semibold text-[var(--color-primary)] mt-1.5 flex items-center gap-1.5 truncate">
-                  📍 <span>Start Location:</span> <strong className="text-[var(--color-heading)] truncate">{startLocationName}</strong>
+                  📍 <span className="shrink-0">Start Location:</span> <strong className="text-[var(--color-heading)] truncate">{startLocationName}</strong>
                 </p>
               )}
             </div>
           </div>
 
-          <div className="w-full sm:w-auto flex justify-end shrink-0">
+          <div className="w-full sm:w-auto flex justify-end sm:pr-1.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[var(--color-border)]">
             {dayStatus === 'NOT_STARTED' && (
               <button
                 onClick={handleStartDay}
                 disabled={status.loading}
-                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[46px] disabled:opacity-50"
+                className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[46px] disabled:opacity-50 text-center"
               >
                 {status.loading ? 'Capturing GPS...' : '🚀 Start Day'}
               </button>
@@ -1456,7 +1456,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
               <button
                 onClick={() => setShowEndDayModal(true)}
                 disabled={status.loading}
-                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[46px] disabled:opacity-50"
+                className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white px-6 py-3.5 rounded-2xl text-xs sm:text-sm font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[46px] disabled:opacity-50 text-center"
               >
                 {status.loading ? 'Processing...' : '🛑 End Day'}
               </button>
