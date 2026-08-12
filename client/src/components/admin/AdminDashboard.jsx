@@ -464,12 +464,13 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
+  // 🌟 FIXED: Corrected API endpoint to fetch leads instead of details/invoices
   const fetchSalespersonLeadsForTransfer = async (empId) => {
     setLoadingSourceLeads(true);
     setSelectedLeadIds([]);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/api/boss/employee-details/${empId}`, {
+      const res = await fetch(`${API_BASE}/api/boss/employee-leads/${empId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -519,14 +520,14 @@ const AdminDashboard = ({ userId, onLogout }) => {
     setTransferStatus({ success: "", error: "" });
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/api/boss/transfer-selected-leads`, {
+      const res = await fetch(`${API_BASE}/api/boss/transfer-leads`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          leadIds: selectedLeadIds,
+          fromSalesperson: transferData.fromSalesperson,
           toSalesperson: transferData.toSalesperson,
         }),
       });

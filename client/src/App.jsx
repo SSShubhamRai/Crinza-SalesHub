@@ -1,16 +1,21 @@
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
+import { useNavigate, useLocation } from 'react-router-dom'; // 👈 Added for navigation tracking
+import { App as CapacitorApp } from '@capacitor/app'; // 👈 Added Capacitor App plugin
 import Login from './components/Login';
 import SalespersonForm from './components/SalespersonForm';
-import AccountantPanel from './components/AccountantPanel';
-import AdminDashboard from './components/admin/AdminDashboard'; // 👈 Updated path for modularized Admin Dashboard
+import AccountantPanel from './components/accountant/AccountantPanel';
+import AdminDashboard from './components/admin/AdminDashboard';
 
 function App() {
   const [token, setToken] = useState(null);
   const [role, setRole] = useState(null);
   const [userId, setUserId] = useState(null);
   
+  const navigate = useNavigate();
+  const location = useLocation();
+
   // 🌟 Global Dark / Light Theme State Management
   const [isDark, setIsDark] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
@@ -40,6 +45,26 @@ function App() {
       setUserId(savedUserId || 'User');
     }
   }, []);
+
+  // 🌟 Capacitor Hardware Back Button Handler Integration
+  useEffect(() => {
+    const handleBackButton = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+      // Agar user login page par hai ya root path par hai, toh app exit kar do
+      if (!token || location.pathname === '/') {
+        CapacitorApp.exitApp();
+      } else if (canGoBack) {
+        // Agar router history me pichhla page hai toh peeche jao
+        navigate(-1);
+      } else {
+        // Fallback agar aur pichhla page nahi hai toh app minimize/exit ho
+        CapacitorApp.exitApp();
+      }
+    });
+
+    return () => {
+      handleBackButton.then(listener => listener.remove());
+    };
+  }, [token, location, navigate]);
 
   const handleLoginSuccess = (newToken, newRole, newUserId) => {
     localStorage.setItem('token', newToken);

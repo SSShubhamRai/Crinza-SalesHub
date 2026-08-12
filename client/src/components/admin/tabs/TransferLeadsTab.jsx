@@ -46,8 +46,12 @@ export const TransferLeadsTab = ({
                 required
                 value={transferData.fromSalesperson}
                 onChange={(e) => {
-                  setTransferData({ ...transferData, fromSalesperson: e.target.value });
-                  if (e.target.value) fetchSalespersonLeadsForTransfer(e.target.value);
+                  const val = e.target.value;
+                  setTransferData({ ...transferData, fromSalesperson: val });
+                  console.log("Selected Source Salesperson:", val);
+                  if (val && typeof fetchSalespersonLeadsForTransfer === "function") {
+                    fetchSalespersonLeadsForTransfer(val);
+                  }
                 }}
                 className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
               >

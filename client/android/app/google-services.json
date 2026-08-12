@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "619052749878",
+    "project_id": "crinzaone",
+    "storage_bucket": "crinzaone.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:619052749878:android:2ca6db9d1b990f5f4c7497",
+        "android_client_info": {
+          "package_name": "com.crinza.saleshub"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyuS5N75uH4X87mVgnSSK-g7YnTBIu9Mg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

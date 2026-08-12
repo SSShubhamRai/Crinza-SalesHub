@@ -2,9 +2,8 @@
  * =========================================================================
  * 🚀 CRINZA INVOICE & LEAD MANAGEMENT SYSTEM - BACKEND SERVER (`server.js`)
  * =========================================================================
- * Fully Updated with Crinza API Integration & Cloudinary Storage for Uploads
+ * Fully Updated with Crinza API Integration, Cloudinary Storage & Firebase FCM Push Notifications
  */
-
 const express = require("express");
 const http = require("http"); // 🌟 Socket.io ke liye HTTP server zaroori hai
 const { Server } = require("socket.io"); // 🌟 Real-time live tracking ke liye
@@ -21,6 +20,23 @@ const axios = require("axios"); // 🌟 OSRM & Crinza API call ke liye axios zar
 const FormData = require("form-data"); // 🌟 Multipart/form-data attachments ke liye zaroori hai
 const Tesseract = require("tesseract.js"); // 🌟 AI OCR Payment Proof Verification ke liye
 require("dotenv").config();
+
+// --- Firebase Admin Initialization (Node v24 Compatible) ---
+try {
+  const { initializeApp, cert, getApps } = require("firebase-admin/app");
+  const serviceAccount = require("./firebase-service-account.json");
+
+  if (!getApps().length) {
+    initializeApp({
+      credential: cert(serviceAccount)
+    });
+  }
+  console.log("🔥 Firebase Admin Initialized Successfully");
+} catch (e) {
+  console.error("🔥 Firebase Admin Initialization Failed with Error:", e.message);
+}
+
+const admin = require("firebase-admin");
 
 // --- Cloudinary Package Imports ---
 const cloudinary = require("cloudinary").v2;
@@ -761,6 +777,27 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
 
     await newBroadcast.save();
 
+    // 🌟 Push Notification Sender Logic
+    try {
+      const salespersons = await User.find({ role: "salesperson", fcmToken: { $exists: true, $ne: null } });
+      for (const sp of salespersons) {
+        if (sp.fcmToken) {
+          const pushMessage = {
+            token: sp.fcmToken,
+            notification: {
+              title: `📢 ${title}`,
+              body: message
+            },
+            android: { notification: { sound: 'default', priority: 'high' } }
+          };
+          await admin.messaging().send(pushMessage);
+        }
+      }
+      console.log("✅ Push notifications pushed to all active devices!");
+    } catch (pushErr) {
+      console.error("🔥 Error pushing notifications:", pushErr);
+    }
+
     io.emit("team_broadcast", {
       _id: newBroadcast._id,
       title,
@@ -770,7 +807,7 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
       createdAt: newBroadcast.createdAt
     });
 
-    res.status(201).json({ success: true, message: "Broadcast sent successfully to all team devices!" });
+    res.status(201).json({ success: true, message: "Broadcast sent & pushed successfully to all devices!" });
   } catch (err) {
     res.status(500).json({ message: "Failed to send broadcast", error: err.message });
   }
@@ -1031,6 +1068,7 @@ app.get(
   },
 );
 
+// 🌟 ULTRA-ROBUST EMPLOYEE LEADS API (Directly matches custom userId & ObjectId)
 app.get(
   "/api/boss/employee-leads/:salespersonId",
   verifyToken,
@@ -1039,11 +1077,28 @@ app.get(
       if (req.user.role !== "boss" && req.user.role !== "admin") {
         return res.status(403).json({ message: "Access denied!" });
       }
-      const queryId =
-        req.params.salespersonId === "null"
-          ? { $in: [null, ""] }
-          : req.params.salespersonId;
-      const leads = await Lead.find({ salespersonId: queryId }).sort({
+      
+      let queryId = req.params.salespersonId;
+      let queryCondition;
+
+      if (queryId === "null" || !queryId) {
+        queryCondition = { $in: [null, ""] };
+      } else {
+        const targetUser = await User.findOne({
+          $or: [
+            { userId: queryId },
+            { _id: queryId.match(/^[0-9a-fA-F]{24}$/) ? queryId : null }
+          ]
+        }).catch(() => null);
+
+        if (targetUser) {
+          queryCondition = { $in: [targetUser.userId, targetUser._id.toString(), queryId] };
+        } else {
+          queryCondition = queryId;
+        }
+      }
+
+      const leads = await Lead.find({ salespersonId: queryCondition }).sort({
         createdAt: -1,
       });
       res.json(leads);
@@ -1232,6 +1287,7 @@ app.delete("/api/boss/delete-employee/:id", verifyToken, async (req, res) => {
   }
 });
 
+// 🌟 FULLY ROBUST TRANSFER LEADS API
 app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
@@ -1244,21 +1300,33 @@ app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
         .json({ message: "Source and Target salespersons are required!" });
     }
 
+    let fromUser = await User.findById(fromSalesperson).catch(() => null);
+    if (!fromUser) {
+      fromUser = await User.findOne({ userId: fromSalesperson }).catch(() => null);
+    }
+    const sourceQuery = fromUser ? { $in: [fromUser.userId, fromUser._id.toString(), fromSalesperson] } : fromSalesperson;
+
+    let toUser = await User.findById(toSalesperson).catch(() => null);
+    if (!toUser) {
+      toUser = await User.findOne({ userId: toSalesperson }).catch(() => null);
+    }
+    const targetUserId = toUser ? toUser.userId : toSalesperson;
+
     await Invoice.updateMany(
-      { salespersonId: fromSalesperson },
-      { $set: { salespersonId: toSalesperson } },
+      { salespersonId: sourceQuery },
+      { $set: { salespersonId: targetUserId } },
     );
     await Lead.updateMany(
-      { salespersonId: fromSalesperson },
-      { $set: { salespersonId: toSalesperson } },
+      { salespersonId: sourceQuery },
+      { $set: { salespersonId: targetUserId } },
     );
     await Task.updateMany(
-      { salespersonId: fromSalesperson },
-      { $set: { salespersonId: toSalesperson } },
+      { salespersonId: sourceQuery },
+      { $set: { salespersonId: targetUserId } },
     );
 
     res.json({
-      message: `Successfully transferred leads & invoices from ${fromSalesperson} to ${toSalesperson}!`,
+      message: `Successfully transferred leads & invoices to ${targetUserId}!`,
     });
   } catch (err) {
     res.status(500).json({ message: "Transfer failed", error: err.message });
@@ -1506,6 +1574,25 @@ app.post("/api/invoices/reject/:id", verifyToken, async (req, res) => {
 // =========================================================================
 // --- 👤 SALESPERSON SPECIFIC ROUTES ---
 // =========================================================================
+
+// --- 🌟 SAVE FCM TOKEN ROUTE ---
+app.post("/api/salesperson/save-fcm-token", verifyToken, async (req, res) => {
+  try {
+    const { fcmToken } = req.body;
+    if (!fcmToken) {
+      return res.status(400).json({ message: "FCM token is required" });
+    }
+
+    await User.findOneAndUpdate(
+      { userId: req.user.userId },
+      { $set: { fcmToken } }
+    );
+
+    res.json({ success: true, message: "FCM Token saved successfully!" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to save FCM token", error: err.message });
+  }
+});
 
 // --- ⏱️ DAY START / END SHIFT API ROUTES ---
 app.get("/api/salesperson/day-status", verifyToken, async (req, res) => {
@@ -1921,7 +2008,7 @@ app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto")
 
 app.get("/api/salesperson/tasks", verifyToken, async (req, res) => {
   try {
-    const tasks = await Task.find({ salespersonId: req.user.userId }).sort({
+    const tasks = await Task.main({ salespersonId: req.user.userId }).sort({
       createdAt: -1,
     });
     res.json(tasks);
@@ -1964,6 +2051,6 @@ app.post("/api/coupons/verify", verifyToken, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(
-    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Day Shift Control & Cloudinary Uploads Enabled`,
+    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Day Shift Control, Cloudinary Uploads & FCM Push Enabled`,
   );
 });
