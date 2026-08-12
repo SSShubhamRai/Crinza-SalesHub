@@ -206,6 +206,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
   // --- 🔔 In-App Notifications States ---
   const [notifications, setNotifications] = useState([]);
+  const [broadcastNotifications, setBroadcastNotifications] = useState([]); // 🌟 Persistent Broadcasts State
   const [showNotifications, setShowNotifications] = useState(false);
 
   // 🌟 Close notification dropdown when clicking outside
@@ -232,6 +233,37 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const API_BASE = import.meta.env.PROD
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
+
+  // --- 🔔 LOGIC: PERSISTENT BROADCASTS ---
+  const fetchBroadcastNotifications = useCallback(async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/api/salesperson/broadcasts`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) setBroadcastNotifications(data);
+    } catch (err) {
+      console.error("Failed to fetch broadcasts:", err);
+    }
+  }, [API_BASE]);
+
+  const handleClearBroadcast = async (broadcastId, e) => {
+    e.stopPropagation();
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_BASE}/api/salesperson/broadcasts/${broadcastId}/dismiss`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setBroadcastNotifications(prev => prev.filter(b => b._id !== broadcastId));
+        toast.success("Broadcast cleared");
+      }
+    } catch (err) {
+      toast.error("Failed to clear broadcast");
+    }
+  };
 
   // --- ⏱️ CHECK DAY SHIFT STATUS ---
   const checkDayStatus = useCallback(async () => {
@@ -269,7 +301,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     }
 
     try {
-      // Reverse geocode to resolve human-readable place name
       let addressName = '';
       try {
         const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`);
@@ -355,7 +386,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     }
     let phone = lead.mobileNo.replace(/\D/g, '');
     if (phone.length === 10) {
-      phone = '91' + phone; // Default India country code
+      phone = '91' + phone;
     }
 
     let message = '';
@@ -379,7 +410,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         timeout: 10000
       });
 
-      // 🛡️ Native Mock Location Check via Capacitor Geolocation
       const isMocked = position.coords.mocked || position.coords.isFromMockProvider;
       if (isMocked) {
         toast.error("⚠️ Security Warning: Mock Location (Fake GPS) app detected! Please disable fake GPS tools to record visits or submit invoices.");
@@ -442,6 +472,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     });
 
     socketRef.current.on('team_broadcast', (data) => {
+      setBroadcastNotifications((prev) => [data, ...prev]);
       const title = data?.title || "Announcement";
       const message = data?.message || "";
       const priority = (data?.priority || "normal").toUpperCase();
@@ -458,6 +489,8 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         },
       });
     });
+
+    fetchBroadcastNotifications();
 
     let intervalId = null;
 
@@ -482,7 +515,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
       if (intervalId !== null) clearInterval(intervalId);
       if (socketRef.current) socketRef.current.disconnect();
     };
-  }, [userId, API_BASE, onLogout]);
+  }, [userId, API_BASE, onLogout, fetchBroadcastNotifications]);
 
   // --- Initial Form States ---
   const initialFormData = {
@@ -642,7 +675,8 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   }, [addons, formData.baseAmount, formData.previousDueBalance, isCouponApplied, couponDetails]);
 
   const dueAmount = Math.max(0, formData.totalAmount - formData.paidAmount);
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadTaskCount = notifications.filter(n => !n.isRead).length;
+  const totalUnreadCount = unreadTaskCount + broadcastNotifications.length;
 
   const totalDealsCount = myDeals.length;
   const activeLeadsList = myLeads.filter(lead => lead.leadStatus !== 'Not Interested' && lead.leadStatus !== 'Deal Close');
@@ -1237,7 +1271,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         }
       });
       data.append('dueAmount', dueAmount);
-      data.append('paymentProof', file); // 👈 Correct Multer field name matched with backend
+      data.append('paymentProof', file);
       if (logoFile) {
         data.append('logoProof', logoFile);
       }
@@ -1349,37 +1383,72 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                 aria-label="View Follow-up & Demo Alerts"
               >
                 🔔
-                {unreadCount > 0 && (
+                {totalUnreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center animate-pulse">
-                    {unreadCount}
+                    {totalUnreadCount}
                   </span>
                 )}
               </button>
 
               {showNotifications && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-24px)] bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-3 max-h-[450px] overflow-y-auto text-xs animate-in zoom-in-95 duration-200">
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-24px)] bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-50 space-y-4 max-h-[450px] overflow-y-auto text-xs animate-in zoom-in-95 duration-200">
                   <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2.5">
-                    <strong className="text-[var(--color-heading)] font-bold">🔔 Today's Follow-up & Demo Alerts</strong>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-[var(--color-body)]">{notifications.length} Total</span>
-                      <button 
-                        onClick={() => setShowNotifications(false)} 
-                        className="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-heading)] hover:bg-[var(--color-border)] transition cursor-pointer"
-                        title="Hide notifications"
-                      >
-                        ✕
-                      </button>
-                    </div>
+                    <strong className="text-[var(--color-heading)] font-bold">🔔 Notifications & Broadcasts</strong>
+                    <button 
+                      onClick={() => setShowNotifications(false)} 
+                      className="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-heading)] hover:bg-[var(--color-border)] transition cursor-pointer"
+                      title="Hide notifications"
+                    >
+                      ✕
+                    </button>
                   </div>
 
-                  {notifications.length === 0 ? (
-                    <div className="py-8 text-center text-[var(--color-body)] space-y-1">
-                      <p className="text-sm">☕ All caught up!</p>
-                      <p className="text-xs">No pending reminders scheduled for today.</p>
+                  {/* --- SECTION 1: PERSISTENT ADMIN BROADCASTS --- */}
+                  {broadcastNotifications.length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-600 block px-1">
+                        📢 Admin Announcements ({broadcastNotifications.length})
+                      </span>
+                      {broadcastNotifications.map((b) => (
+                        <div 
+                          key={b._id} 
+                          className={`p-3.5 rounded-2xl border space-y-1.5 transition ${
+                            b.priority === 'urgent' ? 'bg-red-500/10 border-red-500/30 text-red-600' : 
+                            b.priority === 'important' ? 'bg-amber-500/10 border-amber-500/30 text-amber-600' : 
+                            'bg-purple-500/10 border-purple-500/20 text-[var(--color-heading)]'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center gap-2">
+                            <strong className="font-bold">📢 {b.title}</strong>
+                            <button
+                              onClick={(e) => handleClearBroadcast(b._id, e)}
+                              className="bg-[var(--color-card)] hover:bg-red-500 hover:text-white text-[var(--color-body)] border px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition"
+                              title="Clear Announcement"
+                            >
+                              ✕ Clear
+                            </button>
+                          </div>
+                          <p className="text-[var(--color-body)] leading-relaxed">{b.message}</p>
+                          <span className="text-[9px] text-[var(--color-body)] block pt-0.5">
+                            {new Date(b.createdAt || Date.now()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {notifications.map((n) => (
+                  )}
+
+                  {/* --- SECTION 2: TASK REMINDERS --- */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 block px-1">
+                      📋 Task Reminders ({notifications.length})
+                    </span>
+                    {notifications.length === 0 && broadcastNotifications.length === 0 ? (
+                      <div className="py-8 text-center text-[var(--color-body)] space-y-1">
+                        <p className="text-sm">☕ All caught up!</p>
+                        <p className="text-xs">No pending reminders or broadcasts.</p>
+                      </div>
+                    ) : (
+                      notifications.map((n) => (
                         <div 
                           key={n._id || Math.random()} 
                           onClick={async () => {
@@ -1406,9 +1475,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                           <p className="text-[var(--color-body)] font-medium break-words leading-relaxed">{n.message}</p>
                           <span className="text-[10px] text-emerald-600 block pt-1 font-semibold">Tap to dismiss ➔</span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
             </div>

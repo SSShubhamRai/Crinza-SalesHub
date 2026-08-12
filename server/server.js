@@ -2,7 +2,7 @@
  * =========================================================================
  * 🚀 CRINZA INVOICE & LEAD MANAGEMENT SYSTEM - BACKEND SERVER (`server.js`)
  * =========================================================================
- * Fully Updated with Crinza API Integration for Invoices & Employee Welcome Emails (Buffer Fixed)
+ * Fully Updated with Crinza API Integration & Cloudinary Storage for Uploads
  */
 
 const express = require("express");
@@ -21,6 +21,10 @@ const axios = require("axios"); // 🌟 OSRM & Crinza API call ke liye axios zar
 const FormData = require("form-data"); // 🌟 Multipart/form-data attachments ke liye zaroori hai
 const Tesseract = require("tesseract.js"); // 🌟 AI OCR Payment Proof Verification ke liye
 require("dotenv").config();
+
+// --- Cloudinary Package Imports ---
+const cloudinary = require("cloudinary").v2;
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 // --- Security & Validation Package Imports ---
 const { body, validationResult } = require("express-validator");
@@ -73,23 +77,25 @@ app.use((req, res, next) => {
 
 app.use(xss()); // Cleans malicious HTML/Script injections from request data
 
-// --- File Uploads Directory Setup ---
-if (!fs.existsSync("./uploads")) {
-  fs.mkdirSync("./uploads");
-}
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// --- Cloudinary Storage Engine Configuration ---
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-// --- Multer Storage Engine Configuration with Security Limits ---
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "crinza_uploads",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "heic", "heif"],
+  },
 });
 
 const upload = multer({
-  storage,
+  storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB Limit restriction
   fileFilter: (req, file, cb) => {
-    // 🌟 Added support for HEIC/HEIF mobile image formats alongside standard images
     const isImage = file.mimetype.startsWith("image/") || 
                     file.mimetype === "image/heic" || 
                     file.mimetype === "image/heif" || 
@@ -134,13 +140,14 @@ const taskSchema = new mongoose.Schema({
 const Task = mongoose.model("Task", taskSchema);
 
 // =========================================================================
-// --- 📢 BROADCAST ANNOUNCEMENTS SCHEMA ---
+// --- 📢 BROADCAST ANNOUNCEMENTS SCHEMA (UPDATED WITH DELETION TRACKER) ---
 // =========================================================================
 const broadcastSchema = new mongoose.Schema({
   adminId: { type: String, required: true },
   title: { type: String, required: true },
   message: { type: String, required: true },
   priority: { type: String, enum: ["normal", "important", "urgent"], default: "normal" },
+  deletedFor: [{ type: String }], // 👈 Track salespersons who cleared this broadcast
   createdAt: { type: Date, default: Date.now }
 });
 const Broadcast = mongoose.model("Broadcast", broadcastSchema);
@@ -345,7 +352,6 @@ const createInvoicePDF = async (data) => {
 
     const puppeteer = require("puppeteer-core");
     
-    // Check karein ki app Render (Production) par hai ya Localhost par
     if (process.env.NODE_ENV === "production" || process.env.RENDER) {
       const chromium = require("@sparticuz/chromium");
       chromium.setGraphicsMode = false;
@@ -357,7 +363,6 @@ const createInvoicePDF = async (data) => {
         headless: chromium.headless,
       });
     } else {
-      // 🌟 Localhost (Windows / Mac) ke liye system ka installed Chrome use karega
       const localExecutablePath = process.platform === 'win32'
         ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
         : process.platform === 'darwin'
@@ -484,7 +489,6 @@ const createInvoicePDF = async (data) => {
     const rawPdf = await page.pdf({ format: "A4", printBackground: true });
     await page.close();
     
-    // 🌟 Explicitly convert to Node.js Buffer for form-data compatibility
     return Buffer.from(rawPdf);
   } catch (err) {
     console.error("🔥 [PDF Error]:", err);
@@ -752,21 +756,51 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
       title,
       message,
       priority: priority || "normal",
+      deletedFor: []
     });
 
     await newBroadcast.save();
 
     io.emit("team_broadcast", {
+      _id: newBroadcast._id,
       title,
       message,
       priority: priority || "normal",
       adminId: req.user.userId,
-      timestamp: new Date()
+      createdAt: newBroadcast.createdAt
     });
 
     res.status(201).json({ success: true, message: "Broadcast sent successfully to all team devices!" });
   } catch (err) {
     res.status(500).json({ message: "Failed to send broadcast", error: err.message });
+  }
+});
+
+// =========================================================================
+// --- 📢 SALESPERSON PERSISTENT BROADCAST API ROUTES ---
+// =========================================================================
+app.get("/api/salesperson/broadcasts", verifyToken, async (req, res) => {
+  try {
+    const broadcasts = await Broadcast.find({
+      deletedFor: { $ne: req.user.userId }
+    }).sort({ createdAt: -1 });
+
+    res.json(broadcasts);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch broadcasts", error: err.message });
+  }
+});
+
+app.post("/api/salesperson/broadcasts/:id/dismiss", verifyToken, async (req, res) => {
+  try {
+    const broadcastId = req.params.id;
+    await Broadcast.findByIdAndUpdate(broadcastId, {
+      $addToSet: { deletedFor: req.user.userId }
+    });
+
+    res.json({ success: true, message: "Broadcast dismissed successfully!" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to dismiss broadcast", error: err.message });
   }
 });
 
@@ -1254,7 +1288,8 @@ const handleInvoiceSubmission = async (req, res) => {
       } catch (e) {}
     }
 
-    const normalizedPath = req.file ? req.file.path.replace(/\\/g, "/") : "";
+    // 🌟 Cloudinary Direct Secure URL
+    const normalizedPath = req.file ? req.file.path : "";
     const paymentMode = req.body.paymentMode || 'ONLINE';
     const utrNumber = req.body.utrNumber ? req.body.utrNumber.trim() : '';
     const claimedPaid = Number(req.body.paidAmount) || 0;
@@ -1603,6 +1638,34 @@ app.put("/api/salesperson/notifications/:id/dismiss", verifyToken, async (req, r
   }
 });
 
+// =========================================================================
+// --- 📢 SALESPERSON PERSISTENT BROADCAST API ROUTES ---
+// =========================================================================
+app.get("/api/salesperson/broadcasts", verifyToken, async (req, res) => {
+  try {
+    const broadcasts = await Broadcast.find({
+      deletedFor: { $ne: req.user.userId }
+    }).sort({ createdAt: -1 });
+
+    res.json(broadcasts);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch broadcasts", error: err.message });
+  }
+});
+
+app.post("/api/salesperson/broadcasts/:id/dismiss", verifyToken, async (req, res) => {
+  try {
+    const broadcastId = req.params.id;
+    await Broadcast.findByIdAndUpdate(broadcastId, {
+      $addToSet: { deletedFor: req.user.userId }
+    });
+
+    res.json({ success: true, message: "Broadcast dismissed successfully!" });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to dismiss broadcast", error: err.message });
+  }
+});
+
 app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
   try {
     const rawDeals = await Invoice.find({ 
@@ -1698,7 +1761,8 @@ app.post(
       const currentDate = now.toISOString().split("T")[0];
       const currentTime = now.toTimeString().substring(0, 5);
 
-      const normalizedPath = req.file ? req.file.path.replace(/\\/g, "/") : "";
+      // 🌟 Cloudinary Direct Secure URL
+      const normalizedPath = req.file ? req.file.path : "";
 
       const existingLead = await Lead.findOne({
         salespersonId: req.user.userId,
@@ -1825,7 +1889,7 @@ app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto")
     };
 
     if (req.file) {
-      updateFields.meetingPhoto = req.file.path.replace(/\\/g, "/");
+      updateFields.meetingPhoto = req.file.path;
     }
 
     const updatedLead = await Lead.findByIdAndUpdate(
@@ -1884,7 +1948,7 @@ app.post("/api/coupons/verify", verifyToken, async (req, res) => {
     res.json({
       message: "Coupon applied successfully!",
       code: coupon.code,
-      discountType: coupon.discountType,
+      discountType: coupon.type,
       discountValue: coupon.discountValue,
     });
   } catch (err) {
@@ -1900,6 +1964,6 @@ app.post("/api/coupons/verify", verifyToken, async (req, res) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(
-    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Day Shift Control & Crinza API Email Dispatch Enabled`,
+    `🚀 Server running on port ${PORT} with Socket.io Live Tracking, Day Shift Control & Cloudinary Uploads Enabled`,
   );
 });

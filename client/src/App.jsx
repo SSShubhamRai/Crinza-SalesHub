@@ -1,10 +1,10 @@
-// src/App.jsx mein update karein
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
-import { Toaster } from 'react-hot-toast'; // 1. Import Toaster
+import { Toaster } from 'react-hot-toast';
 import Login from './components/Login';
 import SalespersonForm from './components/SalespersonForm';
 import AccountantPanel from './components/AccountantPanel';
-import AdminDashboard from './components/AdminDashboard';
+import AdminDashboard from './components/admin/AdminDashboard'; // 👈 Updated path for modularized Admin Dashboard
 
 function App() {
   const [token, setToken] = useState(null);
@@ -63,10 +63,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[var(--color-background)] font-[var(--font-body)] text-[var(--color-body)] transition-colors duration-300 relative">
-      {/* 2. Add Toaster here */}
+      {/* Toast Notifications */}
       <Toaster position="top-right" reverseOrder={false} />
 
-      {/* 🌟 Global Floating Theme Toggle Button (Visible across all dashboards/panels) */}
+      {/* 🌟 Global Floating Theme Toggle Button */}
       <div className="fixed bottom-6 right-6 z-50">
         <button
           onClick={toggleTheme}
