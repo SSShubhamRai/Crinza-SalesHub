@@ -196,6 +196,12 @@ const EndDayConfirmModal = ({ show, onClose, onConfirm }) => {
 const SalespersonForm = ({ userId, username, onLogout }) => {
   // --- Navigation & View States ---
   const [activeView, setActiveView] = useState('dashboard');
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  const toggleTheme = () => {
+    setIsDarkMode(!isDarkMode);
+    document.documentElement.classList.toggle('dark');
+  };
 
   // --- ⏱️ Day Shift Attendance States ---
   const [dayStatus, setDayStatus] = useState('LOADING'); // 'LOADING' | 'NOT_STARTED' | 'ACTIVE' | 'ENDED'
@@ -666,6 +672,14 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const [availablePincodes, setAvailablePincodes] = useState([]);
   const [leadAvailablePincodes, setLeadAvailablePincodes] = useState([]);
 
+ 
+// --- 🌟 ALL FORMATS ALLOWED ---
+  const validateImageFile = (uploadedFile) => {
+    if (!uploadedFile) return false;
+    // Ab koi restriction nahi hai, koi bhi file format (PDF, Doc, Image, Zip, etc.) allow ho jayega
+    return true; 
+  };
+
   const fetchMyDeals = useCallback(async () => {
     setLoadingDeals(true);
     try {
@@ -759,7 +773,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const pendingDealsCount = myDeals.filter(d => d.status === 'pending').length;
   const totalPaidCollected = myDeals.reduce((sum, d) => sum + (d.paidAmount || 0), 0);
 
-  const filteredLeads = activeLeadsList.filter(lead => {
+  const filteredLeads = myLeads.filter(lead => {
     const query = leadSearchQuery.toLowerCase().trim();
     
     const matchesSearch = query === '' || 
@@ -769,32 +783,45 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
       lead.city?.toLowerCase().includes(query);
 
     if (!matchesSearch) return false;
-    if (leadFilter === 'all') return true;
+
+    if (leadFilter === 'all') {
+      return lead.leadStatus !== 'Not Interested' && lead.leadStatus !== 'Deal Close';
+    }
+    
+    if (leadFilter === 'not-interested') {
+      return lead.leadStatus === 'Not Interested';
+    }
     
     if (leadFilter === 'call') {
       return (
-        lead.followUpAction?.toLowerCase() === 'call' || 
-        lead.followUpAction?.toLowerCase() === 'call back' || 
-        lead.leadStatus?.toLowerCase() === 'call back'
+        lead.leadStatus !== 'Not Interested' && lead.leadStatus !== 'Deal Close' && (
+          lead.followUpAction?.toLowerCase() === 'call' || 
+          lead.followUpAction?.toLowerCase() === 'call back' || 
+          lead.leadStatus?.toLowerCase() === 'call back'
+        )
       );
     }
     
     if (leadFilter === 'meeting') {
       return (
-        lead.followUpAction?.toLowerCase() === 'next meeting' || 
-        lead.followUpAction?.toLowerCase() === 'meeting'
+        lead.leadStatus !== 'Not Interested' && lead.leadStatus !== 'Deal Close' && (
+          lead.followUpAction?.toLowerCase() === 'next meeting' || 
+          lead.followUpAction?.toLowerCase() === 'meeting'
+        )
       );
     }
     
     if (leadFilter === 'demo-done') {
-      return lead.demoStatus?.toLowerCase() === 'completed';
+      return lead.leadStatus !== 'Not Interested' && lead.leadStatus !== 'Deal Close' && lead.demoStatus?.toLowerCase() === 'completed';
     }
     
     if (leadFilter === 'demo-pending') {
       return (
-        !lead.demoStatus || 
-        lead.demoStatus?.toLowerCase() === 'not given' || 
-        lead.demoStatus?.toLowerCase() === 'scheduled'
+        lead.leadStatus !== 'Not Interested' && lead.leadStatus !== 'Deal Close' && (
+          !lead.demoStatus || 
+          lead.demoStatus?.toLowerCase() === 'not given' || 
+          lead.demoStatus?.toLowerCase() === 'scheduled'
+        )
       );
     }
 
@@ -1073,12 +1100,35 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     setAddons((prev) => ({ ...prev, [name]: checked }));
   };
 
-  const handleFileChange = (e) => setFile(e.target.files[0]);
-  const handleLogoFileChange = (e) => setLogoFile(e.target.files[0]);
+  const handleFileChange = (e) => {
+    const uploadedFile = e.target.files[0];
+    if (uploadedFile) {
+      if (!validateImageFile(uploadedFile)) {
+        e.target.value = ''; // Reset input selection
+        return;
+      }
+      setFile(uploadedFile);
+    }
+  };
+
+  const handleLogoFileChange = (e) => {
+    const uploadedFile = e.target.files[0];
+    if (uploadedFile) {
+      if (!validateImageFile(uploadedFile)) {
+        e.target.value = '';
+        return;
+      }
+      setLogoFile(uploadedFile);
+    }
+  };
   
   const handleMeetingPhotoChange = (e) => {
     const uploadedFile = e.target.files[0];
     if (uploadedFile) {
+      if (!validateImageFile(uploadedFile)) {
+        e.target.value = '';
+        return;
+      }
       setMeetingPhotoFile(uploadedFile);
       setMeetingPhotoPreview(URL.createObjectURL(uploadedFile));
     }
@@ -1696,44 +1746,46 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           </div>
         </div>
 
-        {/* --- MOBILE THUMB-FRIENDLY BOTTOM NAVIGATION BAR --- */}
-        <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-[var(--color-card)] border-t border-[var(--color-border)] z-40 px-3 py-2 flex justify-around items-center shadow-2xl backdrop-blur-lg bg-opacity-95">
+        {/* --- MOBILE THUMB-FRIENDLY BOTTOM NAVIGATION BAR (FIXED OVERLAP & DYNAMIC THEME) --- */}
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-[var(--color-card)] border-t border-[var(--color-border)] z-40 px-2 py-2 flex justify-between items-center shadow-2xl backdrop-blur-lg bg-opacity-95">
           <button
             onClick={() => setActiveView('dashboard')}
-            className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition ${activeView === 'dashboard' ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-body)]'}`}
+            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${activeView === 'dashboard' ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-body)]'}`}
           >
             <span className="text-lg">📊</span>
-            <span className="text-[10px]">Dashboard</span>
+            <span className="text-[9px]">Dash</span>
           </button>
           <button
             onClick={() => setActiveView('leads')}
-            className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition ${activeView === 'leads' ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-body)]'}`}
+            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${activeView === 'leads' ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-body)]'}`}
           >
             <span className="text-lg">📋</span>
-            <span className="text-[10px]">Leads</span>
+            <span className="text-[9px]">Leads</span>
           </button>
-          <button
-            onClick={() => {
-              if (dayStatus !== 'ACTIVE') { toast.error('Start day first!'); return; }
-              setActiveView('lead-form');
-            }}
-            className="flex flex-col items-center justify-center -mt-6 bg-[var(--color-primary)] text-white w-12 h-12 rounded-full shadow-lg border-4 border-[var(--color-background)] active:scale-90 transition"
-          >
-            <span className="text-xl leading-none">＋</span>
-          </button>
+          <div className="w-1/5 flex justify-center">
+            <button
+              onClick={() => {
+                if (dayStatus !== 'ACTIVE') { toast.error('Start day first!'); return; }
+                setActiveView('lead-form');
+              }}
+              className="flex flex-col items-center justify-center -mt-8 bg-[var(--color-primary)] text-white w-12 h-12 rounded-full shadow-lg border-4 border-[var(--color-background)] active:scale-90 transition"
+            >
+              <span className="text-2xl font-bold leading-none">＋</span>
+            </button>
+          </div>
           <button
             onClick={() => setActiveView('kanban')}
-            className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition ${activeView === 'kanban' ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-body)]'}`}
+            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${activeView === 'kanban' ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-body)]'}`}
           >
             <span className="text-lg">📌</span>
-            <span className="text-[10px]">Pipeline</span>
+            <span className="text-[9px]">Pipeline</span>
           </button>
           <button
-            onClick={() => setActiveView('calendar')}
-            className={`flex flex-col items-center justify-center py-1.5 px-3 rounded-xl transition ${activeView === 'calendar' ? 'text-[var(--color-primary)] font-bold' : 'text-[var(--color-body)]'}`}
+            onClick={toggleTheme}
+            className="flex flex-col items-center justify-center p-2 rounded-xl text-[var(--color-body)] w-1/5 transition hover:text-[var(--color-primary)]"
           >
-            <span className="text-lg">📅</span>
-            <span className="text-[10px]">Calendar</span>
+            <span className="text-lg">{isDarkMode ? '☀️' : '🌙'}</span>
+            <span className="text-[9px]">{isDarkMode ? 'Light' : 'Dark'}</span>
           </button>
         </div>
 
@@ -1905,6 +1957,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     <button onClick={() => setLeadFilter('demo-pending')} className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${leadFilter === 'demo-pending' ? 'bg-[var(--color-primary)] text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
                       ⏳ Demo Pending
                     </button>
+                    <button onClick={() => setLeadFilter('not-interested')} className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${leadFilter === 'not-interested' ? 'bg-red-600 text-white border-transparent' : 'bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]'}`}>
+                      ❌ Not Interested
+                    </button>
                   </div>
                 </div>
 
@@ -1928,7 +1983,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                               </span>
                             )}
                           </div>
-                          <span className="bg-blue-500/10 text-blue-600 border border-blue-500/20 px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider">
+                          <span className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${lead.leadStatus === 'Not Interested' ? 'bg-red-500/10 text-red-600 border border-red-500/20' : 'bg-blue-500/10 text-blue-600 border border-blue-500/20'}`}>
                             {lead.leadStatus || 'Active Lead'}
                           </span>
                         </div>
@@ -2039,11 +2094,18 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                               ></textarea>
                             </div>
                             <div>
-                              <label className="block text-xs font-medium mb-1">📸 Upload Demo Verification Photo / Screenshot:</label>
+                              <label className="block text-xs font-medium mb-1">📸 Upload Demo Verification Photo / Screenshot (.jpg, .png):</label>
                               <input 
                                 type="file" 
-                                accept="image/*" 
-                                onChange={(e) => setDemoProofFile(e.target.files[0])} 
+                                accept="image/jpeg, image/jpg, image/png" 
+                                onChange={(e) => {
+                                  const fileItem = e.target.files[0];
+                                  if (fileItem && validateImageFile(fileItem)) {
+                                    setDemoProofFile(fileItem);
+                                  } else {
+                                    e.target.value = '';
+                                  }
+                                }} 
                                 className="block w-full text-xs text-[var(--color-body)] cursor-pointer" 
                               />
                             </div>
@@ -2430,10 +2492,10 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     </div>
 
                     <div>
-                      <label className="block font-medium mb-2 text-[var(--color-primary-dark)]">📸 Upload Meeting Photo *</label>
+                      <label className="block font-medium mb-2 text-[var(--color-primary-dark)]">📸 Upload Meeting Photo </label>
                       <input 
                         type="file" 
-                        accept="image/*" 
+                        accept="*" 
                         required 
                         onChange={handleMeetingPhotoChange} 
                         className="block w-full text-xs sm:text-sm text-[var(--color-body)] file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[var(--color-primary)] file:text-white cursor-pointer" 
@@ -2589,10 +2651,10 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                         {/* 🌟 Optional Logo Upload */}
                         <div>
-                          <label className="block font-medium mb-2 text-[var(--color-heading)]">Logo (Optional)</label>
+                          <label className="block font-medium mb-2 text-[var(--color-heading)]">Logo (.jpg, .png - Optional)</label>
                           <input 
                             type="file" 
-                            accept="image/*" 
+                            accept="image/jpeg, image/jpg, image/png" 
                             onChange={handleLogoFileChange} 
                             className="block w-full text-xs sm:text-sm text-[var(--color-body)] file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[var(--color-surface)] file:text-[var(--color-heading)] file:border file:border-[var(--color-border)] cursor-pointer" 
                           />
@@ -2816,8 +2878,8 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                       </div>
 
                       <div className="p-4 sm:p-5 bg-[var(--color-surface)] border border-dashed border-[var(--color-primary)]/40 rounded-2xl space-y-2.5">
-                        <label className="block text-xs sm:text-sm font-semibold text-[var(--color-primary)]">📸 Upload Payment Screenshot / Receipt Proof *</label>
-                        <input type="file" accept="image/*" required onChange={handleFileChange} className="block w-full text-xs sm:text-sm text-[var(--color-body)] cursor-pointer" />
+                        <label className="block text-xs sm:text-sm font-semibold text-[var(--color-primary)]">📸 Upload Payment Screenshot / Receipt Proof (.jpg, .png) *</label>
+                        <input type="file" accept="*" required onChange={handleFileChange} className="block w-full text-xs sm:text-sm text-[var(--color-body)] cursor-pointer" />
                       </div>
 
                       <div className="flex justify-between pt-4">
