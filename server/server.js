@@ -348,11 +348,7 @@ io.on("connection", (socket) => {
 });
 
 // =========================================================================
-<<<<<<< HEAD
 // --- 📄 PDF GENERATOR HELPER (Updated with Buffer Fix) ---
-=======
-// --- 📄 PDF GENERATOR HELPER (Updated for Render using @sparticuz/chromium) ---
->>>>>>> 7831fa9 (fixed bug)
 // =========================================================================
 
 const createInvoicePDF = async (data) => {
@@ -372,10 +368,6 @@ const createInvoicePDF = async (data) => {
 
     const puppeteer = require("puppeteer-core");
     
-<<<<<<< HEAD
-=======
-    // Check karein ki app Render (Production) par hai ya Localhost par
->>>>>>> 7831fa9 (fixed bug)
     if (process.env.NODE_ENV === "production" || process.env.RENDER) {
       const chromium = require("@sparticuz/chromium");
       chromium.setGraphicsMode = false;
@@ -387,10 +379,6 @@ const createInvoicePDF = async (data) => {
         headless: chromium.headless,
       });
     } else {
-<<<<<<< HEAD
-=======
-      // 🌟 Localhost (Windows / Mac) ke liye system ka installed Chrome use karega
->>>>>>> 7831fa9 (fixed bug)
       const localExecutablePath = process.platform === 'win32'
         ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
         : process.platform === 'darwin'
@@ -531,15 +519,10 @@ const createInvoicePDF = async (data) => {
 };
 
 // =========================================================================
-<<<<<<< HEAD
 // --- 📧 EMAIL SENDER HELPER (Updated with Crinza Custom API) ---
-=======
-// --- 📧 EMAIL SENDER HELPER (Updated with family: 4 for IPv4 fix) ---
->>>>>>> 7831fa9 (fixed bug)
 // =========================================================================
 const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId, instituteName) => {
   try {
-<<<<<<< HEAD
     const form = new FormData();
 
     form.append('sendTo', clientEmail);
@@ -556,19 +539,6 @@ const sendInvoiceEmail = async (clientEmail, pdfBuffer, invoiceId, instituteName
     form.append('attachments', pdfBuffer, {
       filename: `Invoice_${invoiceId}.pdf`,
       contentType: 'application/pdf',
-=======
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      family: 4, // 👈 Forced IPv4 to prevent ENETUNREACH error on Render
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      tls: { rejectUnauthorized: false },
->>>>>>> 7831fa9 (fixed bug)
     });
 
     const response = await axios.post('https://api.crinza.com/api/v1/contact/message', form, {
@@ -715,11 +685,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
       host: "smtp.gmail.com",
       port: 465,
       secure: true,
-<<<<<<< HEAD
       family: 4,
-=======
-      family: 4, // 👈 Forced IPv4 here too
->>>>>>> 7831fa9 (fixed bug)
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
@@ -1259,7 +1225,6 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
 
     // 1️⃣ 📧 Send Professional Welcome Email via Crinza API
     try {
-<<<<<<< HEAD
       const loginPortalUrl = process.env.FRONTEND_URL || "https://crinza-saleshub.onrender.com";
       const form = new FormData();
 
@@ -1289,17 +1254,6 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
         headers: {
           ...form.getHeaders(),
           'Origin': 'https://crinza.com',
-=======
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
-        family: 4, // 👈 Forced IPv4 here too
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
->>>>>>> 7831fa9 (fixed bug)
         },
       });
 
@@ -1771,34 +1725,6 @@ app.put("/api/salesperson/notifications/:id/dismiss", verifyToken, async (req, r
   }
 });
 
-// =========================================================================
-// --- 📢 SALESPERSON PERSISTENT BROADCAST API ROUTES ---
-// =========================================================================
-app.get("/api/salesperson/broadcasts", verifyToken, async (req, res) => {
-  try {
-    const broadcasts = await Broadcast.find({
-      deletedFor: { $ne: req.user.userId }
-    }).sort({ createdAt: -1 });
-
-    res.json(broadcasts);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to fetch broadcasts", error: err.message });
-  }
-});
-
-app.post("/api/salesperson/broadcasts/:id/dismiss", verifyToken, async (req, res) => {
-  try {
-    const broadcastId = req.params.id;
-    await Broadcast.findByIdAndUpdate(broadcastId, {
-      $addToSet: { deletedFor: req.user.userId }
-    });
-
-    res.json({ success: true, message: "Broadcast dismissed successfully!" });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to dismiss broadcast", error: err.message });
-  }
-});
-
 app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
   try {
     const rawDeals = await Invoice.find({ 
@@ -2054,7 +1980,7 @@ app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto")
 
 app.get("/api/salesperson/tasks", verifyToken, async (req, res) => {
   try {
-    const tasks = await Task.main({ salespersonId: req.user.userId }).sort({
+    const tasks = await Task.find({ salespersonId: req.user.userId }).sort({
       createdAt: -1,
     });
     res.json(tasks);
