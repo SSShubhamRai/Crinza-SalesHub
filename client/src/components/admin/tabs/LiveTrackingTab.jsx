@@ -1,8 +1,10 @@
 import React from "react";
 
 export const LiveTrackingTab = ({
-  trackerDate,
+  trackerDate,          // Start Date / Single Date
   setTrackerDate,
+  trackerEndDate,       // NEW: End Date for Range
+  setTrackerEndDate,    // NEW: Setter for End Date
   selectedTrackerEmp,
   setSelectedTrackerEmp,
   employees,
@@ -14,40 +16,69 @@ export const LiveTrackingTab = ({
   resolvedAddresses,
   resolvePlaceName,
 }) => {
+  const todayStr = new Date().toISOString().split('T')[0];
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-col sm:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
+      {/* Header & Filters */}
+      <div className="flex flex-col xl:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
         <div>
           <h3 className="text-sm font-bold text-[var(--color-heading)]">
             🛰️ Salesperson Live Location & Travel History
           </h3>
           <p className="text-xs text-[var(--color-body)] mt-0.5">
-            View live position, select past dates, total distance, and exact place names.
+            View live position, custom date range distance, and exact place names.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          <input
-            type="date"
-            value={trackerDate}
-            max={new Date().toISOString().split('T')[0]}
-            onChange={(e) => {
-              setTrackerDate(e.target.value);
-              if (selectedTrackerEmp) {
-                fetchSalespersonTravelHistory(selectedTrackerEmp, e.target.value);
-                fetchSalespersonShiftInfo(selectedTrackerEmp, e.target.value);
-              }
-            }}
-            className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
-          />
+        <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
+          {/* From Date */}
+          <div className="flex items-center gap-1 bg-[var(--color-surface)] border border-[var(--color-border)] px-2.5 py-1.5 rounded-xl">
+            <span className="text-[10px] font-bold text-[var(--color-body)]">From:</span>
+            <input
+              type="date"
+              value={trackerDate}
+              max={todayStr}
+              onChange={(e) => {
+                const newStartDate = e.target.value;
+                setTrackerDate(newStartDate);
+                if (selectedTrackerEmp) {
+                  fetchSalespersonTravelHistory(selectedTrackerEmp, newStartDate, trackerEndDate);
+                  fetchSalespersonShiftInfo(selectedTrackerEmp, newStartDate);
+                }
+              }}
+              className="bg-transparent text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+            />
+          </div>
 
+          {/* To Date (Range) */}
+          <div className="flex items-center gap-1 bg-[var(--color-surface)] border border-[var(--color-border)] px-2.5 py-1.5 rounded-xl">
+            <span className="text-[10px] font-bold text-[var(--color-body)]">To:</span>
+            <input
+              type="date"
+              value={trackerEndDate || trackerDate}
+              min={trackerDate}
+              max={todayStr}
+              onChange={(e) => {
+                const newEndDate = e.target.value;
+                setTrackerEndDate(newEndDate);
+                if (selectedTrackerEmp) {
+                  fetchSalespersonTravelHistory(selectedTrackerEmp, trackerDate, newEndDate);
+                }
+              }}
+              className="bg-transparent text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+            />
+          </div>
+
+          {/* Salesperson Dropdown */}
           <select
             value={selectedTrackerEmp}
             onChange={(e) => {
-              setSelectedTrackerEmp(e.target.value);
-              if (e.target.value) {
-                fetchSalespersonTravelHistory(e.target.value, trackerDate);
-                fetchSalespersonShiftInfo(e.target.value, trackerDate);
+              const empId = e.target.value;
+              setSelectedTrackerEmp(empId);
+              if (empId) {
+                fetchSalespersonTravelHistory(empId, trackerDate, trackerEndDate || trackerDate);
+                fetchSalespersonShiftInfo(empId, trackerDate);
               }
             }}
             className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
@@ -73,6 +104,7 @@ export const LiveTrackingTab = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-6">
+            {/* Live GPS Status */}
             <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
               <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
               {liveLocations[selectedTrackerEmp] ? (
@@ -95,6 +127,7 @@ export const LiveTrackingTab = ({
               )}
             </div>
 
+            {/* Shift Status */}
             <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
               <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">⏱️ Shift & Attendance Status</h4>
               {shiftData ? (
@@ -118,21 +151,24 @@ export const LiveTrackingTab = ({
             </div>
           </div>
 
+          {/* Travel Summary & Range Route Points */}
           <div className="md:col-span-2 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4 transition-all hover:shadow-md">
-            <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3">
-              <h4 className="text-sm font-bold text-[var(--color-heading)]">🛣️ Travel Summary for {trackerDate}</h4>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-2">
+              <h4 className="text-sm font-bold text-[var(--color-heading)]">
+                🛣️ Travel Summary ({trackerDate} {trackerEndDate && trackerEndDate !== trackerDate ? `to ${trackerEndDate}` : ''})
+              </h4>
               <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-xl font-extrabold text-xs">
                 Total Distance: {travelData.totalDistanceKm || 0} KM
               </span>
             </div>
 
             <p className="text-xs text-[var(--color-body)]">
-              Route history logged: <strong>{travelData.routePoints?.length || 0}</strong> coordinate pings recorded.
+              Route history logged: <strong>{travelData.routePoints?.length || 0}</strong> coordinate pings recorded in this date range.
             </p>
 
             <div className="max-h-80 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)] text-xs">
               {travelData.routePoints?.length === 0 ? (
-                <div className="py-8 text-center text-[var(--color-body)]">No route coordinates logged for this date.</div>
+                <div className="py-8 text-center text-[var(--color-body)]">No route coordinates logged for this date range.</div>
               ) : (
                 travelData.routePoints?.map((pt, idx) => {
                   const pointKey = pt._id || `${pt.latitude}-${pt.longitude}-${idx}`;
@@ -150,7 +186,7 @@ export const LiveTrackingTab = ({
                         </span>
                       </div>
                       <span className="text-[var(--color-body)] whitespace-nowrap">
-                        ⏰ {new Date(pt.timestamp).toLocaleTimeString('en-IN')}
+                        🕒 {new Date(pt.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
                       </span>
                     </div>
                   );

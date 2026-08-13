@@ -394,6 +394,13 @@ const createInvoicePDF = async (data) => {
 
     const page = await browser.newPage();
 
+    // 🌟 Base Price, GST, Discount & Past Due Calculations
+    const baseAmt = Number(data.baseAmount || data.totalCode || data.totalAmount || 0);
+    const gstAmount = Math.round(baseAmt * 0.18);
+    const discountAmt = Number(data.discountAmount || 0);
+    const pastDueAmt = Number(data.previousDueBalance || 0);
+
+    // 🌟 Add-ons Rows
     let addonRows = "";
     if (data.addons) {
       if (data.addons.testModule)
@@ -404,14 +411,26 @@ const createInvoicePDF = async (data) => {
         addonRows += `<tr><td>Add-on: iOS Mobile App</td><td>Included</td><td>₹45,000</td></tr>`;
     }
 
+    // 🌟 Discount Row (STRICTLY CONDITIONAL: Discount > 0 hone par hi dikhega, varna complete HIDE)
     let discountRow = "";
-    if (data.discountAmount && data.discountAmount > 0) {
-      discountRow = `<tr style="color: #059669;"><td>Discount (Coupon: ${data.couponCode || "PROMO"})</td><td>-</td><td>-₹${data.discountAmount.toLocaleString("en-IN")}</td></tr>`;
+    if (discountAmt > 0) {
+      discountRow = `
+        <tr style="color: #059669; background-color: #ecfdf5;">
+          <td><strong>Discount Applied (Coupon: ${data.couponCode || "PROMO"})</strong></td>
+          <td>-</td>
+          <td><strong>-₹${discountAmt.toLocaleString("en-IN")}</strong></td>
+        </tr>`;
     }
 
+    // 🌟 Previous Due Balance Row
     let pastDueRow = "";
-    if (data.previousDueBalance && data.previousDueBalance > 0) {
-      pastDueRow = `<tr style="color: #d97706;"><td>Previous Unpaid Due Balance Added</td><td>-</td><td>₹${data.previousDueBalance.toLocaleString("en-IN")}</td></tr>`;
+    if (pastDueAmt > 0) {
+      pastDueRow = `
+        <tr style="color: #d97706; background-color: #fffbeb;">
+          <td>Previous Unpaid Due Balance Added</td>
+          <td>-</td>
+          <td>₹${pastDueAmt.toLocaleString("en-IN")}</td>
+        </tr>`;
     }
 
     const headerLogoHtml = logoBase64
@@ -432,7 +451,7 @@ const createInvoicePDF = async (data) => {
           table { width: 100%; border-collapse: collapse; margin-top: 25px; }
           th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
           th { background-color: #4f46e5; color: white; }
-          .total-box { margin-top: 20px; text-align: right; }
+          .total-box { margin-top: 20px; text-align: right; font-size: 14px; line-height: 1.6; }
           .terms { margin-top: 30px; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px; }
         </style>
       </head>
@@ -472,14 +491,19 @@ const createInvoicePDF = async (data) => {
             <tr>
               <th>Description / Items</th>
               <th>Validity</th>
-              <th>Cost</th>
+              <th>Cost (₹)</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>${data.appName} License (Base Price)</td>
               <td>${data.packageValidity}</td>
-              <td>₹${(data.baseAmount || data.totalCode || data.totalAmount || 0).toLocaleString("en-IN")}</td>
+              <td>₹${baseAmt.toLocaleString("en-IN")}</td>
+            </tr>
+            <tr>
+              <td>GST (18% Applicable)</td>
+              <td>-</td>
+              <td>₹${gstAmount.toLocaleString("en-IN")}</td>
             </tr>
             ${addonRows}
             ${discountRow}
@@ -488,7 +512,7 @@ const createInvoicePDF = async (data) => {
         </table>
 
         <div class="total-box">
-          <p>Grand Total (Incl. Past Due & GST): <strong>₹${data.totalAmount ? data.totalAmount.toLocaleString("en-IN") : 0}</strong></p>
+          <p style="font-size: 16px;">Grand Total Cost (Incl. Past Due & GST): <strong>₹${data.totalAmount ? data.totalAmount.toLocaleString("en-IN") : 0}</strong></p>
           <p>Paid Amount: <strong style="color: green;">₹${data.paidAmount ? data.paidAmount.toLocaleString("en-IN") : 0}</strong></p>
           <p>Due Balance: <strong style="color: ${data.dueAmount > 0 ? 'red' : 'green'};">₹${data.dueAmount ? data.dueAmount.toLocaleString("en-IN") : 0} ${data.dueAmount === 0 ? '(Fully Paid & Settled)' : ''}</strong></p>
         </div>
@@ -517,7 +541,6 @@ const createInvoicePDF = async (data) => {
     }
   }
 };
-
 // =========================================================================
 // --- 📧 EMAIL SENDER HELPER (Updated with Crinza Custom API) ---
 // =========================================================================
@@ -906,29 +929,38 @@ app.get(
       }
 
       const { salespersonId } = req.params;
-      const queryDate =
-        req.query.date || new Date().toISOString().split("T")[0];
+      const { date, startDate, endDate } = req.query;
 
-      const logs = await LocationLog.find({
-        salespersonId,
-        date: queryDate,
-      }).sort({ timestamp: 1 });
+      let queryFilter = { salespersonId };
+
+      if (startDate && endDate) {
+        queryFilter.date = { $gte: startDate, $lte: endDate };
+      } else if (startDate) {
+        queryFilter.date = startDate;
+      } else if (date) {
+        queryFilter.date = date;
+      } else {
+        queryFilter.date = new Date().toISOString().split("T")[0];
+      }
+
+      const logs = await LocationLog.find(queryFilter).sort({ timestamp: 1 });
 
       const totalDistanceKm = calculateValidDistance(logs);
 
       res.json({
+        success: true,
         salespersonId,
-        date: queryDate,
+        startDate: startDate || date || new Date().toISOString().split("T")[0],
+        endDate: endDate || startDate || date || new Date().toISOString().split("T")[0],
         totalDistanceKm,
         routePoints: logs,
       });
     } catch (err) {
-      res
-        .status(500)
-        .json({
-          message: "Failed to fetch travel history",
-          error: err.message,
-        });
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch travel history",
+        error: err.message,
+      });
     }
   },
 );
@@ -1141,16 +1173,17 @@ app.get("/api/boss/coupons", verifyToken, async (req, res) => {
   }
 });
 
+// =========================================================================
+// --- 🎟️ BOSS CREATE COUPON ROUTE ---
+// =========================================================================
 app.post("/api/boss/create-coupon", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
       return res.status(403).json({ message: "Access denied!" });
     }
     const { code, discountType, discountValue, expiryDate } = req.body;
-    if (!code || !discountValue) {
-      return res
-        .status(400)
-        .json({ message: "Coupon code and value are required!" });
+    if (!code || !discountValue || !discountType) {
+      return res.status(400).json({ message: "All required coupon fields must be filled!" });
     }
 
     const existing = await Coupon.findOne({ code: code.toUpperCase() });
@@ -1163,16 +1196,41 @@ app.post("/api/boss/create-coupon", verifyToken, async (req, res) => {
       discountType,
       discountValue: Number(discountValue),
       expiryDate: expiryDate || null,
+      createdBy: req.user.userId, // 👈 Added: Automatically captures the logged-in admin/boss ID
     });
 
     await newCoupon.save();
-    res
-      .status(201)
-      .json({ message: "Coupon created successfully!", coupon: newCoupon });
+    res.status(201).json({ message: "Coupon created successfully!", coupon: newCoupon });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to create coupon", error: err.message });
+    res.status(500).json({ message: "Failed to create coupon", error: err.message });
+  }
+});
+
+// =========================================================================
+// --- 🎟️ SALESPERSON VERIFY COUPON ROUTE (FIXED PROPERTY MATCH) ---
+// =========================================================================
+app.post("/api/coupons/verify", verifyToken, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: "Coupon code required" });
+
+    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
+    if (!coupon) {
+      return res.status(404).json({ message: "Invalid coupon code!" });
+    }
+
+    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ message: "This coupon has expired!" });
+    }
+
+    res.json({
+      message: "Coupon applied successfully!",
+      code: coupon.code,
+      discountType: coupon.discountType, // 👈 Fixed: now correctly sends discountType instead of coupon.type
+      discountValue: coupon.discountValue,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error verifying coupon", error: err.message });
   }
 });
 
@@ -1338,7 +1396,7 @@ app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
 // =========================================================================
 const handleInvoiceSubmission = async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
     if (!session || session.status !== "STARTED") {
       return res.status(403).json({ message: "Action Blocked: You must start your day first before submitting invoices!" });
@@ -1354,6 +1412,19 @@ const handleInvoiceSubmission = async (req, res) => {
             ? JSON.parse(req.body.addons)
             : req.body.addons;
       } catch (e) {}
+    }
+
+    // 🌟 1. Extract Owner Name & Validity Fields from Request Body
+    const { ownerName, validityYears, validityMonths } = req.body;
+
+    // 🌟 2. Build clean package validity string for Invoice/PDF
+    const yearsNum = Number(validityYears) || 0;
+    const monthsNum = Number(validityMonths) || 0;
+    let computedValidity = req.body.packageValidity || "1 Year";
+    if (yearsNum > 0 || monthsNum > 0) {
+      const yPart = yearsNum > 0 ? `${yearsNum} Year${yearsNum > 1 ? 's' : ''}` : '';
+      const mPart = monthsNum > 0 ? `${monthsNum} Month${monthsNum > 1 ? 's' : ''}` : '';
+      computedValidity = [yPart, mPart].filter(Boolean).join(' ');
     }
 
     // 🌟 Cloudinary Direct Secure URL
@@ -1406,6 +1477,10 @@ const handleInvoiceSubmission = async (req, res) => {
 
     const newInvoice = new Invoice({
       ...req.body,
+      ownerName: ownerName || '', // 🌟 Save owner name
+      validityYears: yearsNum,    // 🌟 Save validity years
+      validityMonths: monthsNum,  // 🌟 Save validity months
+      packageValidity: computedValidity, // 🌟 Save formatted string
       baseAmount:
         Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
       totalAmount: Number(req.body.totalAmount) || 0,
@@ -1431,16 +1506,12 @@ const handleInvoiceSubmission = async (req, res) => {
 
     await newInvoice.save();
 
-    res
-      .status(201)
-      .json({
-        message: "Invoice request & installment ledger submitted to Accountant!",
-        invoiceId,
-      });
+    res.status(201).json({
+      message: "Invoice request & installment ledger submitted to Accountant!",
+      invoiceId,
+    });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to submit request", error: err.message });
+    res.status(500).json({ message: "Failed to submit request", error: err.message });
   }
 };
 
@@ -1597,7 +1668,8 @@ app.post("/api/salesperson/save-fcm-token", verifyToken, async (req, res) => {
 // --- ⏱️ DAY START / END SHIFT API ROUTES ---
 app.get("/api/salesperson/day-status", verifyToken, async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    // 🌟 Correct IST Date string (YYYY-MM-DD)
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
     
     if (!session) {
@@ -1613,9 +1685,10 @@ app.get("/api/salesperson/day-status", verifyToken, async (req, res) => {
   }
 });
 
+
 app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const existing = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
 
     if (existing && existing.status === "STARTED") {
@@ -1644,7 +1717,8 @@ app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
 
 app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    // 🌟 Forcefully get exact correct IST Date string (YYYY-MM-DD)
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today, status: "STARTED" });
 
     if (!session) {
@@ -1656,8 +1730,10 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     const routeLogs = await LocationLog.find({ salespersonId: req.user.userId, date: today }).sort({ timestamp: 1 });
     const computedDistance = calculateValidDistance(routeLogs);
 
+    const endTimeDate = new Date();
+
     session.status = "ENDED";
-    session.endTime = new Date();
+    session.endTime = endTimeDate;
     session.endLocation = { latitude: Number(latitude) || 0, longitude: Number(longitude) || 0 };
     session.totalDistanceKm = computedDistance;
     await session.save();
@@ -1666,14 +1742,26 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     const approvedInvoicesToday = await Invoice.find({ salespersonId: req.user.userId, status: "approved" });
     
     const totalCollectedToday = approvedInvoicesToday.reduce((acc, inv) => acc + (inv.paidAmount || 0), 0);
-    const workingHours = ((session.endTime - new Date(session.startTime)) / (1000 * 60 * 60)).toFixed(1);
+    const workingMilliseconds = endTimeDate - new Date(session.startTime);
+    const workingHours = (workingMilliseconds / (1000 * 60 * 60)).toFixed(1);
+
+    // 🌟 Bulletproof IST Formatter (Bypasses hosting server timezone misconfigurations)
+    const formatISTTime = (dateValue) => {
+      const d = new Date(dateValue);
+      return d.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    };
 
     res.json({
       success: true,
       message: "Day ended successfully. Entries are now locked for today.",
       summary: {
-        startTime: new Date(session.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-        endTime: new Date(session.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        startTime: formatISTTime(session.startTime), // ✅ Ab ye bilkul sahi Indian Time (IST) dega
+        endTime: formatISTTime(session.endTime),     // ✅ Ab ye bhi bilkul sahi Indian Time (IST) dega
         workingHours: `${workingHours} hrs`,
         totalVisits: totalVisitsToday,
         totalCollected: totalCollectedToday,
@@ -1684,6 +1772,8 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     res.status(500).json({ message: "Failed to end day", error: err.message });
   }
 });
+
+
 
 app.get("/api/salesperson/notifications", verifyToken, async (req, res) => {
   try {

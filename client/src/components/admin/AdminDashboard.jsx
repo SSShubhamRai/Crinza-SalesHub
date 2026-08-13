@@ -55,6 +55,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
   const [selectedTrackerEmp, setSelectedTrackerEmp] = useState("");
   const [trackerDate, setTrackerDate] = useState(new Date().toISOString().split('T')[0]);
+  const [trackerEndDate, setTrackerEndDate] = useState(""); // NEW: End Date for Range Tracking
   const [travelData, setTravelData] = useState({ totalDistanceKm: 0, routePoints: [] });
   const [liveLocations, setLiveLocations] = useState({});
   const [resolvedAddresses, setResolvedAddresses] = useState({});
@@ -142,12 +143,19 @@ const AdminDashboard = ({ userId, onLogout }) => {
     };
   }, [API_BASE]);
 
-  const fetchSalespersonTravelHistory = useCallback(async (empId, dateVal) => {
+  const fetchSalespersonTravelHistory = useCallback(async (empId, startDate, endDate) => {
     if (!empId) return;
     try {
       const token = localStorage.getItem("token");
-      const targetDate = dateVal || trackerDate;
-      const res = await fetch(`${API_BASE}/api/boss/salesperson-travel/${empId}?date=${targetDate}`, {
+      const targetStart = startDate || trackerDate;
+      const targetEnd = endDate || trackerEndDate || targetStart;
+
+      let url = `${API_BASE}/api/boss/salesperson-travel/${empId}?date=${targetStart}`;
+      if (targetEnd && targetEnd !== targetStart) {
+        url = `${API_BASE}/api/boss/salesperson-travel/${empId}?startDate=${targetStart}&endDate=${targetEnd}`;
+      }
+
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -157,7 +165,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
     } catch (err) {
       console.error("Failed to fetch travel history:", err);
     }
-  }, [API_BASE, trackerDate]);
+  }, [API_BASE, trackerDate, trackerEndDate]);
 
   const fetchSalespersonShiftInfo = useCallback(async (empId, dateVal) => {
     if (!empId) return;
@@ -203,13 +211,13 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
   useEffect(() => {
     if (activeTab === "live-tracking" && selectedTrackerEmp) {
-      fetchSalespersonTravelHistory(selectedTrackerEmp, trackerDate);
+      fetchSalespersonTravelHistory(selectedTrackerEmp, trackerDate, trackerEndDate);
       fetchSalespersonShiftInfo(selectedTrackerEmp, trackerDate);
     }
     if (activeTab === "leads-export") {
       fetchAllSystemLeads();
     }
-  }, [selectedTrackerEmp, trackerDate, activeTab, fetchSalespersonTravelHistory, fetchSalespersonShiftInfo, fetchAllSystemLeads]);
+  }, [selectedTrackerEmp, trackerDate, trackerEndDate, activeTab, fetchSalespersonTravelHistory, fetchSalespersonShiftInfo, fetchAllSystemLeads]);
 
   const resolvePlaceName = async (lat, lon, pointKey) => {
     if (resolvedAddresses[pointKey]) return; 
@@ -464,7 +472,6 @@ const AdminDashboard = ({ userId, onLogout }) => {
     }
   };
 
-  // 🌟 FIXED: Corrected API endpoint to fetch leads instead of details/invoices
   const fetchSalespersonLeadsForTransfer = async (empId) => {
     setLoadingSourceLeads(true);
     setSelectedLeadIds([]);
@@ -894,6 +901,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
               <LiveTrackingTab
                 trackerDate={trackerDate}
                 setTrackerDate={setTrackerDate}
+                trackerEndDate={trackerEndDate}
+                setTrackerEndDate={setTrackerEndDate}
                 selectedTrackerEmp={selectedTrackerEmp}
                 setSelectedTrackerEmp={setSelectedTrackerEmp}
                 employees={employees}
