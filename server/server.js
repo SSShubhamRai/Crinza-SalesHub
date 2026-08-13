@@ -1407,17 +1407,26 @@ const handleInvoiceSubmission = async (req, res) => {
     let parsedAddons = { testModule: false, windowApp: false, iosApp: false };
     if (req.body.addons) {
       try {
-        parsedAddons =
-          typeof req.body.addons === "string"
-            ? JSON.parse(req.body.addons)
-            : req.body.addons;
+        parsedAddons = typeof req.body.addons === "string" ? JSON.parse(req.body.addons) : req.body.addons;
       } catch (e) {}
     }
 
-    // 🌟 1. Extract Owner Name & Validity Fields from Request Body
+    // 🌟 Safe parsing for categories array
+    let parsedCategories = [];
+    if (req.body.categories) {
+      try {
+        parsedCategories = typeof req.body.categories === "string" ? JSON.parse(req.body.categories) : req.body.categories;
+      } catch (e) {
+        parsedCategories = [req.body.categories];
+      }
+    }
+
+    // 🌟 Extract Cloudinary secure URLs from multi-field files object safely
+    const paymentProofPath = req.files && req.files['paymentProof'] ? req.files['paymentProof'][0].path : "";
+    const logoProofPath = req.files && req.files['logoProof'] ? req.files['logoProof'][0].path : "";
+
     const { ownerName, validityYears, validityMonths } = req.body;
 
-    // 🌟 2. Build clean package validity string for Invoice/PDF
     const yearsNum = Number(validityYears) || 0;
     const monthsNum = Number(validityMonths) || 0;
     let computedValidity = req.body.packageValidity || "1 Year";
@@ -1427,8 +1436,6 @@ const handleInvoiceSubmission = async (req, res) => {
       computedValidity = [yPart, mPart].filter(Boolean).join(' ');
     }
 
-    // 🌟 Cloudinary Direct Secure URL
-    const normalizedPath = req.file ? req.file.path : "";
     const paymentMode = req.body.paymentMode || 'ONLINE';
     const utrNumber = req.body.utrNumber ? req.body.utrNumber.trim() : '';
     const claimedPaid = Number(req.body.paidAmount) || 0;
@@ -1448,12 +1455,10 @@ const handleInvoiceSubmission = async (req, res) => {
       }
     }
 
-    if (paymentMode === 'ONLINE' && req.file && utrNumber && ocrStatus !== "RED") {
+    if (paymentMode === 'ONLINE' && paymentProofPath && utrNumber && ocrStatus !== "RED") {
       try {
         console.log("🔍 Running AI OCR Scan on payment proof...");
-        const { data: { text } } = await Tesseract.recognize(req.file.path, 'eng');
-        console.log("📄 OCR Extracted Text:", text);
-
+        const { data: { text } } = await Tesseract.recognize(paymentProofPath, 'eng');
         const cleanedText = text.replace(/[\s,]/g, '');
         const isAmountMatched = cleanedText.includes(claimedPaid.toString());
         const isUtrMatched = cleanedText.includes(utrNumber);
@@ -1463,26 +1468,25 @@ const handleInvoiceSubmission = async (req, res) => {
           ocrMessage = "AI Verified: UTR & Amount Matched 100%";
         } else {
           ocrStatus = "YELLOW";
-          ocrMessage = `Mismatch Warning: Entered UTR (${utrNumber}) or Amount (₹${claimedPaid}) differs from screenshot!`;
+          ocrMessage = `Mismatch Warning: Entered UTR or Amount differs from screenshot!`;
         }
       } catch (ocrErr) {
-        console.error("🔥 OCR Processing Error (Non-fatal):", ocrErr.message);
         ocrStatus = "YELLOW";
-        ocrMessage = "OCR scan failed to read image clearly, manual review required.";
+        ocrMessage = "OCR scan failed to read image clearly.";
       }
     } else if (paymentMode !== 'ONLINE') {
       ocrStatus = "GREEN";
-      ocrMessage = "Offline Payment Mode (Cash/Cheque)";
+      ocrMessage = "Offline Payment Mode";
     }
 
     const newInvoice = new Invoice({
       ...req.body,
+      categories: parsedCategories, // ✅ Fixed categories mapping
       ownerName: ownerName || '', 
       validityYears: yearsNum,    
       validityMonths: monthsNum,  
       packageValidity: computedValidity, 
-      baseAmount:
-        Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
+      baseAmount: Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
       totalAmount: Number(req.body.totalAmount) || 0,
       paidAmount: claimedPaid,
       dueAmount: Number(req.body.dueAmount) || 0,
@@ -1492,7 +1496,8 @@ const handleInvoiceSubmission = async (req, res) => {
       longitude: req.body.longitude ? Number(req.body.longitude) : null,
       invoiceId,
       salespersonId: req.user.userId,
-      paymentProof: normalizedPath,
+      paymentProof: paymentProofPath, // ✅ Fixed file path mapping
+      logoProof: logoProofPath,       // ✅ Added logoProof storage support
       addons: parsedAddons,
       paymentMode,
       utrNumber,
@@ -1511,26 +1516,22 @@ const handleInvoiceSubmission = async (req, res) => {
       invoiceId,
     });
   } catch (err) {
-    // 🌟 DETAILED TERMINAL ERROR LOGGING (Ab yahan poori error print hogi)
-    console.error("==========================================");
-    console.error("🔥 [FATAL] INVOICE SUBMISSION FAILED:");
-    console.error("Error Name    :", err.name);
-    console.error("Error Message :", err.message);
-    console.error("Error Stack   :", err.stack);
-    console.error("Request Body  :", req.body);
-    console.error("Request File  :", req.file);
-    console.error("==========================================");
-
+    console.error("🔥 [FATAL] INVOICE SUBMISSION FAILED:", err.message);
     res.status(500).json({ 
       message: "Failed to submit request", 
-      error: err.message,
-      details: err.stack 
+      error: err.message 
     });
   }
 };
 
-app.post("/api/invoices/request", verifyToken, upload.single("paymentProof"), handleInvoiceSubmission);
-app.post("/api/salesperson/invoice-request", verifyToken, upload.single("paymentProof"), handleInvoiceSubmission);
+// 🌟 FIX: Updated multer route handlers with upload.fields to handle multiple files (paymentProof and logoProof)
+const invoiceUploadFields = upload.fields([
+  { name: "paymentProof", maxCount: 1 },
+  { name: "logoProof", maxCount: 1 }
+]);
+
+app.post("/api/invoices/request", verifyToken, invoiceUploadFields, handleInvoiceSubmission);
+app.post("/api/salesperson/invoice-request", verifyToken, invoiceUploadFields, handleInvoiceSubmission);
 
 app.get("/api/invoices/pending", verifyToken, async (req, res) => {
   try {
