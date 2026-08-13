@@ -1466,7 +1466,7 @@ const handleInvoiceSubmission = async (req, res) => {
           ocrMessage = `Mismatch Warning: Entered UTR (${utrNumber}) or Amount (₹${claimedPaid}) differs from screenshot!`;
         }
       } catch (ocrErr) {
-        console.error("🔥 OCR Processing Error:", ocrErr);
+        console.error("🔥 OCR Processing Error (Non-fatal):", ocrErr.message);
         ocrStatus = "YELLOW";
         ocrMessage = "OCR scan failed to read image clearly, manual review required.";
       }
@@ -1477,10 +1477,10 @@ const handleInvoiceSubmission = async (req, res) => {
 
     const newInvoice = new Invoice({
       ...req.body,
-      ownerName: ownerName || '', // 🌟 Save owner name
-      validityYears: yearsNum,    // 🌟 Save validity years
-      validityMonths: monthsNum,  // 🌟 Save validity months
-      packageValidity: computedValidity, // 🌟 Save formatted string
+      ownerName: ownerName || '', 
+      validityYears: yearsNum,    
+      validityMonths: monthsNum,  
+      packageValidity: computedValidity, 
       baseAmount:
         Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
       totalAmount: Number(req.body.totalAmount) || 0,
@@ -1511,7 +1511,21 @@ const handleInvoiceSubmission = async (req, res) => {
       invoiceId,
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to submit request", error: err.message });
+    // 🌟 DETAILED TERMINAL ERROR LOGGING (Ab yahan poori error print hogi)
+    console.error("==========================================");
+    console.error("🔥 [FATAL] INVOICE SUBMISSION FAILED:");
+    console.error("Error Name    :", err.name);
+    console.error("Error Message :", err.message);
+    console.error("Error Stack   :", err.stack);
+    console.error("Request Body  :", req.body);
+    console.error("Request File  :", req.file);
+    console.error("==========================================");
+
+    res.status(500).json({ 
+      message: "Failed to submit request", 
+      error: err.message,
+      details: err.stack 
+    });
   }
 };
 
@@ -2078,32 +2092,6 @@ app.get("/api/salesperson/tasks", verifyToken, async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to fetch tasks", error: err.message });
-  }
-});
-
-app.post("/api/coupons/verify", verifyToken, async (req, res) => {
-  try {
-    const { code } = req.body;
-    if (!code) return res.status(400).json({ message: "Coupon code required" });
-
-    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
-    if (!coupon)
-      return res.status(404).json({ message: "Invalid coupon code!" });
-
-    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate)) {
-      return res.status(400).json({ message: "This coupon has expired!" });
-    }
-
-    res.json({
-      message: "Coupon applied successfully!",
-      code: coupon.code,
-      discountType: coupon.type,
-      discountValue: coupon.discountValue,
-    });
-  } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Server error verifying coupon", error: err.message });
   }
 });
 
