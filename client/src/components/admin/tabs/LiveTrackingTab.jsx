@@ -18,6 +18,13 @@ export const LiveTrackingTab = ({
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // 🌟 Fallback logic: Live socket data ya phir database ka latest route point
+  const livePt = liveLocations[selectedTrackerEmp];
+  const latestDbPt = !livePt && travelData?.routePoints?.length > 0 
+    ? travelData.routePoints[travelData.routePoints.length - 1] 
+    : null;
+  const activePt = livePt || latestDbPt;
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header & Filters */}
@@ -104,22 +111,57 @@ export const LiveTrackingTab = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-6">
-            {/* Live GPS Status */}
+            {/* Live GPS Status with Resolved Address */}
             <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 shadow-sm space-y-4 transition-all hover:shadow-md">
               <h4 className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider">🟢 Live GPS Status</h4>
-              {liveLocations[selectedTrackerEmp] ? (
-                <div className="space-y-3 text-xs text-[var(--color-heading)]">
-                  <p>Lat/Lng: <strong className="font-mono">{liveLocations[selectedTrackerEmp].latitude.toFixed(4)}, {liveLocations[selectedTrackerEmp].longitude.toFixed(4)}</strong></p>
-                  <p className="text-[var(--color-body)]">Last Ping: {new Date(liveLocations[selectedTrackerEmp].timestamp).toLocaleTimeString('en-IN')}</p>
-                  <a
-                    href={`https://www.google.com/maps?q=${liveLocations[selectedTrackerEmp].latitude},${liveLocations[selectedTrackerEmp].longitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm active:scale-95"
-                  >
-                    🗺️ Open Live Position on Map
-                  </a>
-                </div>
+              {activePt ? (
+                (() => {
+                  const activePointKey = activePt._id || `${activePt.latitude}-${activePt.longitude}-live`;
+                  if (!resolvedAddresses[activePointKey]) {
+                    resolvePlaceName(activePt.latitude, activePt.longitude, activePointKey);
+                  }
+                  const placeName = resolvedAddresses[activePointKey];
+
+                  return (
+                    <div className="space-y-3 text-xs text-[var(--color-heading)]">
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-[var(--color-body)] font-bold block">Current Location Name:</span>
+                        <p className="font-bold text-sm text-[var(--color-heading)] flex items-start gap-1">
+                          📍 {placeName || "Resolving place name..."}
+                        </p>
+                      </div>
+
+                      <p className="text-[var(--color-body)] font-mono text-[11px]">
+                        Lat/Lng: {activePt.latitude.toFixed(4)}, {activePt.longitude.toFixed(4)}
+                      </p>
+
+                      <div>
+                        {livePt ? (
+                          <span className="inline-block bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-2 py-0.5 rounded-md font-bold text-[10px]">
+                            🟢 Live Socket Active
+                          </span>
+                        ) : (
+                          <span className="inline-block bg-amber-500/10 text-amber-600 border border-amber-500/20 px-2 py-0.5 rounded-md font-bold text-[10px]">
+                            🕒 Last Logged Position
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[var(--color-body)]">
+                        Time: {new Date(activePt.timestamp || activePt.createdAt).toLocaleTimeString('en-IN')}
+                      </p>
+
+                      <a
+                        href={`https://www.google.com/maps?q=${activePt.latitude},${activePt.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full text-center bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 rounded-xl transition shadow-sm active:scale-95"
+                      >
+                        🗺️ Open Position on Map
+                      </a>
+                    </div>
+                  );
+                })()
               ) : (
                 <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
                   Waiting for continuous live GPS ping from app...

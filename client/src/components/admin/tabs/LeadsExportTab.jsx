@@ -134,7 +134,8 @@ export const LeadsExportTab = ({
             allSystemLeads.filter(
               (l) =>
                 l.leadStatus?.toLowerCase().includes("meeting") ||
-                l.followUpAction?.toLowerCase().includes("meeting"),
+                l.followUpAction?.toLowerCase().includes("meeting") ||
+                l.followUpAction?.toLowerCase().includes("next meeting"),
             ).length
           }
           )
@@ -198,24 +199,31 @@ export const LeadsExportTab = ({
             return (
               <div
                 key={lead._id}
-                className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 text-xs transition hover:border-[var(--color-primary)]/40"
+                className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col gap-3 text-xs transition hover:border-[var(--color-primary)]/40 overflow-hidden w-full max-w-full"
               >
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <strong className="text-sm text-[var(--color-heading)] font-bold">
+                {/* Top Header Row with flex-wrap and min-w-0 to prevent overflow */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 w-full">
+                  <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
+                    <strong className="text-sm text-[var(--color-heading)] font-bold break-words">
                       {lead.instituteName}
                     </strong>
-                    <span className="bg-purple-500/10 text-purple-600 border border-purple-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold">
+                    <span className="bg-purple-500/10 text-purple-600 border border-purple-500/20 px-2 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0">
                       👤 {lead.salespersonName}
                     </span>
                   </div>
 
+                  <span className="bg-blue-500/10 text-blue-600 border border-blue-500/25 px-3 py-1 rounded-full font-bold text-[10px] uppercase tracking-wider flex-shrink-0">
+                    {lead.leadStatus || "Active"}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 w-full min-w-0">
                   <p className="text-emerald-600 font-semibold flex items-center gap-1">
                     <span>✨ Generated On:</span>{" "}
                     <strong>{generatedTimestampStr}</strong>
                   </p>
 
-                  <p className="text-[var(--color-body)]">
+                  <p className="text-[var(--color-body)] break-words">
                     👤 Contact: {lead.contactPerson} | 📞{" "}
                     <a
                       href={`tel:${lead.mobileNo}`}
@@ -224,11 +232,13 @@ export const LeadsExportTab = ({
                       {lead.mobileNo}
                     </a>
                   </p>
-                  <p className="text-[var(--color-heading)]">
+                  
+                  <p className="text-[var(--color-heading)] break-words">
                     📍 Location: {lead.city || "N/A"}, {lead.state || "N/A"}
                   </p>
+
                   {lead.meetingPhoto && (
-                    <div className="pt-1 flex items-center gap-3">
+                    <div className="pt-2 flex items-start gap-3 w-full min-w-0 overflow-hidden">
                       <img
                         src={
                           lead.meetingPhoto.startsWith("http")
@@ -236,15 +246,15 @@ export const LeadsExportTab = ({
                             : `${API_BASE}/${lead.meetingPhoto}`
                         }
                         alt="Meeting Proof"
-                        className="w-16 h-16 object-cover rounded-xl border border-[var(--color-border)] shadow-sm bg-black/5 transition hover:scale-105"
+                        className="w-16 h-16 object-cover rounded-xl border border-[var(--color-border)] shadow-sm bg-black/5 flex-shrink-0"
                         onError={(e) => {
                           e.target.onerror = null;
                           e.target.src =
                             "https://placehold.co/100?text=Preview";
                         }}
                       />
-                      <div>
-                        <p className="text-[10px] text-[var(--color-body)] font-mono mb-1">
+                      <div className="overflow-hidden flex-1 min-w-0">
+                        <p className="text-[10px] text-[var(--color-body)] font-mono mb-1 truncate w-full">
                           📸 {lead.meetingPhoto}
                         </p>
                         <a
@@ -263,10 +273,6 @@ export const LeadsExportTab = ({
                     </div>
                   )}
                 </div>
-
-                <span className="bg-blue-500/10 text-blue-600 border border-blue-500/25 px-3 py-1 rounded-full font-bold text-[10px] uppercase tracking-wider">
-                  {lead.leadStatus || "Active"}
-                </span>
               </div>
             );
           })}

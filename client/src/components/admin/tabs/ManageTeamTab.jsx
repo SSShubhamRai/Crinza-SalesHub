@@ -37,10 +37,11 @@ export const ManageTeamTab = ({
             <select
               value={newEmp.role}
               onChange={(e) => setNewEmp({ ...newEmp, role: e.target.value })}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] transition"
+              className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] font-semibold focus:outline-none focus:border-[var(--color-primary)] transition cursor-pointer"
             >
               <option value="salesperson">👤 Salesperson</option>
               <option value="accountant">📑 Accountant</option>
+              <option value="technical">🛠️ Technical / Developer</option>
             </select>
           </div>
           <div>
@@ -81,7 +82,7 @@ export const ManageTeamTab = ({
             <input
               type="text"
               required
-              placeholder="e.g. EMP105"
+              placeholder="e.g. TECH101 or EMP105"
               value={newEmp.userId}
               onChange={(e) => setNewEmp({ ...newEmp, userId: e.target.value })}
               className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
@@ -122,6 +123,7 @@ export const ManageTeamTab = ({
               <option value="all">All Roles</option>
               <option value="salesperson">Salesperson Only</option>
               <option value="accountant">Accountant Only</option>
+              <option value="technical">Technical Only</option>
             </select>
 
             <input
@@ -155,7 +157,11 @@ export const ManageTeamTab = ({
                     </span>
                     <span
                       className={`text-[10px] px-2.5 py-0.5 rounded-full uppercase font-bold tracking-wider ${
-                        emp.role === "accountant" ? "bg-amber-500/10 text-amber-600 border border-amber-500/20" : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                        emp.role === "accountant"
+                          ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                          : emp.role === "technical"
+                          ? "bg-purple-500/10 text-purple-600 border border-purple-500/20"
+                          : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
                       }`}
                     >
                       {emp.role}

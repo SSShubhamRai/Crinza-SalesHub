@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom'; // 👈 Added for n
 import { App as CapacitorApp } from '@capacitor/app'; // 👈 Added Capacitor App plugin
 import Login from './components/Login';
 import SalespersonForm from './components/SalespersonForm';
+import TechnicalDashboard from './components/TechnicalDashboard';
 import AccountantPanel from './components/accountant/AccountantPanel';
 import AdminDashboard from './components/admin/AdminDashboard';
 
@@ -101,16 +102,18 @@ function App() {
           {isDark ? '☀️' : '🌙'}
         </button>
       </div>
-
-      {!token ? (
+{!token ? (
         <Login onLoginSuccess={handleLoginSuccess} />
       ) : role === 'boss' || role === 'admin' ? (
         <AdminDashboard userId={userId} onLogout={handleLogout} />
       ) : role === 'accountant' ? (
         <AccountantPanel userId={userId} onLogout={handleLogout} />
+      ) : role === 'technical' ? (
+        <TechnicalDashboard userId={userId} onLogout={handleLogout} API_BASE={import.meta.env.PROD ? "https://crinza-saleshub.onrender.com" : "http://localhost:5000"} />
       ) : (
         <SalespersonForm userId={userId} onLogout={handleLogout} />
       )}
+
     </div>
   );
 }

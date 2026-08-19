@@ -7,13 +7,20 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { 
     type: String, 
-    enum: ['salesperson', 'accountant', 'boss', 'admin'], 
+    enum: ['salesperson', 'accountant', 'boss', 'admin', 'technical'], // 👈 Yahan 'technical' add kar diya gaya hai
     default: 'salesperson',
     index: true
   },
   resetPasswordToken: { type: String },
-  resetPasswordExpires: { type: Date }
+  resetPasswordExpires: { type: Date },
+  
+  // 🌟 Biometric / WebAuthn Devices Array for Fingerprint & Face ID
+  devices: [{
+    credentialID: Buffer,
+    credentialPublicKey: Buffer,
+    counter: Number,
+    transports: [String]
+  }]
 }, { timestamps: true });
 
-// 🌟 module.models ki jagah mongoose.models karein
 module.exports = mongoose.models.User || mongoose.model('User', userSchema);

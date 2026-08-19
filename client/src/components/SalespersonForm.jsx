@@ -246,6 +246,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const [demoProofFile, setDemoProofFile] = useState(null);
   const [modalDate, setModalDate] = useState("");
   const [modalTime, setModalTime] = useState("");
+  const [updateDiscussionNotes, setUpdateDiscussionNotes] = useState(""); // 🌟 Required notes for update
 
   // --- 🌟 Invoice Multi-Step Wizard State ---
   const [invoiceStep, setInvoiceStep] = useState(1);
@@ -509,29 +510,38 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     }
   }, [API_BASE]);
 
-  // --- 🌟 WHATSAPP QUICK REMINDER HELPER ---
-  const handleWhatsAppReminder = (lead, type = "followup") => {
-    if (!lead.mobileNo) {
+  // --- 🌟 WHATSAPP PROFESSIONAL REMINDER HELPER ---
+  const handleWhatsAppReminder = (target, type = "followup") => {
+    const mobileNumber = target.mobileNo;
+    if (!mobileNumber) {
       toast.error("Mobile number not available!");
       return;
     }
-    let phone = lead.mobileNo.replace(/\D/g, "");
+    let phone = mobileNumber.replace(/\D/g, "");
     if (phone.length === 10) {
       phone = "91" + phone;
     }
 
     let message = "";
-    if (type === "followup") {
+    if (type === "due") {
       message = `Hello *${
-        lead.contactPerson || "Sir/Ma'am"
+        target.contactPerson || target.ownerName || "Sir/Ma'am"
+      }*, greetings from Crinza Technologies! This is a polite reminder regarding the pending balance of *₹${
+        target.dueAmount?.toLocaleString("en-IN") || 0
+      }* for *${
+        target.instituteName
+      }*. Kindly clear the dues at your earliest convenience. Thank you!`;
+    } else if (type === "followup") {
+      message = `Hello *${
+        target.contactPerson || "Sir/Ma'am"
       }*, greetings from Crinza Technologies! This is a quick reminder regarding our scheduled ${
-        lead.followUpAction || "discussion"
-      } for *${lead.instituteName}*. Looking forward to connecting with you.`;
+        target.followUpAction || "discussion"
+      } for *${target.instituteName}*. Looking forward to connecting with you.`;
     } else {
       message = `Hello *${
-        lead.contactPerson || "Sir/Ma'am"
+        target.contactPerson || "Sir/Ma'am"
       }*, greetings from Crinza Technologies regarding *${
-        lead.instituteName
+        target.instituteName
       }*.`;
     }
 
@@ -680,7 +690,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   // --- Initial Form States ---
   const initialFormData = {
     instituteName: "",
-    ownerName: "", // 🌟 Added
+    ownerName: "",
     appName: "",
     categories: [],
     youtubeLink: "",
@@ -692,9 +702,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     state: "",
     address: "",
     gstNo: "",
-    validityYears: 1, // 🌟 Added
-    validityMonths: 0, // 🌟 Added
-    packageValidity: "1 Year", // Isko aap dynamic calculation ke liye use kar sakte hain
+    validityYears: 1,
+    validityMonths: 0,
+    packageValidity: "1 Year",
     baseAmount: 15000,
     subtotalAmount: 15000,
     gstAmount: 2700,
@@ -763,7 +773,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   // --- 🌟 ALL FORMATS ALLOWED ---
   const validateImageFile = (uploadedFile) => {
     if (!uploadedFile) return false;
-    // Ab koi restriction nahi hai, koi bhi file format (PDF, Doc, Image, Zip, etc.) allow ho jayega
     return true;
   };
 
@@ -1273,7 +1282,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     const uploadedFile = e.target.files[0];
     if (uploadedFile) {
       if (!validateImageFile(uploadedFile)) {
-        e.target.value = ""; // Reset input selection
+        e.target.value = "";
         return;
       }
       setFile(uploadedFile);
@@ -1462,6 +1471,11 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     newDemoStatus,
     extraPayload = {},
   ) => {
+    if (!updateDiscussionNotes.trim()) {
+      toast.error("Please enter conversation details / discussion notes!");
+      return;
+    }
+
     try {
       const token = localStorage.getItem("token");
       const formDataObj = new FormData();
@@ -1481,26 +1495,16 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         formDataObj.append("followUpAction", newLeadStatus);
       }
 
-      if (newDemoStatus === "Completed") {
-        const timeStamp = new Date().toLocaleString("en-IN");
-        const reviewText = extraPayload.reviewNotes
-          ? ` | Review: "${extraPayload.reviewNotes}"`
-          : "";
-        const timestampStr = `[Demo Completed & Verified on: ${timeStamp}${reviewText}]`;
+      const timeStamp = new Date().toLocaleString("en-IN");
+      const noteEntry = `[${timeStamp}]: ${updateDiscussionNotes.trim()}`;
+      const finalNotes = selectedLead?.notes
+        ? `${selectedLead.notes}\n${noteEntry}`
+        : noteEntry;
 
-        const finalNotes = selectedLead?.notes
-          ? `${selectedLead.notes}\n${timestampStr}`
-          : timestampStr;
+      formDataObj.append("notes", finalNotes);
 
-        formDataObj.append("notes", finalNotes);
-        if (extraPayload.proofFile) {
-          formDataObj.append("meetingPhoto", extraPayload.proofFile);
-        }
-      } else if (extraPayload.reviewNotes) {
-        const finalNotes = selectedLead?.notes
-          ? `${selectedLead.notes}\n[Update]: ${extraPayload.reviewNotes}`
-          : `[Update]: ${extraPayload.reviewNotes}`;
-        formDataObj.append("notes", finalNotes);
+      if (newDemoStatus === "Completed" && extraPayload.proofFile) {
+        formDataObj.append("meetingPhoto", extraPayload.proofFile);
       }
 
       const res = await fetch(`${API_BASE}/api/salesperson/leads/${leadId}`, {
@@ -1518,7 +1522,8 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         setModalTime("");
         setDemoReviewNotes("");
         setDemoProofFile(null);
-        toast.success("Lead updated successfully!");
+        setUpdateDiscussionNotes("");
+        toast.success("Lead updated successfully with discussion notes!");
       } else {
         toast.error(data.message || "Failed to update");
       }
@@ -1540,6 +1545,10 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
         success: "",
         error: "Please upload the meeting photo!",
       });
+      return;
+    }
+    if (!leadFormData.notes.trim()) {
+      toast.error("Please enter what was discussed with the client!");
       return;
     }
 
@@ -1844,7 +1853,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    // Fix: right-0 use karne se card screen ke right edge par chipak jayega aur left side se bilkul hata rahega
                     className="fixed top-20 right-2 w-80 max-w-[calc(100vw-16px)] sm:absolute sm:top-auto sm:right-0 sm:left-auto sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-[99999] max-h-[75vh] overflow-y-auto text-xs"
                   >
                     <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2.5">
@@ -1860,7 +1868,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                       </button>
                     </div>
 
-                    {/* --- SECTION 1: PERSISTENT ADMIN BROADCASTS --- */}
                     {broadcastNotifications.length > 0 && (
                       <div className="space-y-2 mt-3">
                         <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-600 block px-1">
@@ -1915,58 +1922,97 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                       broadcastNotifications.length === 0 ? (
                         <div className="py-8 text-center text-[var(--color-body)] space-y-1">
                           <p className="text-sm">☕ All caught up!</p>
-                          <p className="text-xs">
-                            No pending reminders or broadcasts.
-                          </p>
                         </div>
                       ) : (
-                        notifications.map((n) => (
-                          <div
-                            key={n._id || Math.random()}
-                            onClick={async () => {
-                              try {
-                                const token = localStorage.getItem("token");
-                                await fetch(
-                                  `${API_BASE}/api/salesperson/notifications/${n._id}/dismiss`,
-                                  {
-                                    method: "PUT",
-                                    headers: {
-                                      Authorization: `Bearer ${token}`,
-                                    },
-                                  },
-                                );
-                                setNotifications((prev) =>
-                                  prev.filter((item) => item._id !== n._id),
-                                );
-                              } catch (err) {
-                                console.error(
-                                  "Failed to dismiss notification:",
-                                  err,
-                                );
-                              }
-                            }}
-                            className="p-3.5 rounded-2xl border space-y-1.5 transition bg-emerald-500/10 border-emerald-500/30 cursor-pointer hover:bg-emerald-500/20 active:scale-98"
-                            title="Click to dismiss notification"
-                          >
-                            <div className="flex justify-between items-center gap-2">
-                              <strong className="text-[var(--color-heading)] font-bold truncate">
-                                {n.title}
-                              </strong>
-                              <span className="text-[10px] text-[var(--color-body)] shrink-0">
-                                {new Date(n.createdAt).toLocaleTimeString(
-                                  "en-IN",
-                                  { hour: "2-digit", minute: "2-digit" },
+                        notifications.map((n) => {
+                          // Logic to find lead from myLeads to get phone number
+                          const targetLead = myLeads.find((l) =>
+                            n.message?.includes(l.instituteName),
+                          );
+
+                          return (
+                            <div
+                              key={n._id || Math.random()}
+                              className="p-3.5 rounded-2xl border transition bg-emerald-500/10 border-emerald-500/30"
+                            >
+                              <div className="flex justify-between items-center gap-2 mb-2">
+                                <strong className="text-[var(--color-heading)] font-bold text-sm truncate">
+                                  {n.title}
+                                </strong>
+                                <span className="text-[10px] text-[var(--color-body)] shrink-0">
+                                  {new Date(n.createdAt).toLocaleTimeString(
+                                    "en-IN",
+                                    { hour: "2-digit", minute: "2-digit" },
+                                  )}
+                                </span>
+                              </div>
+                              <p className="text-[var(--color-body)] font-medium break-words leading-relaxed text-xs mb-3">
+                                {n.message}
+                              </p>
+
+                              {/* 🌟 ACTIONABLE QUICK BUTTONS */}
+                              <div className="flex gap-2 border-t border-emerald-500/20 pt-2">
+                                {/* CALL NOW BUTTON */}
+                                {targetLead && (
+                                  <a
+                                    href={`tel:${targetLead.mobileNo}`}
+                                    className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 hover:bg-blue-700 transition active:scale-95"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    📞 Call Now
+                                  </a>
                                 )}
-                              </span>
+
+                                {/* WHATSAPP BUTTON */}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (targetLead)
+                                      handleWhatsAppReminder(
+                                        targetLead,
+                                        "followup",
+                                      );
+                                    else toast.error("Lead details not found!");
+                                  }}
+                                  className="text-[10px] bg-[#25D366] text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 hover:opacity-90 transition active:scale-95"
+                                >
+                                  <WhatsAppIcon /> WhatsApp
+                                </button>
+
+                                {/* DISMISS BUTTON */}
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    try {
+                                      const token =
+                                        localStorage.getItem("token");
+                                      await fetch(
+                                        `${API_BASE}/api/salesperson/notifications/${n._id}/dismiss`,
+                                        {
+                                          method: "PUT",
+                                          headers: {
+                                            Authorization: `Bearer ${token}`,
+                                          },
+                                        },
+                                      );
+                                      setNotifications((prev) =>
+                                        prev.filter(
+                                          (item) => item._id !== n._id,
+                                        ),
+                                      );
+                                      toast.success("Dismissed");
+                                    } catch (err) {
+                                      toast.error("Error dismissing");
+                                    }
+                                  }}
+                                  className="text-[10px] bg-[var(--color-card)] text-[var(--color-heading)] border border-[var(--color-border)] px-3 py-1.5 rounded-lg font-semibold hover:bg-[var(--color-border)] transition"
+                                >
+                                  ✕ Dismiss
+                                </button>
+                              </div>
                             </div>
-                            <p className="text-[var(--color-body)] font-medium break-words leading-relaxed">
-                              {n.message}
-                            </p>
-                            <span className="text-[10px] text-emerald-600 block pt-1 font-semibold">
-                              Tap to dismiss ➔
-                            </span>
-                          </div>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                   </motion.div>
@@ -2122,7 +2168,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
           </div>
         </div>
 
-        {/* --- MOBILE THUMB-FRIENDLY BOTTOM NAVIGATION BAR (FIXED OVERLAP & DYNAMIC THEME) --- */}
+        {/* --- MOBILE THUMB-FRIENDLY BOTTOM NAVIGATION BAR --- */}
         <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-[var(--color-card)] border-t border-[var(--color-border)] z-40 px-2 py-2 flex justify-between items-center shadow-2xl backdrop-blur-lg bg-opacity-95">
           <button
             onClick={() => setActiveView("dashboard")}
@@ -2305,8 +2351,8 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                         📊 Institute Due Ledger
                       </h3>
                       <p className="text-xs sm:text-sm text-[var(--color-body)] mt-0.5">
-                        See exact pending dues per institute. Click "Pay Due" to
-                        instantly jump to invoice page with pre-filled balance.
+                        See exact pending dues per institute. Click "Pay Due" or
+                        send a WhatsApp reminder instantly.
                       </p>
                     </div>
                     <span className="text-xs sm:text-sm bg-[var(--color-surface)] px-3.5 py-2 rounded-xl border border-[var(--color-border)] font-semibold shrink-0">
@@ -2362,7 +2408,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-[var(--color-border)]">
+                          <div className="flex items-center justify-between md:justify-end gap-3 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-[var(--color-border)]">
                             <div className="text-left md:text-right">
                               <span className="text-[10px] sm:text-xs uppercase font-bold text-[var(--color-body)] block">
                                 Due Amount
@@ -2380,18 +2426,30 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                             </div>
 
                             {deal.dueAmount > 0 ? (
-                              <button
-                                onClick={() => {
-                                  if (dayStatus !== "ACTIVE") {
-                                    toast.error("Start day first!");
-                                    return;
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() =>
+                                    handleWhatsAppReminder(deal, "due")
                                   }
-                                  handlePayDueFromLedger(deal);
-                                }}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0 active:scale-95 min-h-[44px]"
-                              >
-                                Pay Due ➔
-                              </button>
+                                  className="bg-[#25D366] hover:opacity-90 text-white px-3.5 py-3 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0 active:scale-95 min-h-[44px] flex items-center gap-1.5"
+                                  title="Send WhatsApp Due Reminder"
+                                >
+                                  <WhatsAppIcon />
+                                  Remind
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (dayStatus !== "ACTIVE") {
+                                      toast.error("Start day first!");
+                                      return;
+                                    }
+                                    handlePayDueFromLedger(deal);
+                                  }}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0 active:scale-95 min-h-[44px]"
+                                >
+                                  Pay Due ➔
+                                </button>
+                              </div>
                             ) : (
                               <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-4 py-3 rounded-xl font-bold shrink-0">
                                 Fully Settled
@@ -2548,15 +2606,25 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                               </span>
                             )}
                           </div>
-                          <span
-                            className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${
-                              lead.leadStatus === "Not Interested"
-                                ? "bg-red-500/10 text-red-600 border border-red-500/20"
-                                : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
-                            }`}
-                          >
-                            {lead.leadStatus || "Active Lead"}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() =>
+                                handleWhatsAppReminder(lead, "followup")
+                              }
+                              className="bg-[#25D366] text-white px-3.5 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                            >
+                              <WhatsAppIcon /> WhatsApp
+                            </button>
+                            <span
+                              className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${
+                                lead.leadStatus === "Not Interested"
+                                  ? "bg-red-500/10 text-red-600 border border-red-500/20"
+                                  : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                              }`}
+                            >
+                              {lead.leadStatus || "Active Lead"}
+                            </span>
+                          </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[var(--color-heading)]">
                           <div className="break-words">
@@ -2600,16 +2668,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                                   ? `at ${lead.followUpTime}`
                                   : ""}
                               </span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleWhatsAppReminder(lead, "followup");
-                                }}
-                                className="bg-[#25D366] text-white px-4 py-2.5 rounded-xl font-bold text-xs hover:opacity-90 cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95 transition min-h-[40px]"
-                              >
-                                <WhatsAppIcon />
-                                WhatsApp
-                              </button>
                             </div>
                           )}
                         </div>
@@ -2625,6 +2683,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                     onClick={() => {
                       setSelectedLead(null);
                       setActiveModalAction(null);
+                      setUpdateDiscussionNotes("");
                     }}
                   >
                     <motion.div
@@ -2648,6 +2707,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                           onClick={() => {
                             setSelectedLead(null);
                             setActiveModalAction(null);
+                            setUpdateDiscussionNotes("");
                           }}
                           className="w-9 h-9 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-sm cursor-pointer shrink-0 active:scale-90 transition"
                           aria-label="Close modal"
@@ -2685,7 +2745,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                         {selectedLead.notes && (
                           <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] mt-2">
                             <strong className="block text-[var(--color-body)] mb-1">
-                              📝 Visit & History Notes:
+                              📝 Conversation History & Notes:
                             </strong>
                             <p className="whitespace-pre-line text-xs">
                               {selectedLead.notes}
@@ -2704,6 +2764,23 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                             />
                           </div>
                         )}
+                      </div>
+
+                      {/* --- 🌟 REQUIRED DISCUSSION NOTES INPUT FOR ANY UPDATE --- */}
+                      <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+                        <label className="block text-xs font-bold text-[var(--color-primary)] uppercase">
+                          💬 What was discussed / Conversation Notes *
+                        </label>
+                        <textarea
+                          rows="2"
+                          required
+                          value={updateDiscussionNotes}
+                          onChange={(e) =>
+                            setUpdateDiscussionNotes(e.target.value)
+                          }
+                          placeholder="Required: Write what you discussed during this call/visit..."
+                          className="w-full bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-xl p-3 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none"
+                        ></textarea>
                       </div>
 
                       <div className="space-y-3.5 pt-3.5 border-t border-[var(--color-border)]">
@@ -3591,7 +3668,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                     <div>
                       <label className="block font-medium mb-2 text-[var(--color-primary-dark)]">
-                        📸 Upload Meeting Photo{" "}
+                        📸 Upload Meeting Photo *
                       </label>
                       <input
                         type="file"
@@ -3663,15 +3740,16 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 
                     <div className="md:col-span-2">
                       <label className="block font-medium mb-2 text-[var(--color-heading)]">
-                        Visit / Discussion Notes
+                        💬 What was discussed / Conversation Notes *
                       </label>
                       <textarea
                         name="notes"
                         rows="3"
+                        required
                         value={leadFormData.notes}
                         onChange={handleLeadChange}
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3.5 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
-                        placeholder="Summary of this visit..."
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-2xl p-3.5 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
+                        placeholder="Required: Write what you discussed during this meeting/visit..."
                       ></textarea>
                     </div>
                   </div>
@@ -3860,7 +3938,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                           )}
                         </div>
 
-                        {/* 🌟 Optional Logo Upload */}
                         <div>
                           <label className="block font-medium mb-2 text-[var(--color-heading)]">
                             Logo (.jpg, .png - Optional)
@@ -3873,7 +3950,6 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                           />
                         </div>
 
-                        {/* 🌟 Optional Social Media Links */}
                         <div>
                           <label className="block font-medium mb-2 text-[var(--color-heading)]">
                             YouTube Link (Optional)

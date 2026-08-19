@@ -21,6 +21,13 @@ const FormData = require("form-data"); // 🌟 Multipart/form-data attachments k
 const Tesseract = require("tesseract.js"); // 🌟 AI OCR Payment Proof Verification ke liye
 require("dotenv").config();
 
+const { 
+  generateRegistrationOptions, 
+  verifyRegistrationResponse, 
+  generateAuthenticationOptions, 
+  verifyAuthenticationResponse 
+} = require("@simplewebauthn/server");
+
 // --- Firebase Admin Initialization (Node v24 Compatible) ---
 try {
   const { initializeApp, cert, getApps } = require("firebase-admin/app");
@@ -156,6 +163,30 @@ const taskSchema = new mongoose.Schema({
 const Task = mongoose.model("Task", taskSchema);
 
 // =========================================================================
+// --- 🛠️ TECHNICAL / APP PRODUCTION PROJECT SCHEMA ---
+// =========================================================================
+const technicalTaskSchema = new mongoose.Schema({
+  projectId: { type: String, unique: true },
+  invoiceId: { type: String, required: true },
+  instituteName: { type: String, required: true },
+  appName: { type: String, required: true },
+  packageValidity: { type: String, default: "1 Year" },
+  addons: { type: Object, default: {} },
+  logoProof: { type: String, default: "" },
+  assignedTechId: { type: String, default: "" },   // Developer ka userId (e.g. TECH101)
+  assignedTechName: { type: String, default: "" }, // Developer ka naam
+  status: { 
+    type: String, 
+    enum: ["Unassigned", "Assigned", "In Progress", "Testing", "Delivered"], 
+    default: "Unassigned" 
+  },
+  assignedAt: { type: Date },                      // Kab assign hua
+  deliveredAt: { type: Date },                     // Kab deliver hua
+  createdAt: { type: Date, default: Date.now }
+});
+const TechnicalTask = mongoose.model("TechnicalTask", technicalTaskSchema);
+
+// =========================================================================
 // --- 📢 BROADCAST ANNOUNCEMENTS SCHEMA (UPDATED WITH DELETION TRACKER) ---
 // =========================================================================
 const broadcastSchema = new mongoose.Schema({
@@ -222,10 +253,11 @@ function deg2rad(deg) {
   return deg * (Math.PI / 180);
 }
 
-// 🌟 Local Distance Calculation with 200 Meters Threshold
+// 🌟 Local Distance Calculation with 200 Meters Threshold & Road Factor
 function calculateValidDistance(coordinatesList) {
-  let totalDistance = 0;
-  const MIN_DISTANCE_THRESHOLD = 0.2; // 0.2 KM = 200 meters threshold to prevent fake indoor/jitter counts
+  let straightDistance = 0;
+  const MIN_DISTANCE_THRESHOLD = 0.2; // 0.2 KM = 200 meters threshold
+  const ROAD_FACTOR = 1.75; // 75% extra for road curves and turns
 
   for (let i = 1; i < coordinatesList.length; i++) {
     const prev = coordinatesList[i - 1];
@@ -234,13 +266,14 @@ function calculateValidDistance(coordinatesList) {
     const dist = calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
 
     if (dist >= MIN_DISTANCE_THRESHOLD) {
-      totalDistance += dist;
+      straightDistance += dist;
     }
   }
 
-  return Number(totalDistance.toFixed(2));
+  // Straight distance ko road factor se multiply kar diya
+  const totalRoadwayDistance = straightDistance * ROAD_FACTOR;
+  return Number(totalRoadwayDistance.toFixed(2));
 }
-
 // =========================================================================
 // --- 🌐 SOCKET.IO REAL-TIME LOCATION & SINGLE SESSION HANDLER ---
 // =========================================================================
@@ -836,6 +869,82 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
   }
 });
 
+// --- 👑 ADMIN: Get All Technical Projects ---
+app.get("/api/boss/technical-projects", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const projects = await TechnicalTask.find().sort({ createdAt: -1 });
+    res.json(projects);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch technical projects", error: err.message });
+  }
+});
+
+// --- 👑 ADMIN: Assign Project to Developer ---
+app.put("/api/boss/technical-projects/assign/:id", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const { techId, techName } = req.body;
+    
+    const updated = await TechnicalTask.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          assignedTechId: techId,
+          assignedTechName: techName,
+          status: "Assigned",
+          assignedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    res.json({ success: true, message: `Project successfully assigned to ${techName}!`, project: updated });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to assign project", error: err.message });
+  }
+});
+
+// --- 💻 TECHNICAL TEAM: Get My Assigned Projects ---
+app.get("/api/technical/my-projects", verifyToken, async (req, res) => {
+  try {
+    const projects = await TechnicalTask.find({ assignedTechId: req.user.userId }).sort({ createdAt: -1 });
+    res.json(projects);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch your projects", error: err.message });
+  }
+});
+
+// --- 💻 TECHNICAL TEAM: Update Project Status ---
+app.put("/api/technical/projects/status/:id", verifyToken, async (req, res) => {
+  try {
+    const { status } = req.body; // 'In Progress', 'Testing', 'Delivered'
+    const updateData = { status };
+
+    if (status === "Delivered") {
+      updateData.deliveredAt = new Date();
+    }
+
+    const updated = await TechnicalTask.findOneAndUpdate(
+      { _id: req.params.id, assignedTechId: req.user.userId },
+      { $set: updateData },
+      { returnDocument: 'after' }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: "Project not found or not assigned to you" });
+    }
+
+    res.json({ success: true, message: `Project status updated to ${status}!`, project: updated });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to update status", error: err.message });
+  }
+});
+
 // =========================================================================
 // --- 📢 SALESPERSON PERSISTENT BROADCAST API ROUTES ---
 // =========================================================================
@@ -1012,13 +1121,11 @@ app.get("/api/boss/employees", verifyToken, async (req, res) => {
       return res.status(403).json({ message: "Access denied!" });
     }
     const employees = await User.find({
-      role: { $in: ["salesperson", "accountant"] },
+      role: { $in: ["salesperson", "accountant", "technical"] }, // 👈 'technical' yahan add kar dein
     }).select("-password");
     res.json(employees);
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to fetch employees", error: err.message });
+    res.status(500).json({ message: "Failed to fetch employees", error: err.message });
   }
 });
 
@@ -1599,16 +1706,30 @@ app.post("/api/invoices/approve/:id", verifyToken, async (req, res) => {
     invoice.approvedBy = req.user.userId;
     await invoice.save();
 
+    // 🌟 4️⃣ AUTOMATION: Create Technical Production Project agar pehle se nahi hai
+    const existingProject = await TechnicalTask.findOne({ invoiceId: invoice.invoiceId });
+    if (!existingProject) {
+      const projectId = "PRJ-" + Date.now().toString().slice(-6);
+      await TechnicalTask.create({
+        projectId,
+        invoiceId: invoice.invoiceId,
+        instituteName: invoice.instituteName,
+        appName: invoice.appName || "Custom App",
+        packageValidity: invoice.packageValidity || "1 Year",
+        addons: invoice.addons || {},
+        logoProof: invoice.logoProof || "",
+        status: "Unassigned"
+      });
+    }
+
     res.json({
-      message: `Invoice #${invoice.invoiceId} Approved & Emailed successfully via Crinza API!`,
+      message: `Invoice #${invoice.invoiceId} Approved & Technical Project Queued successfully!`,
     });
   } catch (err) {
-    res
-      .status(500)
-      .json({
-        message: "Approval failed",
-        error: err.message || "Internal error",
-      });
+    res.status(500).json({
+      message: "Approval failed",
+      error: err.message || "Internal error",
+    });
   }
 });
 
@@ -2093,6 +2214,238 @@ app.get("/api/salesperson/tasks", verifyToken, async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to fetch tasks", error: err.message });
+  }
+});
+
+
+// =========================================================================
+// --- 🧬 BIOMETRIC / WEBAUTHN API ROUTES ---
+// =========================================================================
+
+const rpName = "Crinza SalesHub";
+const rpID = process.env.NODE_ENV === "production" ? "crinza-saleshub.onrender.com" : "localhost";
+const expectedOrigin = process.env.FRONTEND_URL || "http://localhost:5173";
+const challengeStore = {};
+
+// 1. Register Challenge Generate (Device link karne ke liye)
+app.post("/api/auth/webauthn/register-options", verifyToken, async (req, res) => {
+  try {
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    let excludeCredentials = [];
+    if (user.devices && Array.isArray(user.devices)) {
+      excludeCredentials = user.devices.map(dev => {
+        let credId = dev.credentialID;
+        if (Buffer.isBuffer(credId)) {
+          credId = credId.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+        return {
+          id: credId,
+          type: 'public-key',
+        };
+      }).filter(d => d.id);
+    }
+
+    const options = await generateRegistrationOptions({
+      rpName,
+      rpID,
+      userID: Buffer.from(user._id.toString()),
+      userName: user.userId,
+      excludeCredentials,
+      // 🌟 Yahan "platform" lagane se Google Cloud ki jagah direct laptop ka Windows Hello / Fingerprint khulega
+      authenticatorSelection: { 
+        userVerification: "preferred", 
+        authenticatorAttachment: "platform",
+        residentKey: "preferred"
+      }
+    });
+
+    challengeStore[user.userId] = options.challenge;
+    res.json(options);
+  } catch (err) {
+    console.error("🔥 WebAuthn Register Options Crash Error:", err);
+    res.status(500).json({ message: "Failed to generate registration options", error: err.message });
+  }
+});
+
+// 2. Register Verify & Save Device
+app.post("/api/auth/webauthn/register-verify", verifyToken, async (req, res) => {
+  try {
+    const { credential } = req.body;
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const expectedChallenge = challengeStore[user.userId];
+    delete challengeStore[user.userId];
+
+    const verification = await verifyRegistrationResponse({
+      response: credential,
+      expectedChallenge,
+      expectedOrigin,
+      expectedRPID: rpID,
+    });
+
+    if (verification.verified && verification.registrationInfo) {
+      const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;
+      
+      if (!user.devices) user.devices = [];
+      
+      // 🌟 Safe conversion to avoid undefined Buffer crash
+      const credIdBuffer = credentialID ? Buffer.from(credentialID) : Buffer.from(credential.id, 'base64');
+      const credPubKeyBuffer = credentialPublicKey ? Buffer.from(credentialPublicKey) : Buffer.alloc(0);
+
+      const existingDevice = user.devices.find(d => {
+        if (!d.credentialID || !credIdBuffer) return false;
+        try {
+          return Buffer.compare(d.credentialID, credIdBuffer) === 0;
+        } catch (e) {
+          return false;
+        }
+      });
+
+      if (!existingDevice) {
+        user.devices.push({ 
+          credentialID: credIdBuffer, 
+          credentialPublicKey: credPubKeyBuffer, 
+          counter: counter || 0, 
+          transports: credential.transports || [] 
+        });
+        await user.save();
+      }
+      return res.json({ success: true, message: "Biometric device registered successfully!" });
+    }
+    res.status(400).json({ success: false, message: "Verification failed" });
+  } catch (err) {
+    console.error("🔥 Detailed Register Verify Crash Error:", err);
+    res.status(500).json({ message: "Registration error", error: err.message });
+  }
+});
+
+
+
+// 3. Login Challenge Generate (Bina password ke login ke liye)
+app.post("/api/auth/webauthn/login-options", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findOne({ userId: userId?.trim() });
+    if (!user) return res.status(404).json({ message: "User ID not found" });
+
+    if (!user.devices || user.devices.length === 0) {
+      return res.status(400).json({ message: "No fingerprint registered. Please login with password first." });
+    }
+
+    // 🌟 Convert Buffer to Base64URL string safely for @simplewebauthn
+    const allowCredentials = user.devices.map(dev => {
+      let credId = dev.credentialID;
+      if (!credId) return null;
+
+      let idString = credId;
+      if (Buffer.isBuffer(credId)) {
+        idString = credId.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      } else if (typeof credId === 'object' && credId.buffer) {
+        // Handle MongoDB binary buffer objects
+        idString = Buffer.from(credId).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      }
+
+      return {
+        id: idString,
+        type: 'public-key',
+        transports: dev.transports || [],
+      };
+    }).filter(Boolean);
+
+    const options = await generateAuthenticationOptions({
+      rpID,
+      allowCredentials,
+      userVerification: "preferred",
+    });
+
+    challengeStore[user.userId] = options.challenge;
+    res.json(options);
+  } catch (err) {
+    console.error("🔥 Login Options Crash Error:", err);
+    res.status(500).json({ message: "Failed to generate login options", error: err.message });
+  }
+});
+
+app.post("/api/auth/webauthn/login-verify", async (req, res) => {
+  try {
+    const { userId, credential } = req.body;
+    const user = await User.findOne({ userId: userId?.trim() });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const expectedChallenge = challengeStore[user.userId];
+    delete challengeStore[user.userId];
+
+    if (!user.devices || user.devices.length === 0) {
+      return res.status(400).json({ message: "No devices found. Please login with password to re-register fingerprint." });
+    }
+
+    // 🌟 Find matching device safely using string comparison of credential IDs
+    const deviceIndex = user.devices.findIndex(d => {
+      if (!d || !d.credentialID) return false;
+      try {
+        const dbIdStr = Buffer.isBuffer(d.credentialID) 
+          ? d.credentialID.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '') 
+          : String(d.credentialID);
+        return dbIdStr === credential.id;
+      } catch (e) {
+        return false;
+      }
+    });
+
+    if (deviceIndex === -1) {
+      return res.status(400).json({ message: "Biometric device not recognized. Please login with password." });
+    }
+
+    const device = user.devices[deviceIndex];
+
+    // 🌟 Forcefully extract buffers and counter as pure primitive values to prevent Mongoose subdocument schema corruption
+    const rawPubKey = device.credentialPublicKey;
+    const rawCredId = device.credentialID;
+    const rawCounter = device.counter;
+
+    const pubKeyBuffer = Buffer.isBuffer(rawPubKey) ? rawPubKey : Buffer.from(rawPubKey || []);
+    const credIdBuffer = Buffer.isBuffer(rawCredId) ? rawCredId : Buffer.from(rawCredId || []);
+    const safeCounter = (typeof rawCounter === 'number' && !isNaN(rawCounter)) ? rawCounter : 0;
+
+    const verification = await verifyAuthenticationResponse({
+      response: credential,
+      expectedChallenge,
+      expectedOrigin,
+      expectedRPID: rpID,
+      authenticator: {
+        credentialPublicKey: pubKeyBuffer,
+        credentialID: credIdBuffer,
+        counter: safeCounter,
+      },
+    });
+
+    if (verification.verified) {
+      // Safely update counter using Mongoose subdocument set or direct assignment
+      user.devices[deviceIndex].counter = verification.authenticationInfo?.newCounter || (safeCounter + 1);
+      await user.save();
+
+      const token = jwt.sign(
+        { userId: user.userId, name: user.name, role: user.role },
+        process.env.JWT_SECRET || "secret",
+        { expiresIn: "1d" }
+      );
+
+      return res.json({ 
+        success: true, 
+        token, 
+        role: user.role, 
+        userId: user.userId, 
+        name: user.name, 
+        message: "Biometric login successful!" 
+      });
+    }
+    res.status(400).json({ success: false, message: "Authentication failed" });
+  } catch (err) {
+    console.error("🔥 Login Verify Crash Error:", err);
+    res.status(500).json({ message: "Login verification error", error: err.message });
   }
 });
 

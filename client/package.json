@@ -17,6 +17,7 @@
     "@capacitor/geolocation": "^8.2.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.1.2",
+    "@simplewebauthn/browser": "^13.3.0",
     "@types/canvas-confetti": "^1.9.0",
     "axios": "^1.18.1",
     "canvas-confetti": "^1.9.4",

@@ -5,6 +5,8 @@ import logoImage from '../Assets/logo.png';
 import { Preferences } from '@capacitor/preferences';
 import { io } from 'socket.io-client';
 
+import { startRegistration, startAuthentication } from '@simplewebauthn/browser';
+
 // 🌟 Extracted Forgot Password Sub-Component with Cooldown Timer
 const ForgotPasswordModal = ({ API_BASE, onCancel, onSuccess }) => {
   const [forgotStep, setForgotStep] = useState(1);
