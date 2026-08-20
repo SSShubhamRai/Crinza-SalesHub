@@ -1913,17 +1913,27 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
 
 app.get("/api/salesperson/notifications", verifyToken, async (req, res) => {
   try {
+   
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
     const tasks = await Task.find({ 
       salespersonId: req.user.userId, 
-      status: "pending" 
+      status: "pending",
+      $or: [
+        { dueDate: { $exists: false } },
+        { dueDate: null },
+        { dueDate: "" },
+        { dueDate: { $lte: today } } // 
+      ]
     }).sort({ createdAt: -1 });
 
     const formattedNotifications = tasks.map((t) => ({
       _id: t._id,
       title: `${t.taskType.toUpperCase()} Reminder`,
-      message: `Pending task for institute: ${t.instituteName}`,
+      message: `Pending task for institute: ${t.instituteName} (Due: ${t.dueDate || 'N/A'})`,
       isRead: false,
       createdAt: t.createdAt,
+      dueDate: t.dueDate,
     }));
 
     res.json(formattedNotifications);

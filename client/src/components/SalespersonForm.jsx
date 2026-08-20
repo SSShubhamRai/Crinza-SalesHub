@@ -495,20 +495,31 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   };
 
   // --- 🌟 FETCH NOTIFICATIONS HOOK ---
-  const fetchSalespersonNotifications = useCallback(async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/api/salesperson/notifications`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+const fetchSalespersonNotifications = useCallback(async () => {
+  try {
+    const token = localStorage.getItem("token");
+    const res = await fetch(`${API_BASE}/api/salesperson/notifications`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    
+    if (res.ok) {
       const data = await res.json();
-      if (res.ok) {
-        setNotifications(data);
-      }
-    } catch (err) {
-      console.error("Failed to load notifications:", err);
+      
+      // फ्रंटएंड पर फ़िल्टर (ताकि कोई गलती से फ्यूचर नोटिफिकेशन न आ जाए)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const filtered = data.filter(n => {
+        if (!n.dueDate) return true; // अगर ड्यू डेट नहीं है तो दिखाओ
+        return new Date(n.dueDate) <= today; // आज या पुरानी तारीख
+      });
+      
+      setNotifications(filtered);
     }
-  }, [API_BASE]);
+  } catch (err) {
+    console.error("Failed to load notifications:", err);
+  }
+}, [API_BASE]);
 
   // --- 🌟 WHATSAPP PROFESSIONAL REMINDER HELPER ---
   const handleWhatsAppReminder = (target, type = "followup") => {
@@ -1925,61 +1936,53 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                         </div>
                       ) : (
                         notifications.map((n) => {
-                          // Logic to find lead from myLeads to get phone number
                           const targetLead = myLeads.find((l) =>
                             n.message?.includes(l.instituteName),
                           );
 
+                          const isPastDate =
+                            n.dueDate &&
+                            new Date(n.dueDate) <
+                              new Date().setHours(0, 0, 0, 0);
+
                           return (
                             <div
                               key={n._id || Math.random()}
-                              className="p-3.5 rounded-2xl border transition bg-emerald-500/10 border-emerald-500/30"
+                              // अगर पास्ट डेट है तो bg-red-100 और border-red-500, वरना हरा
+                              className={`p-3.5 rounded-2xl border transition ${
+                                isPastDate
+                                  ? "bg-red-100 border-red-500 text-red-900"
+                                  : "bg-emerald-500/10 border-emerald-500/30 text-[var(--color-heading)]"
+                              }`}
                             >
                               <div className="flex justify-between items-center gap-2 mb-2">
-                                <strong className="text-[var(--color-heading)] font-bold text-sm truncate">
-                                  {n.title}
+                                <strong className="font-bold text-sm truncate">
+                                  {n.title} {isPastDate && " (OVERDUE!)"}
                                 </strong>
-                                <span className="text-[10px] text-[var(--color-body)] shrink-0">
+                                <span className="text-[10px] shrink-0">
                                   {new Date(n.createdAt).toLocaleTimeString(
                                     "en-IN",
                                     { hour: "2-digit", minute: "2-digit" },
                                   )}
                                 </span>
                               </div>
-                              <p className="text-[var(--color-body)] font-medium break-words leading-relaxed text-xs mb-3">
+
+                              <p className="font-medium break-words leading-relaxed text-xs mb-3">
                                 {n.message}
                               </p>
 
-                              {/* 🌟 ACTIONABLE QUICK BUTTONS */}
-                              <div className="flex gap-2 border-t border-emerald-500/20 pt-2">
-                                {/* CALL NOW BUTTON */}
+                              {/* बटन सेक्शन में भी टेक्स्ट कलर का ध्यान रखें */}
+                              <div className="flex gap-2 border-t border-black/10 pt-2">
+                                {/* Call Now Button */}
                                 {targetLead && (
                                   <a
                                     href={`tel:${targetLead.mobileNo}`}
-                                    className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 hover:bg-blue-700 transition active:scale-95"
-                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition"
                                   >
-                                    📞 Call Now
+                                    📞 Call
                                   </a>
                                 )}
-
-                                {/* WHATSAPP BUTTON */}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (targetLead)
-                                      handleWhatsAppReminder(
-                                        targetLead,
-                                        "followup",
-                                      );
-                                    else toast.error("Lead details not found!");
-                                  }}
-                                  className="text-[10px] bg-[#25D366] text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 hover:opacity-90 transition active:scale-95"
-                                >
-                                  <WhatsAppIcon /> WhatsApp
-                                </button>
-
-                                {/* DISMISS BUTTON */}
+                                {/* Dismiss Button */}
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();
@@ -2005,7 +2008,7 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
                                       toast.error("Error dismissing");
                                     }
                                   }}
-                                  className="text-[10px] bg-[var(--color-card)] text-[var(--color-heading)] border border-[var(--color-border)] px-3 py-1.5 rounded-lg font-semibold hover:bg-[var(--color-border)] transition"
+                                  className="text-[10px] bg-white/50 border border-black/10 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/80 transition"
                                 >
                                   ✕ Dismiss
                                 </button>
