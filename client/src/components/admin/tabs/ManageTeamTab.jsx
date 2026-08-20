@@ -15,6 +15,44 @@ export const ManageTeamTab = ({
   handleDeleteEmployee,
   userId,
 }) => {
+
+  // Custom submit wrapper for strict phone validation
+  const handleFormSubmit = (e) => {
+    e.preventDefault();
+    
+    // Strict E.164 phone validation regex: 
+    // Starts with '+' followed by 10 to 14 digits (Total length: 11 to 15 chars)
+    const phoneRegex = /^\+[1-9]\d{9,14}$/;
+    
+    if (!phoneRegex.test(newEmp.phone.trim())) {
+      alert("Kripya ek valid WhatsApp mobile number dalein (e.g., +919876543210). Total length country code ke sath 11 se 15 characters honi chahiye.");
+      return;
+    }
+
+    // Call original handler if validation passes
+    handleAddEmployee(e);
+  };
+
+  // Handle phone input change to restrict invalid characters and max length
+  const handlePhoneChange = (e) => {
+    let value = e.target.value;
+    
+    // Allow only '+' at the beginning and digits 0-9 everywhere else
+    value = value.replace(/[^0-9+]/g, '');
+    
+    // Ensure '+' can only be at the first position
+    if (value.indexOf('+') > 0) {
+      value = value.replace(/\+/g, (match, offset) => offset === 0 ? '+' : '');
+    }
+
+    // Restrict maximum length to 15 characters (e.g. +91 followed by 12 digits max)
+    if (value.length > 15) {
+      value = value.slice(0, 15);
+    }
+
+    setNewEmp({ ...newEmp, phone: value });
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
       <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-4">
@@ -31,7 +69,7 @@ export const ManageTeamTab = ({
             {empStatus.error}
           </div>
         )}
-        <form onSubmit={handleAddEmployee} className="space-y-3 text-xs">
+        <form onSubmit={handleFormSubmit} className="space-y-3 text-xs">
           <div>
             <label className="block font-medium mb-1 text-[var(--color-heading)]">Account Role *</label>
             <select
@@ -71,10 +109,11 @@ export const ManageTeamTab = ({
             <input
               type="text"
               required
+              maxLength={15}
               placeholder="e.g. +919876543210"
               value={newEmp.phone}
-              onChange={(e) => setNewEmp({ ...newEmp, phone: e.target.value })}
-              className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
+              onChange={handlePhoneChange}
+              className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition font-mono"
             />
           </div>
           <div>

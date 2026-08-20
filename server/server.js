@@ -257,7 +257,7 @@ function deg2rad(deg) {
 function calculateValidDistance(coordinatesList) {
   let straightDistance = 0;
   const MIN_DISTANCE_THRESHOLD = 0.2; // 0.2 KM = 200 meters threshold
-  const ROAD_FACTOR = 1.75; // 75% extra for road curves and turns
+  const ROAD_FACTOR = 1.8; // 75% extra for road curves and turns
 
   for (let i = 1; i < coordinatesList.length; i++) {
     const prev = coordinatesList[i - 1];
@@ -309,7 +309,7 @@ io.on("connection", (socket) => {
     console.log(`👤 Active Session Registered for: ${userId} (${socket.id})`);
   });
 
-  socket.on("update_location", async (data) => {
+ socket.on("update_location", async (data) => {
     try {
       const { salespersonId, latitude, longitude } = data;
       if (!salespersonId || !latitude || !longitude) return;
@@ -318,9 +318,22 @@ io.on("connection", (socket) => {
         return;
       }
 
-      const currentDate = new Date().toISOString().split("T")[0];
-      const currentTime = new Date();
+      // 🌟 Correct IST Date string to match start-day logic
+      const currentDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
+      // 🌟 NAYA CHECK: Validate karein ki salesperson ka din shuru (STARTED) hai ya nahi
+      const activeSession = await DaySession.findOne({ 
+        salespersonId, 
+        date: currentDate, 
+        status: "STARTED" 
+      });
+
+      // Agar day start nahi hua hai, toh location save/track nahi hogi
+      if (!activeSession) {
+        return; 
+      }
+
+      const currentTime = new Date();
       const lastLog = await LocationLog.findOne({ salespersonId, date: currentDate }).sort({ timestamp: -1 });
 
       let isMockedByTeleport = false;
@@ -2085,17 +2098,22 @@ app.post(
         await existingLead.save();
 
         if (followUpDate) {
-          await Task.create({
-            salespersonId: req.user.userId,
-            instituteName: existingLead.instituteName,
-            taskType: followUpAction?.toLowerCase().includes("demo")
-              ? "demo"
-              : "call",
-            notes:
-              notes ||
-              `Follow-up scheduled (Visit #${existingLead.visitCount})`,
-            dueDate: followUpDate,
-          });
+          // 🌟 FIX: Existing pending task ko update karein, duplicate task mat banayein
+          await Task.findOneAndUpdate(
+            { 
+              salespersonId: req.user.userId, 
+              instituteName: existingLead.instituteName, 
+              status: "pending" 
+            },
+            { 
+              $set: { 
+                dueDate: followUpDate, 
+                notes: notes || `Follow-up scheduled (Visit #${existingLead.visitCount})`,
+                taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call"
+              } 
+            },
+            { upsert: true, sort: { createdAt: -1 } }
+          );
         }
 
         return res.status(200).json({
@@ -2130,15 +2148,22 @@ app.post(
       await newLead.save();
 
       if (followUpDate) {
-        await Task.create({
-          salespersonId: req.user.userId,
-          instituteName: newLead.instituteName,
-          taskType: followUpAction?.toLowerCase().includes("demo")
-            ? "demo"
-            : "call",
-          notes: notes || `Follow-up scheduled: ${followUpAction}`,
-          dueDate: followUpDate,
-        });
+        // 🌟 FIX: New lead ke case mein bhi check karein ki agar koi purana pending task ho toh wahi update ho jaye
+        await Task.findOneAndUpdate(
+          { 
+            salespersonId: req.user.userId, 
+            instituteName: newLead.instituteName, 
+            status: "pending" 
+          },
+          { 
+            $set: { 
+              dueDate: followUpDate, 
+              notes: notes || `Follow-up scheduled: ${followUpAction}`,
+              taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call"
+            } 
+          },
+          { upsert: true, sort: { createdAt: -1 } }
+        );
       }
 
       res
@@ -2197,13 +2222,22 @@ app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto")
       return res.status(404).json({ message: "Lead not found" });
     
     if (followUpDate) {
-      await Task.create({
-        salespersonId: req.user.userId,
-        instituteName: updatedLead.instituteName,
-        taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call",
-        notes: notes || `Rescheduled follow-up`,
-        dueDate: followUpDate,
-      });
+      // 🌟 FIX: Purana pending task update karein, naya task create mat karein
+      await Task.findOneAndUpdate(
+        { 
+          salespersonId: req.user.userId, 
+          instituteName: updatedLead.instituteName, 
+          status: "pending" 
+        },
+        { 
+          $set: { 
+            dueDate: followUpDate, 
+            notes: notes || `Rescheduled follow-up`,
+            taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call"
+          } 
+        },
+        { upsert: true, sort: { createdAt: -1 } }
+      );
     }
 
     res.json({ message: "Lead updated successfully!", lead: updatedLead });

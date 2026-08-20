@@ -140,6 +140,46 @@ export const LeadsExportTab = ({
           }
           )
         </button>
+        
+        {/* 🌟 1. DEMO DONE FILTER BUTTON */}
+        <button
+          onClick={() => setAdminLeadFilter("demo-done")}
+          className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${
+            adminLeadFilter === "demo-done"
+              ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm"
+              : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+          }`}
+        >
+          ✅ Demo Done (
+          {
+            allSystemLeads.filter(
+              (l) => l.demoStatus?.toLowerCase() === "completed"
+            ).length
+          }
+          )
+        </button>
+
+        {/* 🌟 2. DEMO PENDING FILTER BUTTON */}
+        <button
+          onClick={() => setAdminLeadFilter("demo-pending")}
+          className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${
+            adminLeadFilter === "demo-pending"
+              ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm"
+              : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+          }`}
+        >
+          ⏳ Demo Pending (
+          {
+            allSystemLeads.filter(
+              (l) =>
+                !l.demoStatus ||
+                l.demoStatus?.toLowerCase() === "not given" ||
+                l.demoStatus?.toLowerCase() === "scheduled"
+            ).length
+          }
+          )
+        </button>
+
         <button
           onClick={() => setAdminLeadFilter("not-interested")}
           className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${
@@ -201,7 +241,6 @@ export const LeadsExportTab = ({
                 key={lead._id}
                 className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl flex flex-col gap-3 text-xs transition hover:border-[var(--color-primary)]/40 overflow-hidden w-full max-w-full"
               >
-                {/* Top Header Row with flex-wrap and min-w-0 to prevent overflow */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 w-full">
                   <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
                     <strong className="text-sm text-[var(--color-heading)] font-bold break-words">

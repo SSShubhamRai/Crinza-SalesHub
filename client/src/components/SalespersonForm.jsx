@@ -4162,156 +4162,247 @@ const fetchSalespersonNotifications = useCallback(async () => {
                   )}
 
                   {invoiceStep === 2 && (
-                    <div className="space-y-4 sm:space-y-5">
-                      <h4 className="text-xs sm:text-sm font-bold text-[var(--color-heading)] uppercase">
-                        2. Installment, Due Payment Ledger & Add-ons
-                      </h4>
+  <div className="space-y-4 sm:space-y-5">
+    <h4 className="text-xs sm:text-sm font-bold text-[var(--color-heading)] uppercase">
+      2. Installment, Due Payment Ledger & Add-ons
+    </h4>
 
-                      {formData.previousDueBalance > 0 && (
-                        <div className="bg-amber-500/10 border border-amber-500/30 p-4 sm:p-5 rounded-2xl flex justify-between items-center text-xs sm:text-sm gap-3">
-                          <div>
-                            <strong className="text-amber-600 block font-bold">
-                              ⚠️ Outstanding Due Balance Carried Forward:
-                            </strong>
-                            <span className="text-[var(--color-body)]">
-                              This institute has a pending due balance.
-                            </span>
-                          </div>
-                          <span className="text-amber-600 font-extrabold text-base shrink-0">
-                            ₹
-                            {formData.previousDueBalance.toLocaleString(
-                              "en-IN",
-                            )}
-                          </span>
-                        </div>
-                      )}
+    {formData.previousDueBalance > 0 && (
+      <div className="bg-amber-500/10 border border-amber-500/30 p-4 sm:p-5 rounded-2xl flex justify-between items-center text-xs sm:text-sm gap-3">
+        <div>
+          <strong className="text-amber-600 block font-bold">
+            ⚠️ Outstanding Due Balance Carried Forward:
+          </strong>
+          <span className="text-[var(--color-body)]">
+            This institute has a pending due balance.
+          </span>
+        </div>
+        <span className="text-amber-600 font-extrabold text-base shrink-0">
+          ₹{formData.previousDueBalance.toLocaleString("en-IN")}
+        </span>
+      </div>
+    )}
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 text-xs sm:text-sm">
-                        <div>
-                          <label className="block font-medium mb-2 text-[var(--color-heading)]">
-                            Base Package Price (₹)
-                          </label>
-                          <input
-                            type="number"
-                            name="baseAmount"
-                            value={formData.baseAmount}
-                            onChange={handleChange}
-                            className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3.5"
-                          />
-                        </div>
-                        <div>
-                          <label className="block font-medium mb-2 text-emerald-600 font-bold">
-                            Installment Paid Now (₹) *
-                          </label>
-                          <input
-                            type="number"
-                            name="paidAmount"
-                            value={formData.paidAmount}
-                            onChange={handleChange}
-                            className="w-full bg-[var(--color-surface)] border border-emerald-500/50 rounded-2xl p-3.5 font-bold text-emerald-600"
-                          />
-                        </div>
-                      </div>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 text-xs sm:text-sm">
+      <div>
+        <label className="block font-medium mb-2 text-[var(--color-heading)]">
+          Base Package Price (₹)
+        </label>
+        <input
+          type="number"
+          name="baseAmount"
+          value={formData.baseAmount}
+          onChange={handleChange}
+          className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3.5"
+        />
+      </div>
+      <div>
+        <label className="block font-medium mb-2 text-emerald-600 font-bold">
+          Installment Paid Now (₹) *
+        </label>
+        <input
+          type="number"
+          name="paidAmount"
+          value={formData.paidAmount}
+          onChange={handleChange}
+          className="w-full bg-[var(--color-surface)] border border-emerald-500/50 rounded-2xl p-3.5 font-bold text-emerald-600"
+        />
+      </div>
+    </div>
 
-                      <div className="p-4 sm:p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3.5">
-                        <label className="block text-xs sm:text-sm font-semibold text-[var(--color-primary)] uppercase">
-                          🎁 Select Add-on Packages
-                        </label>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs sm:text-sm text-[var(--color-heading)]">
-                          <label className="flex items-center gap-3 cursor-pointer bg-[var(--color-card)] p-3.5 rounded-xl border border-[var(--color-border)]">
-                            <input
-                              type="checkbox"
-                              name="testModule"
-                              checked={addons.testModule}
-                              onChange={handleAddonChange}
-                              className="w-5 h-5 accent-[var(--color-primary)] rounded"
-                            />
-                            <span>Test Series Module (+₹5,000)</span>
-                          </label>
-                          <label className="flex items-center gap-3 cursor-pointer bg-[var(--color-card)] p-3.5 rounded-xl border border-[var(--color-border)]">
-                            <input
-                              type="checkbox"
-                              name="windowApp"
-                              checked={addons.windowApp}
-                              onChange={handleAddonChange}
-                              className="w-5 h-5 accent-[var(--color-primary)] rounded"
-                            />
-                            <span>Windows App (+₹5,000)</span>
-                          </label>
-                          <label className="flex items-center gap-3 cursor-pointer bg-[var(--color-card)] p-3.5 rounded-xl border border-[var(--color-border)]">
-                            <input
-                              type="checkbox"
-                              name="iosApp"
-                              checked={addons.iosApp}
-                              onChange={handleAddonChange}
-                              className="w-5 h-5 accent-[var(--color-primary)] rounded"
-                            />
-                            <span>iOS Mobile App (+₹45,000)</span>
-                          </label>
-                        </div>
-                      </div>
+    {/* --- Add-on Packages --- */}
+    <div className="p-4 sm:p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3.5">
+      <label className="block text-xs sm:text-sm font-semibold text-[var(--color-primary)] uppercase">
+        🎁 Select Add-on Packages
+      </label>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 text-xs sm:text-sm text-[var(--color-heading)]">
+        <label className="flex items-center gap-3 cursor-pointer bg-[var(--color-card)] p-3.5 rounded-xl border border-[var(--color-border)]">
+          <input
+            type="checkbox"
+            name="testModule"
+            checked={addons.testModule}
+            onChange={handleAddonChange}
+            className="w-5 h-5 accent-[var(--color-primary)] rounded"
+          />
+          <span>Test Series Module (+₹5,000)</span>
+        </label>
+        <label className="flex items-center gap-3 cursor-pointer bg-[var(--color-card)] p-3.5 rounded-xl border border-[var(--color-border)]">
+          <input
+            type="checkbox"
+            name="windowApp"
+            checked={addons.windowApp}
+            onChange={handleAddonChange}
+            className="w-5 h-5 accent-[var(--color-primary)] rounded"
+          />
+          <span>Windows App (+₹5,000)</span>
+        </label>
+        <label className="flex items-center gap-3 cursor-pointer bg-[var(--color-card)] p-3.5 rounded-xl border border-[var(--color-border)]">
+          <input
+            type="checkbox"
+            name="iosApp"
+            checked={addons.iosApp}
+            onChange={handleAddonChange}
+            className="w-5 h-5 accent-[var(--color-primary)] rounded"
+          />
+          <span>iOS Mobile App (+₹45,000)</span>
+        </label>
+      </div>
+    </div>
 
-                      <div className="p-4 sm:p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">
-                        <label className="block text-xs sm:text-sm font-semibold text-[var(--color-primary)] uppercase">
-                          🏷️ Apply Coupon Code
-                        </label>
-                        <div className="flex gap-2.5">
-                          <input
-                            type="text"
-                            value={couponInput}
-                            disabled={isCouponApplied}
-                            onChange={(e) => setCouponInput(e.target.value)}
-                            placeholder="FLAT50"
-                            className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm font-mono"
-                          />
-                          {!isCouponApplied ? (
-                            <button
-                              type="button"
-                              onClick={handleApplyCoupon}
-                              className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-6 py-3 rounded-xl font-semibold min-h-[44px]"
-                            >
-                              Apply
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={handleRemoveCoupon}
-                              className="bg-red-500/15 text-red-600 border border-red-500/20 text-xs sm:text-sm px-6 py-3 rounded-xl font-semibold min-h-[44px]"
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                        {couponError && (
-                          <p className="text-xs sm:text-sm text-red-500">
-                            {couponError}
-                          </p>
-                        )}
-                        {isCouponApplied && (
-                          <p className="text-xs sm:text-sm text-emerald-600 font-medium">
-                            🎉 Coupon applied!
-                          </p>
-                        )}
-                      </div>
+    {/* --- 🏷️ Coupon Code Section --- */}
+    <div className="p-4 sm:p-5 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl space-y-3">
+      <label className="block text-xs sm:text-sm font-semibold text-[var(--color-primary)] uppercase">
+        🏷️ Apply Coupon Code
+      </label>
+      <div className="flex gap-2.5">
+        <input
+          type="text"
+          value={couponInput}
+          disabled={isCouponApplied}
+          onChange={(e) => setCouponInput(e.target.value)}
+          placeholder="ENTER COUPON CODE"
+          className="uppercase flex-1 bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm font-mono font-bold"
+        />
+        {!isCouponApplied ? (
+          <button
+            type="button"
+            onClick={handleApplyCoupon}
+            className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-6 py-3 rounded-xl font-semibold min-h-[44px] cursor-pointer"
+          >
+            Apply
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleRemoveCoupon}
+            className="bg-red-500/15 text-red-600 border border-red-500/20 text-xs sm:text-sm px-6 py-3 rounded-xl font-semibold min-h-[44px] cursor-pointer hover:bg-red-500/25 transition"
+          >
+            Remove
+          </button>
+        )}
+      </div>
 
-                      <div className="flex justify-between pt-4">
-                        <button
-                          type="button"
-                          onClick={() => setInvoiceStep(1)}
-                          className="bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer min-h-[46px]"
-                        >
-                          ← Back
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setInvoiceStep(3)}
-                          className="bg-[var(--color-primary)] text-white px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer shadow-sm active:scale-95 transition min-h-[46px]"
-                        >
-                          Next: Payment Mode ➔
-                        </button>
-                      </div>
-                    </div>
-                  )}
+      {couponError && (
+        <p className="text-xs sm:text-sm text-red-500 font-medium">
+          {couponError}
+        </p>
+      )}
+
+      {/* 🌟 Highlighted Discount Banner */}
+      {isCouponApplied && (
+        <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-xs sm:text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🎉</span>
+            <span className="text-emerald-700 dark:text-emerald-400 font-bold">
+              Coupon <strong>{formData.couponCode}</strong> Applied Successfully!
+            </span>
+          </div>
+          <span className="text-emerald-700 dark:text-emerald-400 font-extrabold text-sm">
+            -₹{formData.discountAmount.toLocaleString("en-IN")}{" "}
+            {couponDetails?.discountType === "percentage"
+              ? `(${couponDetails.discountValue}% OFF)`
+              : ""}
+          </span>
+        </div>
+      )}
+    </div>
+
+    {/* --- 🌟 LIVE PRICE BREAKDOWN SUMMARY CARD IN STEP 2 --- */}
+    <div className="p-4 sm:p-5 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] space-y-2.5 text-xs sm:text-sm">
+      <h5 className="font-bold text-[var(--color-heading)] uppercase text-xs tracking-wider border-b border-[var(--color-border)] pb-2">
+        📊 Live Price Calculation Breakdown
+      </h5>
+
+      <div className="flex justify-between text-[var(--color-body)]">
+        <span>Base Package:</span>
+        <strong className="text-[var(--color-heading)]">
+          ₹{formData.baseAmount.toLocaleString("en-IN")}
+        </strong>
+      </div>
+
+      {(addons.testModule || addons.windowApp || addons.iosApp) && (
+        <div className="flex justify-between text-[var(--color-body)]">
+          <span>Add-on Packages:</span>
+          <strong className="text-[var(--color-heading)]">
+            +₹
+            {(
+              (addons.testModule ? ADDON_PRICES.testModule : 0) +
+              (addons.windowApp ? ADDON_PRICES.windowApp : 0) +
+              (addons.iosApp ? ADDON_PRICES.iosApp : 0)
+            ).toLocaleString("en-IN")}
+          </strong>
+        </div>
+      )}
+
+      {formData.discountAmount > 0 && (
+        <div className="flex justify-between text-emerald-600 font-semibold">
+          <span>Coupon Discount ({formData.couponCode}):</span>
+          <strong>-₹{formData.discountAmount.toLocaleString("en-IN")}</strong>
+        </div>
+      )}
+
+      <div className="flex justify-between text-[var(--color-body)]">
+        <span>Subtotal (Taxable):</span>
+        <strong className="text-[var(--color-heading)]">
+          ₹{formData.subtotalAmount.toLocaleString("en-IN")}
+        </strong>
+      </div>
+
+      <div className="flex justify-between text-[var(--color-body)]">
+        <span>GST (18%):</span>
+        <strong className="text-[var(--color-heading)]">
+          +₹{formData.gstAmount.toLocaleString("en-IN")}
+        </strong>
+      </div>
+
+      {formData.previousDueBalance > 0 && (
+        <div className="flex justify-between text-amber-600 font-semibold">
+          <span>Previous Due Added:</span>
+          <strong>+₹{formData.previousDueBalance.toLocaleString("en-IN")}</strong>
+        </div>
+      )}
+
+      <div className="flex justify-between pt-2 border-t border-[var(--color-border)] text-sm sm:text-base font-extrabold text-[var(--color-heading)]">
+        <span>Grand Total Amount:</span>
+        <span className="text-[var(--color-primary)]">
+          ₹{formData.totalAmount.toLocaleString("en-IN")}
+        </span>
+      </div>
+
+      <div className="flex justify-between text-xs sm:text-sm font-bold pt-1">
+        <span>Remaining Due After Payment:</span>
+        <span
+          className={
+            dueAmount > 0 ? "text-amber-600" : "text-emerald-600"
+          }
+        >
+          ₹{dueAmount.toLocaleString("en-IN")}{" "}
+          {dueAmount === 0 ? "✨ (Zero Due)" : ""}
+        </span>
+      </div>
+    </div>
+
+    {/* --- Navigation Buttons --- */}
+    <div className="flex justify-between pt-4">
+      <button
+        type="button"
+        onClick={() => setInvoiceStep(1)}
+        className="bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-heading)] px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer min-h-[46px]"
+      >
+        ← Back
+      </button>
+      <button
+        type="button"
+        onClick={() => setInvoiceStep(3)}
+        className="bg-[var(--color-primary)] text-white px-7 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold cursor-pointer shadow-sm active:scale-95 transition min-h-[46px]"
+      >
+        Next: Payment Mode ➔
+      </button>
+    </div>
+  </div>
+)}
+
+
 
                   {invoiceStep === 3 && (
                     <div className="space-y-4 sm:space-y-5">

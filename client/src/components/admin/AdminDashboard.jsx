@@ -630,15 +630,20 @@ const AdminDashboard = ({ userId, onLogout }) => {
     return matchesSearch && matchesRole;
   });
 
-  const filteredSystemLeads = allSystemLeads.filter((lead) => {
+const filteredSystemLeads = allSystemLeads.filter((lead) => {
     const lStatus = lead.leadStatus?.toLowerCase() || "";
     const fAction = lead.followUpAction?.toLowerCase() || "";
+    const dStatus = lead.demoStatus?.toLowerCase() || "";
 
     let matchesStatus = true;
     if (adminLeadFilter === "call-back") {
       matchesStatus = lStatus.includes("call") || fAction.includes("call");
     } else if (adminLeadFilter === "next-meeting") {
       matchesStatus = lStatus.includes("meeting") || fAction.includes("meeting") || fAction.includes("next meeting");
+    } else if (adminLeadFilter === "demo-done") {
+      matchesStatus = dStatus === "completed";
+    } else if (adminLeadFilter === "demo-pending") {
+      matchesStatus = !lead.demoStatus || dStatus === "not given" || dStatus === "scheduled";
     } else if (adminLeadFilter === "not-interested") {
       matchesStatus = lStatus.includes("not interested");
     } else if (adminLeadFilter === "deal-closed") {
