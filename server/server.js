@@ -256,8 +256,8 @@ function deg2rad(deg) {
 // 🌟 Local Distance Calculation with 200 Meters Threshold & Road Factor
 function calculateValidDistance(coordinatesList) {
   let straightDistance = 0;
-  const MIN_DISTANCE_THRESHOLD = 0.2; // 0.2 KM = 200 meters threshold
-  const ROAD_FACTOR = 1.8; // 75% extra for road curves and turns
+  const MIN_DISTANCE_THRESHOLD = 0.03; // 0.03KM = 30m meters threshold
+  const ROAD_FACTOR = 1.8; //  for road curves and turns
 
   for (let i = 1; i < coordinatesList.length; i++) {
     const prev = coordinatesList[i - 1];
@@ -342,7 +342,7 @@ io.on("connection", (socket) => {
         const distanceKm = calculateDistance(lastLog.latitude, lastLog.longitude, latitude, longitude);
         const timeDiffHours = (currentTime - new Date(lastLog.timestamp)) / (1000 * 60 * 60);
 
-        if (distanceKm < 0.2) {
+        if (distanceKm < 0.03) {
           io.emit("live_location_broadcast", {
             salespersonId,
             latitude,
@@ -1866,7 +1866,6 @@ app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
 
 app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
   try {
-    // 🌟 Forcefully get exact correct IST Date string (YYYY-MM-DD)
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today, status: "STARTED" });
 
@@ -1875,11 +1874,19 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     }
 
     const { latitude, longitude } = req.body;
-
-    const routeLogs = await LocationLog.find({ salespersonId: req.user.userId, date: today }).sort({ timestamp: 1 });
-    const computedDistance = calculateValidDistance(routeLogs);
-
     const endTimeDate = new Date();
+
+    // 🌟 FIX: Strictly fetch logs between Start Day timestamp and End Day timestamp
+    const routeLogs = await LocationLog.find({ 
+      salespersonId: req.user.userId, 
+      date: today,
+      timestamp: { 
+        $gte: new Date(session.startTime), 
+        $lte: endTimeDate                   
+      } 
+    }).sort({ timestamp: 1 });
+
+    const computedDistance = calculateValidDistance(routeLogs);
 
     session.status = "ENDED";
     session.endTime = endTimeDate;
@@ -1894,7 +1901,6 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     const workingMilliseconds = endTimeDate - new Date(session.startTime);
     const workingHours = (workingMilliseconds / (1000 * 60 * 60)).toFixed(1);
 
-    // 🌟 Bulletproof IST Formatter (Bypasses hosting server timezone misconfigurations)
     const formatISTTime = (dateValue) => {
       const d = new Date(dateValue);
       return d.toLocaleTimeString('en-IN', {
@@ -1909,8 +1915,8 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
       success: true,
       message: "Day ended successfully. Entries are now locked for today.",
       summary: {
-        startTime: formatISTTime(session.startTime), // ✅ Ab ye bilkul sahi Indian Time (IST) dega
-        endTime: formatISTTime(session.endTime),     // ✅ Ab ye bhi bilkul sahi Indian Time (IST) dega
+        startTime: formatISTTime(session.startTime),
+        endTime: formatISTTime(session.endTime),
         workingHours: `${workingHours} hrs`,
         totalVisits: totalVisitsToday,
         totalCollected: totalCollectedToday,
@@ -2493,6 +2499,59 @@ app.post("/api/auth/webauthn/login-verify", async (req, res) => {
   }
 });
 
+
+// =========================================================================
+// --- 🌙 AUTOMATIC SHIFT END (Har raat 11:00 PM par chalega) ---
+// =========================================================================
+const cron = require('node-cron'); // Optional: Agar node-cron package use karna chahein, ya phir simple setInterval
+
+// Simple & Reliable Hourly/Minute Checker for 11:00 PM IST
+setInterval(async () => {
+  try {
+    const now = new Date();
+    // Get current IST hours and minutes
+    const istTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const [currentHour, currentMinute] = istTimeStr.split(':').map(Number);
+
+    // Agar raat ke 11:00 PM (23:00) se lekar 11:05 PM ke beech ka samay hai
+    if (currentHour === 23 && currentMinute <= 5) {
+      const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+      // Sare active STARTED sessions dhoondho jo aaj ya usse pehle ke hain
+      const activeSessions = await DaySession.find({ 
+        status: "STARTED",
+        date: { $lte: today }
+      });
+
+      for (const session of activeSessions) {
+        const endTimeDate = new Date(); // Auto end time (11:00 PM approx)
+
+        // Session ke start hone se lekar 11:00 PM tak ke logs fetch karein
+        const routeLogs = await LocationLog.find({ 
+          salespersonId: session.salespersonId, 
+          date: session.date,
+          timestamp: { 
+            $gte: new Date(session.startTime), 
+            $lte: endTimeDate                   
+          } 
+        }).sort({ timestamp: 1 });
+
+        // Distance calculate karein
+        const computedDistance = calculateValidDistance(routeLogs);
+
+        // Session ko ENDED mark kar do
+        session.status = "ENDED";
+        session.endTime = endTimeDate;
+        session.totalDistanceKm = computedDistance;
+        await session.save();
+
+        console.log(`🌙 Auto-Ended Shift at 11:00 PM for Salesperson: ${session.salespersonId} | Total Distance: ${computedDistance} km`);
+      }
+    }
+  } catch (err) {
+    console.error("🔥 Auto-End Day Job Error:", err.message);
+  }
+}, 5 * 60 * 1000); // Har 5 minute mein ek baar check karega taaki 11:00 PM miss na ho
 // =========================================================================
 // --- 🌐 SERVER LISTENER ---
 // =========================================================================
