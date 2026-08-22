@@ -2467,562 +2467,421 @@ const fetchSalespersonNotifications = useCallback(async () => {
               </div>
             )}
 
-            {activeView === "leads" && (
-              <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
-                  <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">
-                    📋 My Generated Leads & Visit Records
-                  </h3>
-                  <button
-                    onClick={() => {
-                      if (dayStatus !== "ACTIVE") {
-                        toast.error("Start day first!");
-                        return;
-                      }
-                      setActiveView("lead-form");
-                    }}
-                    className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]"
-                  >
-                    ➕ Record Visit / New Lead
-                  </button>
-                </div>
+{activeView === "leads" && (() => {
+              // --- 📊 CALCULATE COUNTS FOR LEAD FILTER BUTTONS ---
+              const countAllActive = activeLeadsList.length;
 
-                <div className="space-y-3.5">
-                  <div className="relative">
-                    <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-[var(--color-body)]">
-                      🔍
-                    </span>
-                    <input
-                      type="text"
-                      value={leadSearchQuery}
-                      onChange={(e) => setLeadSearchQuery(e.target.value)}
-                      placeholder="Search by institute name, contact person, mobile number..."
-                      className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3.5 pl-11 pr-16 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
-                    />
-                    {leadSearchQuery && (
-                      <button
-                        onClick={() => setLeadSearchQuery("")}
-                        className="absolute inset-y-0 right-0 flex items-center pr-4 text-xs sm:text-sm text-[var(--color-body)] hover:text-[var(--color-heading)]"
-                      >
-                        ✕ Clear
-                      </button>
-                    )}
-                  </div>
+              const countCall = myLeads.filter(
+                (lead) =>
+                  lead.leadStatus !== "Not Interested" &&
+                  lead.leadStatus !== "Deal Close" &&
+                  (lead.followUpAction?.toLowerCase() === "call" ||
+                    lead.followUpAction?.toLowerCase() === "call back" ||
+                    lead.leadStatus?.toLowerCase() === "call back")
+              ).length;
 
-                  <div className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
-                    <button
-                      onClick={() => setLeadFilter("all")}
-                      className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                        leadFilter === "all"
-                          ? "bg-[var(--color-primary)] text-white border-transparent"
-                          : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                      }`}
-                    >
-                      All Active ({activeLeadsList.length})
-                    </button>
-                    <button
-                      onClick={() => setLeadFilter("call")}
-                      className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                        leadFilter === "call"
-                          ? "bg-[var(--color-primary)] text-white border-transparent"
-                          : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                      }`}
-                    >
-                      📞 To Call / Call Back
-                    </button>
-                    <button
-                      onClick={() => setLeadFilter("meeting")}
-                      className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                        leadFilter === "meeting"
-                          ? "bg-[var(--color-primary)] text-white border-transparent"
-                          : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                      }`}
-                    >
-                      🤝 Meetings
-                    </button>
-                    <button
-                      onClick={() => setLeadFilter("demo-done")}
-                      className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                        leadFilter === "demo-done"
-                          ? "bg-[var(--color-primary)] text-white border-transparent"
-                          : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                      }`}
-                    >
-                      ✅ Demo Done
-                    </button>
-                    <button
-                      onClick={() => setLeadFilter("demo-pending")}
-                      className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                        leadFilter === "demo-pending"
-                          ? "bg-[var(--color-primary)] text-white border-transparent"
-                          : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                      }`}
-                    >
-                      ⏳ Demo Pending
-                    </button>
-                    <button
-                      onClick={() => setLeadFilter("not-interested")}
-                      className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                        leadFilter === "not-interested"
-                          ? "bg-red-600 text-white border-transparent"
-                          : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                      }`}
-                    >
-                      ❌ Not Interested
-                    </button>
-                  </div>
-                </div>
+              const countMeeting = myLeads.filter(
+                (lead) =>
+                  lead.leadStatus !== "Not Interested" &&
+                  lead.leadStatus !== "Deal Close" &&
+                  (lead.followUpAction?.toLowerCase() === "next meeting" ||
+                    lead.followUpAction?.toLowerCase() === "meeting")
+              ).length;
 
-                {loadingLeads ? (
-                  <SkeletonLoader rows={3} />
-                ) : filteredLeads.length === 0 ? (
-                  <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs sm:text-sm text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
-                    <p>No leads found matching your search or filter.</p>
+              const countDemoDone = myLeads.filter(
+                (lead) =>
+                  lead.leadStatus !== "Not Interested" &&
+                  lead.leadStatus !== "Deal Close" &&
+                  lead.demoStatus?.toLowerCase() === "completed"
+              ).length;
+
+              const countDemoPending = myLeads.filter(
+                (lead) =>
+                  lead.leadStatus !== "Not Interested" &&
+                  lead.leadStatus !== "Deal Close" &&
+                  (!lead.demoStatus ||
+                    lead.demoStatus?.toLowerCase() === "not given" ||
+                    lead.demoStatus?.toLowerCase() === "scheduled")
+              ).length;
+
+              const countNotInterested = myLeads.filter(
+                (lead) => lead.leadStatus === "Not Interested"
+              ).length;
+
+              return (
+                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
+                    <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">
+                      📋 My Generated Leads & Visit Records
+                    </h3>
                     <button
                       onClick={() => {
-                        setLeadFilter("all");
-                        setLeadSearchQuery("");
+                        if (dayStatus !== "ACTIVE") {
+                          toast.error("Start day first!");
+                          return;
+                        }
+                        setActiveView("lead-form");
                       }}
-                      className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-4 py-2.5 rounded-xl active:scale-95 transition"
+                      className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]"
                     >
-                      Reset Search & Filters
+                      ➕ Record Visit / New Lead
                     </button>
                   </div>
-                ) : (
+
                   <div className="space-y-3.5">
-                    {filteredLeads.map((lead) => (
-                      <div
-                        key={lead._id}
-                        className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-4 sm:p-5 rounded-2xl space-y-3 text-xs sm:text-sm transition shadow-sm"
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-[var(--color-body)]">
+                        🔍
+                      </span>
+                      <input
+                        type="text"
+                        value={leadSearchQuery}
+                        onChange={(e) => setLeadSearchQuery(e.target.value)}
+                        placeholder="Search by institute name, contact person, mobile number..."
+                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3.5 pl-11 pr-16 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
+                      />
+                      {leadSearchQuery && (
+                        <button
+                          onClick={() => setLeadSearchQuery("")}
+                          className="absolute inset-y-0 right-0 flex items-center pr-4 text-xs sm:text-sm text-[var(--color-body)] hover:text-[var(--color-heading)]"
+                        >
+                          ✕ Clear
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
+                      <button
+                        onClick={() => setLeadFilter("all")}
+                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+                          leadFilter === "all"
+                            ? "bg-[var(--color-primary)] text-white border-transparent"
+                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+                        }`}
                       >
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <strong
+                        All Active ({countAllActive})
+                      </button>
+                      <button
+                        onClick={() => setLeadFilter("call")}
+                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+                          leadFilter === "call"
+                            ? "bg-[var(--color-primary)] text-white border-transparent"
+                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+                        }`}
+                      >
+                        📞 To Call / Call Back ({countCall})
+                      </button>
+                      <button
+                        onClick={() => setLeadFilter("meeting")}
+                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+                          leadFilter === "meeting"
+                            ? "bg-[var(--color-primary)] text-white border-transparent"
+                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+                        }`}
+                      >
+                        🤝 Meetings ({countMeeting})
+                      </button>
+                      <button
+                        onClick={() => setLeadFilter("demo-done")}
+                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+                          leadFilter === "demo-done"
+                            ? "bg-[var(--color-primary)] text-white border-transparent"
+                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+                        }`}
+                      >
+                        ✅ Demo Done ({countDemoDone})
+                      </button>
+                      <button
+                        onClick={() => setLeadFilter("demo-pending")}
+                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+                          leadFilter === "demo-pending"
+                            ? "bg-[var(--color-primary)] text-white border-transparent"
+                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+                        }`}
+                      >
+                        ⏳ Demo Pending ({countDemoPending})
+                      </button>
+                      <button
+                        onClick={() => setLeadFilter("not-interested")}
+                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+                          leadFilter === "not-interested"
+                            ? "bg-red-600 text-white border-transparent"
+                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+                        }`}
+                      >
+                        ❌ Not Interested ({countNotInterested})
+                      </button>
+                    </div>
+                  </div>
+
+                  {loadingLeads ? (
+                    <SkeletonLoader rows={3} />
+                  ) : filteredLeads.length === 0 ? (
+                    <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs sm:text-sm text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
+                      <p>No leads found matching your search or filter.</p>
+                      <button
+                        onClick={() => {
+                          setLeadFilter("all");
+                          setLeadSearchQuery("");
+                        }}
+                        className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-4 py-2.5 rounded-xl active:scale-95 transition"
+                      >
+                        Reset Search & Filters
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3.5">
+                      {filteredLeads.map((lead) => (
+                        <div
+                          key={lead._id}
+                          className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-4 sm:p-5 rounded-2xl space-y-3 text-xs sm:text-sm transition shadow-sm"
+                        >
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <strong
+                                onClick={() => setSelectedLead(lead)}
+                                className="text-sm sm:text-base text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)] break-words"
+                              >
+                                {lead.instituteName}
+                              </strong>
+                              {lead.visitCount > 1 && (
+                                <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-full font-bold text-[11px]">
+                                  🔄 {lead.visitCount} Visits
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() =>
+                                  handleWhatsAppReminder(lead, "followup")
+                                }
+                                className="bg-[#25D366] text-white px-3.5 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                              >
+                                <WhatsAppIcon /> WhatsApp
+                              </button>
+                              <span
+                                className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${
+                                  lead.leadStatus === "Not Interested"
+                                    ? "bg-red-500/10 text-red-600 border border-red-500/20"
+                                    : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                                }`}
+                              >
+                                {lead.leadStatus || "Active Lead"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[var(--color-heading)]">
+                            <div className="break-words">
+                              👤 <strong>Contact:</strong> {lead.contactPerson} |
+                              📞{" "}
+                              <a
+                                href={`tel:${lead.mobileNo}`}
+                                className="text-[var(--color-primary)] font-bold hover:underline"
+                              >
+                                {lead.mobileNo}
+                              </a>
+                            </div>
+                            <div
                               onClick={() => setSelectedLead(lead)}
-                              className="text-sm sm:text-base text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)] break-words"
+                              className="cursor-pointer break-words"
                             >
-                              {lead.instituteName}
-                            </strong>
-                            {lead.visitCount > 1 && (
-                              <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-full font-bold text-[11px]">
-                                🔄 {lead.visitCount} Visits
+                              📍 <strong>Location:</strong>{" "}
+                              {lead.address || "N/A"}, {lead.city}, {lead.state}
+                            </div>
+                            <div
+                              onClick={() => setSelectedLead(lead)}
+                              className="cursor-pointer"
+                            >
+                              🎯 <strong>Demo Status:</strong>{" "}
+                              <span className="text-amber-600 font-semibold">
+                                {lead.demoStatus || "Not Given"}
+                              </span>
+                            </div>
+                            {lead.followUpDate && (
+                              <div
+                                onClick={() => setSelectedLead(lead)}
+                                className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
+                              >
+                                <span className="break-words">
+                                  🔔 <strong>Follow-up Reminder:</strong>{" "}
+                                  {lead.followUpAction} on{" "}
+                                  {new Date(lead.followUpDate).toLocaleDateString(
+                                    "en-IN",
+                                  )}{" "}
+                                  {lead.followUpTime
+                                    ? `at ${lead.followUpTime}`
+                                    : ""}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* 🌟 ENHANCED LEAD DETAILS & STATUS UPDATE MODAL */}
+                  {selectedLead && (
+                    <div
+                      className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50"
+                      onClick={() => {
+                        setSelectedLead(null);
+                        setActiveModalAction(null);
+                        setUpdateDiscussionNotes("");
+                      }}
+                    >
+                      <motion.div
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3 gap-2">
+                          <div className="min-w-0">
+                            <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)] break-words">
+                              {selectedLead.instituteName}
+                            </h3>
+                            {selectedLead.visitCount > 1 && (
+                              <span className="text-xs text-emerald-600 font-semibold">
+                                Total Visits : {selectedLead.visitCount}
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() =>
-                                handleWhatsAppReminder(lead, "followup")
-                              }
-                              className="bg-[#25D366] text-white px-3.5 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
-                            >
-                              <WhatsAppIcon /> WhatsApp
-                            </button>
-                            <span
-                              className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${
-                                lead.leadStatus === "Not Interested"
-                                  ? "bg-red-500/10 text-red-600 border border-red-500/20"
-                                  : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
-                              }`}
-                            >
-                              {lead.leadStatus || "Active Lead"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[var(--color-heading)]">
-                          <div className="break-words">
-                            👤 <strong>Contact:</strong> {lead.contactPerson} |
-                            📞{" "}
-                            <a
-                              href={`tel:${lead.mobileNo}`}
-                              className="text-[var(--color-primary)] font-bold hover:underline"
-                            >
-                              {lead.mobileNo}
-                            </a>
-                          </div>
-                          <div
-                            onClick={() => setSelectedLead(lead)}
-                            className="cursor-pointer break-words"
-                          >
-                            📍 <strong>Location:</strong>{" "}
-                            {lead.address || "N/A"}, {lead.city}, {lead.state}
-                          </div>
-                          <div
-                            onClick={() => setSelectedLead(lead)}
-                            className="cursor-pointer"
-                          >
-                            🎯 <strong>Demo Status:</strong>{" "}
-                            <span className="text-amber-600 font-semibold">
-                              {lead.demoStatus || "Not Given"}
-                            </span>
-                          </div>
-                          {lead.followUpDate && (
-                            <div
-                              onClick={() => setSelectedLead(lead)}
-                              className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
-                            >
-                              <span className="break-words">
-                                🔔 <strong>Follow-up Reminder:</strong>{" "}
-                                {lead.followUpAction} on{" "}
-                                {new Date(lead.followUpDate).toLocaleDateString(
-                                  "en-IN",
-                                )}{" "}
-                                {lead.followUpTime
-                                  ? `at ${lead.followUpTime}`
-                                  : ""}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* 🌟 ENHANCED LEAD DETAILS & STATUS UPDATE MODAL */}
-                {selectedLead && (
-                  <div
-                    className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50"
-                    onClick={() => {
-                      setSelectedLead(null);
-                      setActiveModalAction(null);
-                      setUpdateDiscussionNotes("");
-                    }}
-                  >
-                    <motion.div
-                      initial={{ scale: 0.9, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3 gap-2">
-                        <div className="min-w-0">
-                          <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)] break-words">
-                            {selectedLead.instituteName}
-                          </h3>
-                          {selectedLead.visitCount > 1 && (
-                            <span className="text-xs text-emerald-600 font-semibold">
-                              Total Visits : {selectedLead.visitCount}
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => {
-                            setSelectedLead(null);
-                            setActiveModalAction(null);
-                            setUpdateDiscussionNotes("");
-                          }}
-                          className="w-9 h-9 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-sm cursor-pointer shrink-0 active:scale-90 transition"
-                          aria-label="Close modal"
-                        >
-                          ✕
-                        </button>
-                      </div>
-
-                      <div className="space-y-2.5 text-xs sm:text-sm text-[var(--color-heading)] break-words">
-                        <p>
-                          👤 <strong>Contact Person:</strong>{" "}
-                          {selectedLead.contactPerson} | 📞{" "}
-                          <a
-                            href={`tel:${selectedLead.mobileNo}`}
-                            className="text-[var(--color-primary)] font-bold hover:underline"
-                          >
-                            {selectedLead.mobileNo}
-                          </a>
-                        </p>
-                        <p>
-                          ✉️ <strong>Email:</strong>{" "}
-                          {selectedLead.email || "N/A"}
-                        </p>
-                        <p>
-                          📍 <strong>Address:</strong>{" "}
-                          {selectedLead.address || "N/A"}, {selectedLead.city},{" "}
-                          {selectedLead.state} - {selectedLead.pincode}
-                        </p>
-                        <p>
-                          🎯 <strong>Current Demo Status:</strong>{" "}
-                          <span className="text-[var(--color-primary)] font-bold">
-                            {selectedLead.demoStatus || "Not Given"}
-                          </span>
-                        </p>
-                        {selectedLead.notes && (
-                          <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] mt-2">
-                            <strong className="block text-[var(--color-body)] mb-1">
-                              📝 Conversation History & Notes:
-                            </strong>
-                            <p className="whitespace-pre-line text-xs">
-                              {selectedLead.notes}
-                            </p>
-                          </div>
-                        )}
-                        {selectedLead.meetingPhoto && (
-                          <div className="pt-1">
-                            <strong className="block mb-1 text-[var(--color-body)]">
-                              Meeting Photo:
-                            </strong>
-                            <img
-                              src={`${API_BASE}/${selectedLead.meetingPhoto}`}
-                              alt="Meeting"
-                              className="h-40 w-full rounded-2xl object-cover border border-[var(--color-border)]"
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* --- 🌟 REQUIRED DISCUSSION NOTES INPUT FOR ANY UPDATE --- */}
-                      <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
-                        <label className="block text-xs font-bold text-[var(--color-primary)] uppercase">
-                          💬 What was discussed / Conversation Notes *
-                        </label>
-                        <textarea
-                          rows="2"
-                          required
-                          value={updateDiscussionNotes}
-                          onChange={(e) =>
-                            setUpdateDiscussionNotes(e.target.value)
-                          }
-                          placeholder="Required: Write what you discussed during this call/visit..."
-                          className="w-full bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-xl p-3 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none"
-                        ></textarea>
-                      </div>
-
-                      <div className="space-y-3.5 pt-3.5 border-t border-[var(--color-border)]">
-                        <div>
-                          <label className="block text-xs font-semibold mb-1.5 text-[var(--color-primary)] uppercase">
-                            1. Update Demo & Follow-up Status
-                          </label>
-                          <div className="flex gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleUpdateLeadStatus(
-                                  selectedLead._id,
-                                  selectedLead.leadStatus,
-                                  "Not Given",
-                                )
-                              }
-                              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
-                                selectedLead.demoStatus === "Not Given"
-                                  ? "bg-[var(--color-primary)] text-white border-transparent"
-                                  : "bg-[var(--color-surface)] border-[var(--color-border)]"
-                              }`}
-                            >
-                              ⏳ Not Given
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setActiveModalAction("reschedule")}
-                              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
-                                activeModalAction === "reschedule"
-                                  ? "bg-amber-600 text-white border-transparent"
-                                  : "bg-[var(--color-surface)] border-[var(--color-border)] text-amber-600"
-                              }`}
-                            >
-                              📅 Reschedule / Call Back
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setActiveModalAction("completed")}
-                              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
-                                activeModalAction === "completed"
-                                  ? "bg-emerald-600 text-white border-transparent"
-                                  : "bg-[var(--color-surface)] border-[var(--color-border)] text-emerald-600"
-                              }`}
-                            >
-                              ✅ Completed (Add Review & Photo)
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* 🌟 RESCHEDULE SUB-FORM */}
-                        {activeModalAction === "reschedule" && (
-                          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-3">
-                            <p className="text-xs sm:text-sm font-bold text-amber-700">
-                              Select Reschedule Date & Time:
-                            </p>
-                            <div className="grid grid-cols-2 gap-2.5">
-                              <input
-                                type="date"
-                                value={modalDate}
-                                onChange={(e) => setModalDate(e.target.value)}
-                                className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-                              />
-                              <input
-                                type="time"
-                                value={modalTime}
-                                onChange={(e) => setModalTime(e.target.value)}
-                                className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!modalDate) {
-                                  toast.error("Please pick a reschedule date!");
-                                  return;
-                                }
-                                handleUpdateLeadStatus(
-                                  selectedLead._id,
-                                  "Call Back",
-                                  "Scheduled",
-                                  {
-                                    followUpDate: modalDate,
-                                    followUpTime: modalTime,
-                                  },
-                                );
-                              }}
-                              className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
-                            >
-                              Confirm Reschedule Date
-                            </button>
-                          </div>
-                        )}
-
-                        {/* 🌟 DEMO COMPLETED SUB-FORM WITH PHOTO & REVIEW */}
-                        {activeModalAction === "completed" && (
-                          <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
-                            <p className="text-xs sm:text-sm font-bold text-emerald-700">
-                              Demo Completion Details:
-                            </p>
-                            <div>
-                              <label className="block text-xs font-medium mb-1">
-                                Client Feedback / Review Notes:
-                              </label>
-                              <textarea
-                                rows="2"
-                                value={demoReviewNotes}
-                                onChange={(e) =>
-                                  setDemoReviewNotes(e.target.value)
-                                }
-                                placeholder="e.g. Client loved the test series feature, requested price quote..."
-                                className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-                              ></textarea>
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium mb-1">
-                                📸 Upload Demo Verification Photo / Screenshot
-                                (.jpg, .png):
-                              </label>
-                              <input
-                                type="file"
-                                accept="image/jpeg, image/jpg, image/png"
-                                onChange={(e) => {
-                                  const fileItem = e.target.files[0];
-                                  if (fileItem && validateImageFile(fileItem)) {
-                                    setDemoProofFile(fileItem);
-                                  } else {
-                                    e.target.value = "";
-                                  }
-                                }}
-                                className="block w-full text-xs text-[var(--color-body)] cursor-pointer"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                handleUpdateLeadStatus(
-                                  selectedLead._id,
-                                  selectedLead.leadStatus,
-                                  "Completed",
-                                  {
-                                    reviewNotes: demoReviewNotes,
-                                    proofFile: demoProofFile,
-                                  },
-                                );
-                              }}
-                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
-                            >
-                              Save Completed Demo & Upload
-                            </button>
-                          </div>
-                        )}
-
-                        <div>
                           <button
-                            type="button"
-                            onClick={async () => {
-                              if (dayStatus !== "ACTIVE") {
-                                toast.error("Start day first!");
-                                return;
-                              }
-                              await handleUpdateLeadStatus(
-                                selectedLead._id,
-                                "Deal Close",
-                                null,
-                              );
-                              setFormData((prev) => ({
-                                ...prev,
-                                instituteName: selectedLead.instituteName,
-                                mobileNo: selectedLead.mobileNo,
-                                email: selectedLead.email || "",
-                                address: selectedLead.address || "",
-                                city: selectedLead.city,
-                                state: selectedLead.state,
-                                pincode: selectedLead.pincode,
-                              }));
+                            onClick={() => {
                               setSelectedLead(null);
-                              setInvoiceStep(1);
-                              setActiveView("invoice-form");
+                              setActiveModalAction(null);
+                              setUpdateDiscussionNotes("");
                             }}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-2xl text-xs sm:text-sm transition cursor-pointer shadow-sm active:scale-95 min-h-[46px]"
+                            className="w-9 h-9 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-sm cursor-pointer shrink-0 active:scale-90 transition"
+                            aria-label="Close modal"
                           >
-                            🚀 Sales Punch (Generate Invoice & Close Lead)
+                            ✕
                           </button>
                         </div>
 
-                        <div>
-                          <label className="block text-xs font-semibold mb-1.5 text-[var(--color-primary)] uppercase">
-                            3. Update Lead Stage / Response
+                        <div className="space-y-2.5 text-xs sm:text-sm text-[var(--color-heading)] break-words">
+                          <p>
+                            👤 <strong>Contact Person:</strong>{" "}
+                            {selectedLead.contactPerson} | 📞{" "}
+                            <a
+                              href={`tel:${selectedLead.mobileNo}`}
+                              className="text-[var(--color-primary)] font-bold hover:underline"
+                            >
+                              {selectedLead.mobileNo}
+                            </a>
+                          </p>
+                          <p>
+                            ✉️ <strong>Email:</strong>{" "}
+                            {selectedLead.email || "N/A"}
+                          </p>
+                          <p>
+                            📍 <strong>Address:</strong>{" "}
+                            {selectedLead.address || "N/A"}, {selectedLead.city},{" "}
+                            {selectedLead.state} - {selectedLead.pincode}
+                          </p>
+                          <p>
+                            🎯 <strong>Current Demo Status:</strong>{" "}
+                            <span className="text-[var(--color-primary)] font-bold">
+                              {selectedLead.demoStatus || "Not Given"}
+                            </span>
+                          </p>
+                          {selectedLead.notes && (
+                            <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] mt-2">
+                              <strong className="block text-[var(--color-body)] mb-1">
+                                📝 Conversation History & Notes:
+                              </strong>
+                              <p className="whitespace-pre-line text-xs">
+                                {selectedLead.notes}
+                              </p>
+                            </div>
+                          )}
+                          {selectedLead.meetingPhoto && (
+                            <div className="pt-1">
+                              <strong className="block mb-1 text-[var(--color-body)]">
+                                Meeting Photo:
+                              </strong>
+                              <img
+                                src={`${API_BASE}/${selectedLead.meetingPhoto}`}
+                                alt="Meeting"
+                                className="h-40 w-full rounded-2xl object-cover border border-[var(--color-border)]"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* --- 🌟 REQUIRED DISCUSSION NOTES INPUT FOR ANY UPDATE --- */}
+                        <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+                          <label className="block text-xs font-bold text-[var(--color-primary)] uppercase">
+                            💬 What was discussed / Conversation Notes *
                           </label>
-                          <div className="grid grid-cols-2 gap-2.5">
-                            <button
-                              onClick={() =>
-                                setFollowUpModalAction("Call Back")
-                              }
-                              className="bg-amber-500/10 text-amber-600 border border-amber-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-amber-500/20 transition active:scale-95 min-h-[44px]"
-                            >
-                              📞 Call Back
-                            </button>
-                            <button
-                              onClick={() =>
-                                setFollowUpModalAction("Follow Up")
-                              }
-                              className="bg-blue-500/10 text-blue-600 border border-blue-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-blue-500/20 transition active:scale-95 min-h-[44px]"
-                            >
-                              🔔 Follow Up
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleUpdateLeadStatus(
-                                  selectedLead._id,
-                                  "Not Interested",
-                                  null,
-                                )
-                              }
-                              className="bg-red-500/10 text-red-500 border border-red-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-red-500/20 transition active:scale-95 min-h-[44px]"
-                            >
-                              ❌ Not Interested
-                            </button>
-                            <button
-                              onClick={() =>
-                                handleUpdateLeadStatus(
-                                  selectedLead._id,
-                                  "Deal Close",
-                                  null,
-                                )
-                              }
-                              className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-emerald-500/20 transition active:scale-95 min-h-[44px]"
-                            >
-                              🎉 Deal Close
-                            </button>
+                          <textarea
+                            rows="2"
+                            required
+                            value={updateDiscussionNotes}
+                            onChange={(e) =>
+                              setUpdateDiscussionNotes(e.target.value)
+                            }
+                            placeholder="Required: Write what you discussed during this call/visit..."
+                            className="w-full bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-xl p-3 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none"
+                          ></textarea>
+                        </div>
+
+                        <div className="space-y-3.5 pt-3.5 border-t border-[var(--color-border)]">
+                          <div>
+                            <label className="block text-xs font-semibold mb-1.5 text-[var(--color-primary)] uppercase">
+                              1. Update Demo & Follow-up Status
+                            </label>
+                            <div className="flex gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleUpdateLeadStatus(
+                                    selectedLead._id,
+                                    selectedLead.leadStatus,
+                                    "Not Given",
+                                  )
+                                }
+                                className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
+                                  selectedLead.demoStatus === "Not Given"
+                                    ? "bg-[var(--color-primary)] text-white border-transparent"
+                                    : "bg-[var(--color-surface)] border-[var(--color-border)]"
+                                }`}
+                              >
+                                ⏳ Not Given
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActiveModalAction("reschedule")}
+                                className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
+                                  activeModalAction === "reschedule"
+                                    ? "bg-amber-600 text-white border-transparent"
+                                    : "bg-[var(--color-surface)] border-[var(--color-border)] text-amber-600"
+                                }`}
+                              >
+                                📅 Reschedule / Call Back
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setActiveModalAction("completed")}
+                                className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
+                                  activeModalAction === "completed"
+                                    ? "bg-emerald-600 text-white border-transparent"
+                                    : "bg-[var(--color-surface)] border-[var(--color-border)] text-emerald-600"
+                                }`}
+                              >
+                                ✅ Completed (Add Review & Photo)
+                              </button>
+                            </div>
                           </div>
 
-                          {followUpModalAction && (
-                            <div className="mt-3.5 p-4 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-2xl space-y-3">
-                              <p className="text-xs sm:text-sm font-bold text-[var(--color-primary)]">
-                                Select Date & Time for {followUpModalAction}:
+                          {/* 🌟 RESCHEDULE SUB-FORM */}
+                          {activeModalAction === "reschedule" && (
+                            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-3">
+                              <p className="text-xs sm:text-sm font-bold text-amber-700">
+                                Select Reschedule Date & Time:
                               </p>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div className="grid grid-cols-2 gap-2.5">
                                 <input
                                   type="date"
                                   value={modalDate}
@@ -3040,32 +2899,215 @@ const fetchSalespersonNotifications = useCallback(async () => {
                                 type="button"
                                 onClick={() => {
                                   if (!modalDate) {
-                                    toast.error("Please select a date!");
+                                    toast.error("Please pick a reschedule date!");
                                     return;
                                   }
                                   handleUpdateLeadStatus(
                                     selectedLead._id,
-                                    followUpModalAction,
-                                    null,
+                                    "Call Back",
+                                    "Scheduled",
                                     {
                                       followUpDate: modalDate,
                                       followUpTime: modalTime,
                                     },
                                   );
                                 }}
-                                className="w-full bg-[var(--color-primary)] text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer transition active:scale-95 min-h-[44px]"
+                                className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
                               >
-                                Save Reminder Date & Time
+                                Confirm Reschedule Date
                               </button>
                             </div>
                           )}
+
+                          {/* 🌟 DEMO COMPLETED SUB-FORM WITH PHOTO & REVIEW */}
+                          {activeModalAction === "completed" && (
+                            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
+                              <p className="text-xs sm:text-sm font-bold text-emerald-700">
+                                Demo Completion Details:
+                              </p>
+                              <div>
+                                <label className="block text-xs font-medium mb-1">
+                                  Client Feedback / Review Notes:
+                                </label>
+                                <textarea
+                                  rows="2"
+                                  value={demoReviewNotes}
+                                  onChange={(e) =>
+                                    setDemoReviewNotes(e.target.value)
+                                  }
+                                  placeholder="e.g. Client loved the test series feature, requested price quote..."
+                                  className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
+                                ></textarea>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium mb-1">
+                                  📸 Upload Demo Verification Photo / Screenshot
+                                  (.jpg, .png):
+                                </label>
+                                <input
+                                  type="file"
+                                  accept="image/jpeg, image/jpg, image/png"
+                                  onChange={(e) => {
+                                    const fileItem = e.target.files[0];
+                                    if (fileItem && validateImageFile(fileItem)) {
+                                      setDemoProofFile(fileItem);
+                                    } else {
+                                      e.target.value = "";
+                                    }
+                                  }}
+                                  className="block w-full text-xs text-[var(--color-body)] cursor-pointer"
+                                />
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  handleUpdateLeadStatus(
+                                    selectedLead._id,
+                                    selectedLead.leadStatus,
+                                    "Completed",
+                                    {
+                                      reviewNotes: demoReviewNotes,
+                                      proofFile: demoProofFile,
+                                    },
+                                  );
+                                }}
+                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
+                              >
+                                Save Completed Demo & Upload
+                              </button>
+                            </div>
+                          )}
+
+                          <div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (dayStatus !== "ACTIVE") {
+                                  toast.error("Start day first!");
+                                  return;
+                                }
+                                await handleUpdateLeadStatus(
+                                  selectedLead._id,
+                                  "Deal Close",
+                                  null,
+                                );
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  instituteName: selectedLead.instituteName,
+                                  mobileNo: selectedLead.mobileNo,
+                                  email: selectedLead.email || "",
+                                  address: selectedLead.address || "",
+                                  city: selectedLead.city,
+                                  state: selectedLead.state,
+                                  pincode: selectedLead.pincode,
+                                }));
+                                setSelectedLead(null);
+                                setInvoiceStep(1);
+                                setActiveView("invoice-form");
+                              }}
+                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-2xl text-xs sm:text-sm transition cursor-pointer shadow-sm active:scale-95 min-h-[46px]"
+                            >
+                              🚀 Sales Punch (Generate Invoice & Close Lead)
+                            </button>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold mb-1.5 text-[var(--color-primary)] uppercase">
+                              3. Update Lead Stage / Response
+                            </label>
+                            <div className="grid grid-cols-2 gap-2.5">
+                              <button
+                                onClick={() =>
+                                  setFollowUpModalAction("Call Back")
+                                }
+                                className="bg-amber-500/10 text-amber-600 border border-amber-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-amber-500/20 transition active:scale-95 min-h-[44px]"
+                              >
+                                📞 Call Back
+                              </button>
+                              <button
+                                onClick={() =>
+                                  setFollowUpModalAction("Follow Up")
+                                }
+                                className="bg-blue-500/10 text-blue-600 border border-blue-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-blue-500/20 transition active:scale-95 min-h-[44px]"
+                              >
+                                🔔 Follow Up
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleUpdateLeadStatus(
+                                    selectedLead._id,
+                                    "Not Interested",
+                                    null,
+                                  )
+                                }
+                                className="bg-red-500/10 text-red-500 border border-red-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-red-500/20 transition active:scale-95 min-h-[44px]"
+                              >
+                                ❌ Not Interested
+                              </button>
+                              <button
+                                onClick={() =>
+                                  handleUpdateLeadStatus(
+                                    selectedLead._id,
+                                    "Deal Close",
+                                    null,
+                                  )
+                                }
+                                className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-emerald-500/20 transition active:scale-95 min-h-[44px]"
+                              >
+                                🎉 Deal Close
+                              </button>
+                            </div>
+
+                            {followUpModalAction && (
+                              <div className="mt-3.5 p-4 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-2xl space-y-3">
+                                <p className="text-xs sm:text-sm font-bold text-[var(--color-primary)]">
+                                  Select Date & Time for {followUpModalAction}:
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  <input
+                                    type="date"
+                                    value={modalDate}
+                                    onChange={(e) => setModalDate(e.target.value)}
+                                    className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
+                                  />
+                                  <input
+                                    type="time"
+                                    value={modalTime}
+                                    onChange={(e) => setModalTime(e.target.value)}
+                                    className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!modalDate) {
+                                      toast.error("Please select a date!");
+                                      return;
+                                    }
+                                    handleUpdateLeadStatus(
+                                      selectedLead._id,
+                                      followUpModalAction,
+                                      null,
+                                      {
+                                        followUpDate: modalDate,
+                                        followUpTime: modalTime,
+                                      },
+                                    );
+                                  }}
+                                  className="w-full bg-[var(--color-primary)] text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer transition active:scale-95 min-h-[44px]"
+                                >
+                                  Save Reminder Date & Time
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </motion.div>
-                  </div>
-                )}
-              </div>
-            )}
+                      </motion.div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {activeView === "kanban" && (
               <div className="space-y-6">

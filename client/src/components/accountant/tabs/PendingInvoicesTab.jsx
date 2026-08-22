@@ -132,14 +132,20 @@ const PendingInvoicesTab = ({
               </button>
             </div>
 
-            {item.paymentProof && (
-              <button
-                onClick={() => onOpenLightbox(`${API_BASE}/${item.paymentProof}`)}
-                className="bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs py-2.5 px-3 rounded-xl border border-[var(--color-primary)]/20 text-center font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
-              >
-                🖼️ View Payment Proof
-              </button>
-            )}
+{item.paymentProof && (
+  <button
+    onClick={() => {
+      // Agar paymentProof pehle se http se shuru hota hai toh wahi use karein, nahi toh API_BASE jodein
+      const imageUrl = item.paymentProof.startsWith("http") 
+        ? item.paymentProof 
+        : `${API_BASE}/${item.paymentProof.replace(/^\/+/, "")}`;
+      onOpenLightbox(imageUrl);
+    }}
+    className="bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs py-2.5 px-3 rounded-xl border border-[var(--color-primary)]/20 text-center font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+  >
+    🖼️ View Payment Proof
+  </button>
+)}
 
             <a
               href={`https://api.whatsapp.com/send?phone=${item.mobileNo}&text=${encodeURIComponent(

@@ -2753,7 +2753,6 @@ async function generatePerformanceData(startDateStr, endDateStr) {
     // 5. Total Active Working Days
     const activeDays = await DaySession.countDocuments({
       salespersonId: empId,
-      status: "ENDED",
       date: { $gte: startDateStr, $lte: endDateStr }
     });
 
