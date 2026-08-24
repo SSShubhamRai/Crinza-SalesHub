@@ -993,7 +993,7 @@ app.get("/api/boss/kpi-summary", verifyToken, async (req, res) => {
     }
 
     const totalInvoices = await Invoice.aggregate([
-      { $match: { status: "approved" } },
+      { $match: { status: { $ne: "rejected" } } }, // 👈 Yahan bhi approved ki jagah non-rejected kar diya
       { 
         $group: { 
           _id: null, 
@@ -1152,6 +1152,7 @@ app.get("/api/boss/performance", verifyToken, async (req, res) => {
       {
         $match: {
           salespersonId: { $exists: true, $ne: null, $ne: "" },
+          status: { $ne: "rejected" }
         },
       },
       {
@@ -1160,7 +1161,7 @@ app.get("/api/boss/performance", verifyToken, async (req, res) => {
           salespersonId: { $first: "$salespersonId" },
           totalDeals: { $sum: 1 },
           approvedDeals: {
-            $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] },
+            $sum: { $cond: [{ $ne: ["$status", "rejected"] }, 1, 0] },
           },
           pendingDeals: {
             $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
@@ -1170,12 +1171,12 @@ app.get("/api/boss/performance", verifyToken, async (req, res) => {
           },
           totalBusiness: {
             $sum: {
-              $cond: [{ $eq: ["$status", "approved"] }, "$totalAmount", 0],
+              $cond: [{ $ne: ["$status", "rejected"] }, "$totalAmount", 0],
             },
           },
           totalPaid: {
             $sum: {
-              $cond: [{ $eq: ["$status", "approved"] }, "$paidAmount", 0],
+              $cond: [{ $ne: ["$status", "rejected"] }, "$paidAmount", 0],
             },
           },
         },
@@ -1184,12 +1185,10 @@ app.get("/api/boss/performance", verifyToken, async (req, res) => {
 
     res.json(stats);
   } catch (err) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to fetch performance stats",
-        error: err.message,
-      });
+    res.status(500).json({
+      message: "Failed to fetch performance stats",
+      error: err.message,
+    });
   }
 });
 
@@ -2581,75 +2580,319 @@ const generateExcelReportBuffer = async (startDateStr, endDateStr) => {
   return Buffer.from(csvString, 'utf-8');
 };
 
-// ⏰ Automated Scheduler (Har 5 minute mein check karega ki 11:00 AM hua hai ya nahi)
-setInterval(async () => {
+// =========================================================================
+// --- 📧 SEND WEEKLY / MONTHLY PERFORMANCE REPORT ---
+// =========================================================================
+
+const sendPerformanceReport = async (
+  reportType,
+  startDateStr,
+  endDateStr,
+  periodKey
+) => {
+  try {
+    // Check whether this report was already sent
+    const alreadySent = await ReportLog.findOne({
+      type: reportType,
+      period: periodKey,
+    });
+
+    if (alreadySent) {
+      console.log(
+        `ℹ️ ${reportType} report already sent for ${periodKey}`
+      );
+      return;
+    }
+
+    // Find Admin / Boss
+    const bossUser = await User.findOne({
+      role: { $in: ["boss", "admin"] },
+    });
+
+    if (!bossUser || !bossUser.email) {
+      console.log("❌ Admin/Boss email not found");
+      return;
+    }
+
+    // Generate CSV report
+    const excelBuffer = await generateExcelReportBuffer(
+      startDateStr,
+      endDateStr
+    );
+
+    const form = new FormData();
+
+    form.append("sendTo", bossUser.email);
+
+    form.append(
+      "message",
+      `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+
+        <h3 style="color: #4f46e5;">
+          Crinza ${reportType} Performance Excel Report
+        </h3>
+
+        <p>Hello Boss,</p>
+
+        <p>
+          Attached is the automated
+          <strong>${reportType.toLowerCase()} performance report</strong>.
+        </p>
+
+        <p>
+          <strong>Period:</strong>
+          ${startDateStr} to ${endDateStr}
+        </p>
+
+        <p>
+          It contains complete details of every salesperson including
+          demo counts, lead visits, deals closed, revenue generated,
+          collection and travel distance.
+        </p>
+
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;" />
+
+        <p style="font-size:12px;color:#64748b;">
+          Generated automatically by Crinza Backend Server.
+        </p>
+
+      </div>
+      `
+    );
+
+    form.append("attachments", excelBuffer, {
+      filename:
+        `Crinza_${reportType}_Report_${startDateStr}_to_${endDateStr}.csv`,
+      contentType: "text/csv",
+    });
+
+    // Send email
+    await axios.post(
+      "https://api.crinza.com/api/v1/contact/message",
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          Origin: "https://crinza.com",
+        },
+      }
+    );
+
+    // IMPORTANT:
+    // Save log ONLY after successful email
+    await ReportLog.create({
+      type: reportType,
+      period: periodKey,
+      sentAt: new Date(),
+    });
+
+    console.log(
+      `✅ ${reportType} report successfully sent to ${bossUser.email}`
+    );
+
+  } catch (err) {
+    console.error(
+      `🔥 ${reportType} Performance Report Error:`,
+      err.response?.data || err.message
+    );
+  }
+};
+
+// =========================================================================
+// --- ⏰ RELIABLE WEEKLY & MONTHLY PERFORMANCE REPORT SCHEDULER ---
+// =========================================================================
+
+const checkPerformanceReports = async () => {
   try {
     const now = new Date();
-    const istTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' }); // e.g. "11:00"
-    const dayOfWeek = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' }); // e.g. "Mon"
-    const dayOfMonth = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', day: 'numeric' }); // e.g. "1"
 
-    // Sirf jab 11:00 AM se 11:05 AM ke beech ka samay ho
-    if (istTimeStr.startsWith('11:')) {
-      const bossUser = await User.findOne({ role: { $in: ["boss", "admin"] } });
-      if (!bossUser || !bossUser.email) return;
+    // Current date in IST
+    const istDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
 
-      let reportType = "";
-      let startDateStr = "";
-      let endDateStr = "";
+    // Current weekday in IST
+    const dayOfWeek = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      weekday: "short",
+    }).format(now);
 
-      // 1️⃣ Monthly Report: Har mahine ki 1st date ko subah 11 baje
-      if (dayOfMonth === "1") {
-        reportType = "Monthly";
-        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0); // Pichle mahine ki akhri tareek
-        const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1); // Pichle mahine ki pehli tareek
-        
-        startDateStr = lastMonthStart.toISOString().split("T")[0];
-        endDateStr = lastMonthEnd.toISOString().split("T")[0];
-      } 
-      // 2️⃣ Weekly Report: Har Monday subah 11 baje
-      else if (dayOfWeek === "Mon") {
-        reportType = "Weekly";
-        const endDateObj = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Yesterday (Sunday)
-        const startDateObj = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // Last Monday
+    const [year, month, day] = istDate.split("-");
 
-        startDateStr = startDateObj.toISOString().split("T")[0];
-        endDateStr = endDateObj.toISOString().split("T")[0];
-      }
+    // =========================================================
+    // 1️⃣ WEEKLY REPORT — EVERY MONDAY
+    // =========================================================
 
-      if (reportType) {
-        // Excel/CSV Buffer generate karein
-        const excelBuffer = await generateExcelReportBuffer(startDateStr, endDateStr);
+    if (dayOfWeek === "Mon") {
 
-        const form = new FormData();
-        form.append('sendTo', bossUser.email);
-        form.append('message', `
-          <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
-            <h3 style="color: #4f46e5;">Crinza ${reportType} Performance Excel Report</h3>
-            <p>Hello Boss,</p>
-            <p>Attached is the automated <strong>${reportType.toLowerCase()} performance report</strong> (Period: ${startDateStr} to ${endDateStr}) in Excel (CSV) format.</p>
-            <p>It contains complete details of every salesperson including demo counts, lead visits, deals closed, revenue generated, and travel distance.</p>
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-            <p style="font-size: 12px; color: #64748b;">Generated automatically by Crinza Backend Server</p>
-          </div>
-        `);
-        
-        form.append('attachments', excelBuffer, {
-          filename: `Crinza_${reportType}_Report_${startDateStr}_to_${endDateStr}.csv`,
-          contentType: 'text/csv',
-        });
+      const currentDate = new Date(
+        `${year}-${month}-${day}T00:00:00`
+      );
 
-        await axios.post('https://api.crinza.com/api/v1/contact/message', form, {
-          headers: { ...form.getHeaders(), 'Origin': 'https://crinza.com' },
-        });
+      // Previous Monday
+      const previousMonday = new Date(currentDate);
+      previousMonday.setDate(
+        previousMonday.getDate() - 7
+      );
 
-        console.log(`✅ Automated ${reportType} Excel Report successfully emailed to Boss (${bossUser.email})`);
-      }
+      // Previous Sunday
+      const previousSunday = new Date(currentDate);
+      previousSunday.setDate(
+        previousSunday.getDate() - 1
+      );
+
+      const startDateStr =
+        previousMonday.toISOString().split("T")[0];
+
+      const endDateStr =
+        previousSunday.toISOString().split("T")[0];
+
+      const periodKey = `Weekly_${istDate}`;
+
+      await sendPerformanceReport(
+        "Weekly",
+        startDateStr,
+        endDateStr,
+        periodKey
+      );
     }
+
+
+    // =========================================================
+    // 2️⃣ MONTHLY REPORT — EVERY 1ST DAY
+    // =========================================================
+
+    if (day === "01") {
+
+      const currentDate = new Date(
+        `${year}-${month}-${day}T00:00:00`
+      );
+
+      // Previous month's last day
+      const previousMonthEnd = new Date(currentDate);
+      previousMonthEnd.setDate(0);
+
+      // Previous month's first day
+      const previousMonthStart = new Date(
+        previousMonthEnd.getFullYear(),
+        previousMonthEnd.getMonth(),
+        1
+      );
+
+      const startDateStr =
+        previousMonthStart.toISOString().split("T")[0];
+
+      const endDateStr =
+        previousMonthEnd.toISOString().split("T")[0];
+
+      const periodKey = `Monthly_${istDate}`;
+
+      await sendPerformanceReport(
+        "Monthly",
+        startDateStr,
+        endDateStr,
+        periodKey
+      );
+    }
+
   } catch (err) {
-    console.error("🔥 Automated Excel Report Cron Error:", err.message);
+    console.error(
+      "🔥 Performance Scheduler Error:",
+      err.message
+    );
   }
-}, 5 * 60 * 1000); // Har 5 minute mein check karega taaki 11:00 AM miss na ho
+};
+
+
+// =========================================================
+// 🚀 CHECK IMMEDIATELY WHEN SERVER STARTS
+// =========================================================
+
+checkPerformanceReports();
+
+
+// =========================================================
+// 🔄 CHECK EVERY 5 MINUTES
+// =========================================================
+
+setInterval(
+  checkPerformanceReports,
+  5 * 60 * 1000
+);
+
+// ⏰ Automated Scheduler (Har 5 minute mein check karega ki 11:00 AM hua hai ya nahi)
+// setInterval(async () => {
+//   try {
+//     const now = new Date();
+//     const istTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' }); // e.g. "11:00"
+//     const dayOfWeek = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' }); // e.g. "Mon"
+//     const dayOfMonth = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', day: 'numeric' }); // e.g. "1"
+
+//     // Sirf jab 11:00 AM se 11:05 AM ke beech ka samay ho
+//     if (istTimeStr.startsWith('11:')) {
+//       const bossUser = await User.findOne({ role: { $in: ["boss", "admin"] } });
+//       if (!bossUser || !bossUser.email) return;
+
+//       let reportType = "";
+//       let startDateStr = "";
+//       let endDateStr = "";
+
+//       // 1️⃣ Monthly Report: Har mahine ki 1st date ko subah 11 baje
+//       if (dayOfMonth === "1") {
+//         reportType = "Monthly";
+//         const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0); // Pichle mahine ki akhri tareek
+//         const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1); // Pichle mahine ki pehli tareek
+        
+//         startDateStr = lastMonthStart.toISOString().split("T")[0];
+//         endDateStr = lastMonthEnd.toISOString().split("T")[0];
+//       } 
+//       // 2️⃣ Weekly Report: Har Monday subah 11 baje
+//       else if (dayOfWeek === "Mon") {
+//         reportType = "Weekly";
+//         const endDateObj = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Yesterday (Sunday)
+//         const startDateObj = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // Last Monday
+
+//         startDateStr = startDateObj.toISOString().split("T")[0];
+//         endDateStr = endDateObj.toISOString().split("T")[0];
+//       }
+
+//       if (reportType) {
+//         // Excel/CSV Buffer generate karein
+//         const excelBuffer = await generateExcelReportBuffer(startDateStr, endDateStr);
+
+//         const form = new FormData();
+//         form.append('sendTo', bossUser.email);
+//         form.append('message', `
+//           <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+//             <h3 style="color: #4f46e5;">Crinza ${reportType} Performance Excel Report</h3>
+//             <p>Hello Boss,</p>
+//             <p>Attached is the automated <strong>${reportType.toLowerCase()} performance report</strong> (Period: ${startDateStr} to ${endDateStr}) in Excel (CSV) format.</p>
+//             <p>It contains complete details of every salesperson including demo counts, lead visits, deals closed, revenue generated, and travel distance.</p>
+//             <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+//             <p style="font-size: 12px; color: #64748b;">Generated automatically by Crinza Backend Server</p>
+//           </div>
+//         `);
+        
+//         form.append('attachments', excelBuffer, {
+//           filename: `Crinza_${reportType}_Report_${startDateStr}_to_${endDateStr}.csv`,
+//           contentType: 'text/csv',
+//         });
+
+//         await axios.post('https://api.crinza.com/api/v1/contact/message', form, {
+//           headers: { ...form.getHeaders(), 'Origin': 'https://crinza.com' },
+//         });
+
+//         console.log(`✅ Automated ${reportType} Excel Report successfully emailed to Boss (${bossUser.email})`);
+//       }
+//     }
+//   } catch (err) {
+//     console.error("🔥 Automated Excel Report Cron Error:", err.message);
+//   }
+// }, 5 * 60 * 1000); // Har 5 minute mein check karega taaki 11:00 AM miss na ho
 
 // =========================================================================
 // --- 🧪 POSTMAN / MANUAL TEST ROUTE FOR EXCEL REPORT ---
@@ -2700,6 +2943,41 @@ setInterval(async () => {
 //     res.status(500).json({ message: "Failed to send test report", error: err.response?.data || err.message });
 //   }
 // });
+
+// =========================================================================
+// --- 📧 PERFORMANCE REPORT LOG SCHEMA ---
+// =========================================================================
+
+const reportLogSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["Weekly", "Monthly"],
+      required: true,
+    },
+
+    period: {
+      type: String,
+      required: true,
+    },
+
+    sentAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Same report ko duplicate send hone se rokega
+reportLogSchema.index(
+  { type: 1, period: 1 },
+  { unique: true }
+);
+
+const ReportLog = mongoose.model("ReportLog", reportLogSchema);
 
 
 // =========================================================================
