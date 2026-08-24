@@ -21,6 +21,15 @@ const FormData = require("form-data"); // 🌟 Multipart/form-data attachments k
 const Tesseract = require("tesseract.js"); // 🌟 AI OCR Payment Proof Verification ke liye
 require("dotenv").config();
 
+
+const {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse
+} = require("@simplewebauthn/server");
+
+
 // --- Firebase Admin Initialization (Node v24 Compatible) ---
 try {
   const { initializeApp, cert, getApps } = require("firebase-admin/app");
@@ -112,9 +121,9 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB Limit restriction
   fileFilter: (req, file, cb) => {
-    const isImage = file.mimetype.startsWith("image/") || 
-                    file.mimetype === "image/heic" || 
-                    file.mimetype === "image/heif" || 
+    const isImage = file.mimetype.startsWith("image/") ||
+                    file.mimetype === "image/heic" ||
+                    file.mimetype === "image/heif" ||
                     file.originalname.match(/\.(heic|HEIC|heif|HEIF|jpg|jpeg|png|webp)$/);
 
     if (isImage) {
@@ -154,6 +163,30 @@ const taskSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 const Task = mongoose.model("Task", taskSchema);
+
+// =========================================================================
+// --- 🛠️ TECHNICAL / APP PRODUCTION PROJECT SCHEMA ---
+// =========================================================================
+const technicalTaskSchema = new mongoose.Schema({
+  projectId: { type: String, unique: true },
+  invoiceId: { type: String, required: true },
+  instituteName: { type: String, required: true },
+  appName: { type: String, required: true },
+  packageValidity: { type: String, default: "1 Year" },
+  addons: { type: Object, default: {} },
+  logoProof: { type: String, default: "" },
+  assignedTechId: { type: String, default: "" },   // Developer ka userId (e.g. TECH101)
+  assignedTechName: { type: String, default: "" }, // Developer ka naam
+  status: {
+    type: String,
+    enum: ["Unassigned", "Assigned", "In Progress", "Testing", "Delivered"],
+    default: "Unassigned"
+  },
+  assignedAt: { type: Date },                      // Kab assign hua
+  deliveredAt: { type: Date },                     // Kab deliver hua
+  createdAt: { type: Date, default: Date.now }
+});
+const TechnicalTask = mongoose.model("TechnicalTask", technicalTaskSchema);
 
 // =========================================================================
 // --- 📢 BROADCAST ANNOUNCEMENTS SCHEMA (UPDATED WITH DELETION TRACKER) ---
@@ -222,10 +255,11 @@ function deg2rad(deg) {
   return deg * (Math.PI / 180);
 }
 
-// 🌟 Local Distance Calculation with 200 Meters Threshold
+// 🌟 Local Distance Calculation with 200 Meters Threshold & Road Factor
 function calculateValidDistance(coordinatesList) {
-  let totalDistance = 0;
-  const MIN_DISTANCE_THRESHOLD = 0.2; // 0.2 KM = 200 meters threshold to prevent fake indoor/jitter counts
+  let straightDistance = 0;
+  const MIN_DISTANCE_THRESHOLD = 0.03; // 0.03KM = 30m meters threshold
+  const ROAD_FACTOR = 1.8; //  for road curves and turns
 
   for (let i = 1; i < coordinatesList.length; i++) {
     const prev = coordinatesList[i - 1];
@@ -234,13 +268,14 @@ function calculateValidDistance(coordinatesList) {
     const dist = calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
 
     if (dist >= MIN_DISTANCE_THRESHOLD) {
-      totalDistance += dist;
+      straightDistance += dist;
     }
   }
 
-  return Number(totalDistance.toFixed(2));
+  // Straight distance ko road factor se multiply kar diya
+  const totalRoadwayDistance = straightDistance * ROAD_FACTOR;
+  return Number(totalRoadwayDistance.toFixed(2));
 }
-
 // =========================================================================
 // --- 🌐 SOCKET.IO REAL-TIME LOCATION & SINGLE SESSION HANDLER ---
 // =========================================================================
@@ -276,7 +311,7 @@ io.on("connection", (socket) => {
     console.log(`👤 Active Session Registered for: ${userId} (${socket.id})`);
   });
 
-  socket.on("update_location", async (data) => {
+ socket.on("update_location", async (data) => {
     try {
       const { salespersonId, latitude, longitude } = data;
       if (!salespersonId || !latitude || !longitude) return;
@@ -285,9 +320,22 @@ io.on("connection", (socket) => {
         return;
       }
 
-      const currentDate = new Date().toISOString().split("T")[0];
-      const currentTime = new Date();
+      // 🌟 Correct IST Date string to match start-day logic
+      const currentDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
+      // 🌟 NAYA CHECK: Validate karein ki salesperson ka din shuru (STARTED) hai ya nahi
+      const activeSession = await DaySession.findOne({
+        salespersonId,
+        date: currentDate,
+        status: "STARTED"
+      });
+
+      // Agar day start nahi hua hai, toh location save/track nahi hogi
+      if (!activeSession) {
+        return;
+      }
+
+      const currentTime = new Date();
       const lastLog = await LocationLog.findOne({ salespersonId, date: currentDate }).sort({ timestamp: -1 });
 
       let isMockedByTeleport = false;
@@ -296,7 +344,7 @@ io.on("connection", (socket) => {
         const distanceKm = calculateDistance(lastLog.latitude, lastLog.longitude, latitude, longitude);
         const timeDiffHours = (currentTime - new Date(lastLog.timestamp)) / (1000 * 60 * 60);
 
-        if (distanceKm < 0.2) {
+        if (distanceKm < 0.03) {
           io.emit("live_location_broadcast", {
             salespersonId,
             latitude,
@@ -304,7 +352,7 @@ io.on("connection", (socket) => {
             isMocked: false,
             timestamp: currentTime,
           });
-          return; 
+          return;
         }
 
         if (timeDiffHours > 0) {
@@ -367,7 +415,7 @@ const createInvoicePDF = async (data) => {
     }
 
     const puppeteer = require("puppeteer-core");
-    
+
     if (process.env.NODE_ENV === "production" || process.env.RENDER) {
       const chromium = require("@sparticuz/chromium");
       chromium.setGraphicsMode = false;
@@ -394,6 +442,13 @@ const createInvoicePDF = async (data) => {
 
     const page = await browser.newPage();
 
+    // 🌟 Base Price, GST, Discount & Past Due Calculations
+    const baseAmt = Number(data.baseAmount || data.totalCode || data.totalAmount || 0);
+    const gstAmount = Math.round(baseAmt * 0.18);
+    const discountAmt = Number(data.discountAmount || 0);
+    const pastDueAmt = Number(data.previousDueBalance || 0);
+
+    // 🌟 Add-ons Rows
     let addonRows = "";
     if (data.addons) {
       if (data.addons.testModule)
@@ -404,14 +459,26 @@ const createInvoicePDF = async (data) => {
         addonRows += `<tr><td>Add-on: iOS Mobile App</td><td>Included</td><td>₹45,000</td></tr>`;
     }
 
+    // 🌟 Discount Row (STRICTLY CONDITIONAL: Discount > 0 hone par hi dikhega, varna complete HIDE)
     let discountRow = "";
-    if (data.discountAmount && data.discountAmount > 0) {
-      discountRow = `<tr style="color: #059669;"><td>Discount (Coupon: ${data.couponCode || "PROMO"})</td><td>-</td><td>-₹${data.discountAmount.toLocaleString("en-IN")}</td></tr>`;
+    if (discountAmt > 0) {
+      discountRow = `
+        <tr style="color: #059669; background-color: #ecfdf5;">
+          <td><strong>Discount Applied (Coupon: ${data.couponCode || "PROMO"})</strong></td>
+          <td>-</td>
+          <td><strong>-₹${discountAmt.toLocaleString("en-IN")}</strong></td>
+        </tr>`;
     }
 
+    // 🌟 Previous Due Balance Row
     let pastDueRow = "";
-    if (data.previousDueBalance && data.previousDueBalance > 0) {
-      pastDueRow = `<tr style="color: #d97706;"><td>Previous Unpaid Due Balance Added</td><td>-</td><td>₹${data.previousDueBalance.toLocaleString("en-IN")}</td></tr>`;
+    if (pastDueAmt > 0) {
+      pastDueRow = `
+        <tr style="color: #d97706; background-color: #fffbeb;">
+          <td>Previous Unpaid Due Balance Added</td>
+          <td>-</td>
+          <td>₹${pastDueAmt.toLocaleString("en-IN")}</td>
+        </tr>`;
     }
 
     const headerLogoHtml = logoBase64
@@ -432,7 +499,7 @@ const createInvoicePDF = async (data) => {
           table { width: 100%; border-collapse: collapse; margin-top: 25px; }
           th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
           th { background-color: #4f46e5; color: white; }
-          .total-box { margin-top: 20px; text-align: right; }
+          .total-box { margin-top: 20px; text-align: right; font-size: 14px; line-height: 1.6; }
           .terms { margin-top: 30px; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px; }
         </style>
       </head>
@@ -472,14 +539,19 @@ const createInvoicePDF = async (data) => {
             <tr>
               <th>Description / Items</th>
               <th>Validity</th>
-              <th>Cost</th>
+              <th>Cost (₹)</th>
             </tr>
           </thead>
           <tbody>
             <tr>
               <td>${data.appName} License (Base Price)</td>
               <td>${data.packageValidity}</td>
-              <td>₹${(data.baseAmount || data.totalCode || data.totalAmount || 0).toLocaleString("en-IN")}</td>
+              <td>₹${baseAmt.toLocaleString("en-IN")}</td>
+            </tr>
+            <tr>
+              <td>GST (18% Applicable)</td>
+              <td>-</td>
+              <td>₹${gstAmount.toLocaleString("en-IN")}</td>
             </tr>
             ${addonRows}
             ${discountRow}
@@ -488,7 +560,7 @@ const createInvoicePDF = async (data) => {
         </table>
 
         <div class="total-box">
-          <p>Grand Total (Incl. Past Due & GST): <strong>₹${data.totalAmount ? data.totalAmount.toLocaleString("en-IN") : 0}</strong></p>
+          <p style="font-size: 16px;">Grand Total Cost (Incl. Past Due & GST): <strong>₹${data.totalAmount ? data.totalAmount.toLocaleString("en-IN") : 0}</strong></p>
           <p>Paid Amount: <strong style="color: green;">₹${data.paidAmount ? data.paidAmount.toLocaleString("en-IN") : 0}</strong></p>
           <p>Due Balance: <strong style="color: ${data.dueAmount > 0 ? 'red' : 'green'};">₹${data.dueAmount ? data.dueAmount.toLocaleString("en-IN") : 0} ${data.dueAmount === 0 ? '(Fully Paid & Settled)' : ''}</strong></p>
         </div>
@@ -504,7 +576,7 @@ const createInvoicePDF = async (data) => {
     await page.setContent(htmlContent, { waitUntil: "domcontentloaded" });
     const rawPdf = await page.pdf({ format: "A4", printBackground: true });
     await page.close();
-    
+
     return Buffer.from(rawPdf);
   } catch (err) {
     console.error("🔥 [PDF Error]:", err);
@@ -517,7 +589,6 @@ const createInvoicePDF = async (data) => {
     }
   }
 };
-
 // =========================================================================
 // --- 📧 EMAIL SENDER HELPER (Updated with Crinza Custom API) ---
 // =========================================================================
@@ -813,6 +884,82 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
   }
 });
 
+// --- 👑 ADMIN: Get All Technical Projects ---
+app.get("/api/boss/technical-projects", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const projects = await TechnicalTask.find().sort({ createdAt: -1 });
+    res.json(projects);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch technical projects", error: err.message });
+  }
+});
+
+// --- 👑 ADMIN: Assign Project to Developer ---
+app.put("/api/boss/technical-projects/assign/:id", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const { techId, techName } = req.body;
+
+    const updated = await TechnicalTask.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          assignedTechId: techId,
+          assignedTechName: techName,
+          status: "Assigned",
+          assignedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    res.json({ success: true, message: `Project successfully assigned to ${techName}!`, project: updated });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to assign project", error: err.message });
+  }
+});
+
+// --- 💻 TECHNICAL TEAM: Get My Assigned Projects ---
+app.get("/api/technical/my-projects", verifyToken, async (req, res) => {
+  try {
+    const projects = await TechnicalTask.find({ assignedTechId: req.user.userId }).sort({ createdAt: -1 });
+    res.json(projects);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch your projects", error: err.message });
+  }
+});
+
+// --- 💻 TECHNICAL TEAM: Update Project Status ---
+app.put("/api/technical/projects/status/:id", verifyToken, async (req, res) => {
+  try {
+    const { status } = req.body; // 'In Progress', 'Testing', 'Delivered'
+    const updateData = { status };
+
+    if (status === "Delivered") {
+      updateData.deliveredAt = new Date();
+    }
+
+    const updated = await TechnicalTask.findOneAndUpdate(
+      { _id: req.params.id, assignedTechId: req.user.userId },
+      { $set: updateData },
+      { returnDocument: 'after' }
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: "Project not found or not assigned to you" });
+    }
+
+    res.json({ success: true, message: `Project status updated to ${status}!`, project: updated });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to update status", error: err.message });
+  }
+});
+
 // =========================================================================
 // --- 📢 SALESPERSON PERSISTENT BROADCAST API ROUTES ---
 // =========================================================================
@@ -848,13 +995,13 @@ app.get("/api/boss/kpi-summary", verifyToken, async (req, res) => {
     }
 
     const totalInvoices = await Invoice.aggregate([
-      { $match: { status: "approved" } },
-      { 
-        $group: { 
-          _id: null, 
-          totalRevenue: { $sum: "$totalAmount" }, 
-          totalCollected: { $sum: "$paidAmount" } 
-        } 
+      { $match: { status: { $ne: "rejected" } } }, // 👈 Yahan bhi approved ki jagah non-rejected kar diya
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: "$totalAmount" },
+          totalCollected: { $sum: "$paidAmount" }
+        }
       }
     ]);
 
@@ -906,29 +1053,38 @@ app.get(
       }
 
       const { salespersonId } = req.params;
-      const queryDate =
-        req.query.date || new Date().toISOString().split("T")[0];
+      const { date, startDate, endDate } = req.query;
 
-      const logs = await LocationLog.find({
-        salespersonId,
-        date: queryDate,
-      }).sort({ timestamp: 1 });
+      let queryFilter = { salespersonId };
+
+      if (startDate && endDate) {
+        queryFilter.date = { $gte: startDate, $lte: endDate };
+      } else if (startDate) {
+        queryFilter.date = startDate;
+      } else if (date) {
+        queryFilter.date = date;
+      } else {
+        queryFilter.date = new Date().toISOString().split("T")[0];
+      }
+
+      const logs = await LocationLog.find(queryFilter).sort({ timestamp: 1 });
 
       const totalDistanceKm = calculateValidDistance(logs);
 
       res.json({
+        success: true,
         salespersonId,
-        date: queryDate,
+        startDate: startDate || date || new Date().toISOString().split("T")[0],
+        endDate: endDate || startDate || date || new Date().toISOString().split("T")[0],
         totalDistanceKm,
         routePoints: logs,
       });
     } catch (err) {
-      res
-        .status(500)
-        .json({
-          message: "Failed to fetch travel history",
-          error: err.message,
-        });
+      res.status(500).json({
+        success: false,
+        message: "Failed to fetch travel history",
+        error: err.message,
+      });
     }
   },
 );
@@ -967,7 +1123,7 @@ app.get("/api/boss/reverse-geocode", verifyToken, async (req, res) => {
     const response = await axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`, {
       headers: { 'User-Agent': 'CrinzaInvoicePortal/1.0' }
     });
-    
+
     res.json({ displayName: response.data.display_name || "Unknown Location" });
   } catch (err) {
     res.json({ displayName: "Location name unavailable (Rate Limited)" });
@@ -980,13 +1136,11 @@ app.get("/api/boss/employees", verifyToken, async (req, res) => {
       return res.status(403).json({ message: "Access denied!" });
     }
     const employees = await User.find({
-      role: { $in: ["salesperson", "accountant"] },
+      role: { $in: ["salesperson", "accountant", "technical"] }, // 👈 'technical' yahan add kar dein
     }).select("-password");
     res.json(employees);
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to fetch employees", error: err.message });
+    res.status(500).json({ message: "Failed to fetch employees", error: err.message });
   }
 });
 
@@ -1000,6 +1154,7 @@ app.get("/api/boss/performance", verifyToken, async (req, res) => {
       {
         $match: {
           salespersonId: { $exists: true, $ne: null, $ne: "" },
+          status: { $ne: "rejected" }
         },
       },
       {
@@ -1008,7 +1163,7 @@ app.get("/api/boss/performance", verifyToken, async (req, res) => {
           salespersonId: { $first: "$salespersonId" },
           totalDeals: { $sum: 1 },
           approvedDeals: {
-            $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] },
+            $sum: { $cond: [{ $ne: ["$status", "rejected"] }, 1, 0] },
           },
           pendingDeals: {
             $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
@@ -1018,12 +1173,12 @@ app.get("/api/boss/performance", verifyToken, async (req, res) => {
           },
           totalBusiness: {
             $sum: {
-              $cond: [{ $eq: ["$status", "approved"] }, "$totalAmount", 0],
+              $cond: [{ $ne: ["$status", "rejected"] }, "$totalAmount", 0],
             },
           },
           totalPaid: {
             $sum: {
-              $cond: [{ $eq: ["$status", "approved"] }, "$paidAmount", 0],
+              $cond: [{ $ne: ["$status", "rejected"] }, "$paidAmount", 0],
             },
           },
         },
@@ -1032,12 +1187,10 @@ app.get("/api/boss/performance", verifyToken, async (req, res) => {
 
     res.json(stats);
   } catch (err) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to fetch performance stats",
-        error: err.message,
-      });
+    res.status(500).json({
+      message: "Failed to fetch performance stats",
+      error: err.message,
+    });
   }
 });
 
@@ -1077,7 +1230,7 @@ app.get(
       if (req.user.role !== "boss" && req.user.role !== "admin") {
         return res.status(403).json({ message: "Access denied!" });
       }
-      
+
       let queryId = req.params.salespersonId;
       let queryCondition;
 
@@ -1141,16 +1294,17 @@ app.get("/api/boss/coupons", verifyToken, async (req, res) => {
   }
 });
 
+// =========================================================================
+// --- 🎟️ BOSS CREATE COUPON ROUTE ---
+// =========================================================================
 app.post("/api/boss/create-coupon", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
       return res.status(403).json({ message: "Access denied!" });
     }
     const { code, discountType, discountValue, expiryDate } = req.body;
-    if (!code || !discountValue) {
-      return res
-        .status(400)
-        .json({ message: "Coupon code and value are required!" });
+    if (!code || !discountValue || !discountType) {
+      return res.status(400).json({ message: "All required coupon fields must be filled!" });
     }
 
     const existing = await Coupon.findOne({ code: code.toUpperCase() });
@@ -1163,16 +1317,41 @@ app.post("/api/boss/create-coupon", verifyToken, async (req, res) => {
       discountType,
       discountValue: Number(discountValue),
       expiryDate: expiryDate || null,
+      createdBy: req.user.userId, // 👈 Added: Automatically captures the logged-in admin/boss ID
     });
 
     await newCoupon.save();
-    res
-      .status(201)
-      .json({ message: "Coupon created successfully!", coupon: newCoupon });
+    res.status(201).json({ message: "Coupon created successfully!", coupon: newCoupon });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to create coupon", error: err.message });
+    res.status(500).json({ message: "Failed to create coupon", error: err.message });
+  }
+});
+
+// =========================================================================
+// --- 🎟️ SALESPERSON VERIFY COUPON ROUTE (FIXED PROPERTY MATCH) ---
+// =========================================================================
+app.post("/api/coupons/verify", verifyToken, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: "Coupon code required" });
+
+    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
+    if (!coupon) {
+      return res.status(404).json({ message: "Invalid coupon code!" });
+    }
+
+    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ message: "This coupon has expired!" });
+    }
+
+    res.json({
+      message: "Coupon applied successfully!",
+      code: coupon.code,
+      discountType: coupon.discountType, // 👈 Fixed: now correctly sends discountType instead of coupon.type
+      discountValue: coupon.discountValue,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error verifying coupon", error: err.message });
   }
 });
 
@@ -1233,10 +1412,10 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
         <div style="font-family: Arial, sans-serif; padding: 25px; color: #1e293b; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #f8fafc;">
           <h2 style="color: #4f46e5; text-align: center; margin-bottom: 5px;">Welcome Aboard, ${name}! 🎉</h2>
           <p style="text-align: center; color: #64748b; font-size: 13px; margin-top: 0;">We are thrilled to have you join our growing team.</p>
-          
+
           <p>Hello <strong>${name}</strong>,</p>
           <p>Your official account has been successfully created on the <strong>Crinza One Portal</strong> as a <strong>${(role || 'salesperson').toUpperCase()}</strong>.</p>
-          
+
           <div style="background: #ffffff; padding: 18px; border-radius: 12px; border: 1px solid #cbd5e1; margin: 20px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
             <p style="margin: 8px 0;"><strong>👤 User ID / Code:</strong> <span style="font-family: monospace; color: #4f46e5; font-size: 15px; font-weight: bold;">${userId}</span></p>
             <p style="margin: 8px 0;"><strong>🔑 Temporary Password:</strong> <span style="font-family: monospace; color: #d97706; font-size: 15px; font-weight: bold;">${password}</span></p>
@@ -1244,7 +1423,7 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
           </div>
 
           <p style="color: #475569; font-size: 13px; line-height: 1.5;">Please keep your login credentials secure and confidential. Log in to start your shifts, track your leads, and manage your daily activities.</p>
-          
+
           <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
           <p style="margin: 0; font-size: 12px; color: #94a3b8; text-align: center;">Best Regards,<br><strong>Crinza Technologies Administration</strong></p>
         </div>
@@ -1263,8 +1442,8 @@ app.post("/api/auth/create-employee", verifyToken, async (req, res) => {
       console.error("🔥 Welcome Email API Error:", emailErr.response?.data || emailErr.message);
     }
 
-    res.status(201).json({ 
-      success: true, 
+    res.status(201).json({
+      success: true,
       message: `Employee ${name} created successfully! ${emailSent ? '📧 Welcome Email Sent via Crinza API.' : ''}`,
       emailSent
     });
@@ -1338,7 +1517,7 @@ app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
 // =========================================================================
 const handleInvoiceSubmission = async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
     if (!session || session.status !== "STARTED") {
       return res.status(403).json({ message: "Action Blocked: You must start your day first before submitting invoices!" });
@@ -1349,15 +1528,35 @@ const handleInvoiceSubmission = async (req, res) => {
     let parsedAddons = { testModule: false, windowApp: false, iosApp: false };
     if (req.body.addons) {
       try {
-        parsedAddons =
-          typeof req.body.addons === "string"
-            ? JSON.parse(req.body.addons)
-            : req.body.addons;
+        parsedAddons = typeof req.body.addons === "string" ? JSON.parse(req.body.addons) : req.body.addons;
       } catch (e) {}
     }
 
-    // 🌟 Cloudinary Direct Secure URL
-    const normalizedPath = req.file ? req.file.path : "";
+    // 🌟 Safe parsing for categories array
+    let parsedCategories = [];
+    if (req.body.categories) {
+      try {
+        parsedCategories = typeof req.body.categories === "string" ? JSON.parse(req.body.categories) : req.body.categories;
+      } catch (e) {
+        parsedCategories = [req.body.categories];
+      }
+    }
+
+    // 🌟 Extract Cloudinary secure URLs from multi-field files object safely
+    const paymentProofPath = req.files && req.files['paymentProof'] ? req.files['paymentProof'][0].path : "";
+    const logoProofPath = req.files && req.files['logoProof'] ? req.files['logoProof'][0].path : "";
+
+    const { ownerName, validityYears, validityMonths } = req.body;
+
+    const yearsNum = Number(validityYears) || 0;
+    const monthsNum = Number(validityMonths) || 0;
+    let computedValidity = req.body.packageValidity || "1 Year";
+    if (yearsNum > 0 || monthsNum > 0) {
+      const yPart = yearsNum > 0 ? `${yearsNum} Year${yearsNum > 1 ? 's' : ''}` : '';
+      const mPart = monthsNum > 0 ? `${monthsNum} Month${monthsNum > 1 ? 's' : ''}` : '';
+      computedValidity = [yPart, mPart].filter(Boolean).join(' ');
+    }
+
     const paymentMode = req.body.paymentMode || 'ONLINE';
     const utrNumber = req.body.utrNumber ? req.body.utrNumber.trim() : '';
     const claimedPaid = Number(req.body.paidAmount) || 0;
@@ -1366,9 +1565,9 @@ const handleInvoiceSubmission = async (req, res) => {
     let ocrMessage = "Manual review required";
 
     if (paymentMode === 'ONLINE' && utrNumber) {
-      const existingUtrCheck = await Invoice.findOne({ 
-        utrNumber: utrNumber, 
-        status: { $in: ['pending', 'approved'] } 
+      const existingUtrCheck = await Invoice.findOne({
+        utrNumber: utrNumber,
+        status: { $in: ['pending', 'approved'] }
       });
 
       if (existingUtrCheck) {
@@ -1377,12 +1576,10 @@ const handleInvoiceSubmission = async (req, res) => {
       }
     }
 
-    if (paymentMode === 'ONLINE' && req.file && utrNumber && ocrStatus !== "RED") {
+    if (paymentMode === 'ONLINE' && paymentProofPath && utrNumber && ocrStatus !== "RED") {
       try {
         console.log("🔍 Running AI OCR Scan on payment proof...");
-        const { data: { text } } = await Tesseract.recognize(req.file.path, 'eng');
-        console.log("📄 OCR Extracted Text:", text);
-
+        const { data: { text } } = await Tesseract.recognize(paymentProofPath, 'eng');
         const cleanedText = text.replace(/[\s,]/g, '');
         const isAmountMatched = cleanedText.includes(claimedPaid.toString());
         const isUtrMatched = cleanedText.includes(utrNumber);
@@ -1392,22 +1589,25 @@ const handleInvoiceSubmission = async (req, res) => {
           ocrMessage = "AI Verified: UTR & Amount Matched 100%";
         } else {
           ocrStatus = "YELLOW";
-          ocrMessage = `Mismatch Warning: Entered UTR (${utrNumber}) or Amount (₹${claimedPaid}) differs from screenshot!`;
+          ocrMessage = `Mismatch Warning: Entered UTR or Amount differs from screenshot!`;
         }
       } catch (ocrErr) {
-        console.error("🔥 OCR Processing Error:", ocrErr);
         ocrStatus = "YELLOW";
-        ocrMessage = "OCR scan failed to read image clearly, manual review required.";
+        ocrMessage = "OCR scan failed to read image clearly.";
       }
     } else if (paymentMode !== 'ONLINE') {
       ocrStatus = "GREEN";
-      ocrMessage = "Offline Payment Mode (Cash/Cheque)";
+      ocrMessage = "Offline Payment Mode";
     }
 
     const newInvoice = new Invoice({
       ...req.body,
-      baseAmount:
-        Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
+      categories: parsedCategories, // ✅ Fixed categories mapping
+      ownerName: ownerName || '',
+      validityYears: yearsNum,
+      validityMonths: monthsNum,
+      packageValidity: computedValidity,
+      baseAmount: Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
       totalAmount: Number(req.body.totalAmount) || 0,
       paidAmount: claimedPaid,
       dueAmount: Number(req.body.dueAmount) || 0,
@@ -1417,7 +1617,8 @@ const handleInvoiceSubmission = async (req, res) => {
       longitude: req.body.longitude ? Number(req.body.longitude) : null,
       invoiceId,
       salespersonId: req.user.userId,
-      paymentProof: normalizedPath,
+      paymentProof: paymentProofPath, // ✅ Fixed file path mapping
+      logoProof: logoProofPath,       // ✅ Added logoProof storage support
       addons: parsedAddons,
       paymentMode,
       utrNumber,
@@ -1431,21 +1632,27 @@ const handleInvoiceSubmission = async (req, res) => {
 
     await newInvoice.save();
 
-    res
-      .status(201)
-      .json({
-        message: "Invoice request & installment ledger submitted to Accountant!",
-        invoiceId,
-      });
+    res.status(201).json({
+      message: "Invoice request & installment ledger submitted to Accountant!",
+      invoiceId,
+    });
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Failed to submit request", error: err.message });
+    console.error("🔥 [FATAL] INVOICE SUBMISSION FAILED:", err.message);
+    res.status(500).json({
+      message: "Failed to submit request",
+      error: err.message
+    });
   }
 };
 
-app.post("/api/invoices/request", verifyToken, upload.single("paymentProof"), handleInvoiceSubmission);
-app.post("/api/salesperson/invoice-request", verifyToken, upload.single("paymentProof"), handleInvoiceSubmission);
+// 🌟 FIX: Updated multer route handlers with upload.fields to handle multiple files (paymentProof and logoProof)
+const invoiceUploadFields = upload.fields([
+  { name: "paymentProof", maxCount: 1 },
+  { name: "logoProof", maxCount: 1 }
+]);
+
+app.post("/api/invoices/request", verifyToken, invoiceUploadFields, handleInvoiceSubmission);
+app.post("/api/salesperson/invoice-request", verifyToken, invoiceUploadFields, handleInvoiceSubmission);
 
 app.get("/api/invoices/pending", verifyToken, async (req, res) => {
   try {
@@ -1513,16 +1720,30 @@ app.post("/api/invoices/approve/:id", verifyToken, async (req, res) => {
     invoice.approvedBy = req.user.userId;
     await invoice.save();
 
+    // 🌟 4️⃣ AUTOMATION: Create Technical Production Project agar pehle se nahi hai
+    const existingProject = await TechnicalTask.findOne({ invoiceId: invoice.invoiceId });
+    if (!existingProject) {
+      const projectId = "PRJ-" + Date.now().toString().slice(-6);
+      await TechnicalTask.create({
+        projectId,
+        invoiceId: invoice.invoiceId,
+        instituteName: invoice.instituteName,
+        appName: invoice.appName || "Custom App",
+        packageValidity: invoice.packageValidity || "1 Year",
+        addons: invoice.addons || {},
+        logoProof: invoice.logoProof || "",
+        status: "Unassigned"
+      });
+    }
+
     res.json({
-      message: `Invoice #${invoice.invoiceId} Approved & Emailed successfully via Crinza API!`,
+      message: `Invoice #${invoice.invoiceId} Approved & Technical Project Queued successfully!`,
     });
   } catch (err) {
-    res
-      .status(500)
-      .json({
-        message: "Approval failed",
-        error: err.message || "Internal error",
-      });
+    res.status(500).json({
+      message: "Approval failed",
+      error: err.message || "Internal error",
+    });
   }
 });
 
@@ -1597,25 +1818,27 @@ app.post("/api/salesperson/save-fcm-token", verifyToken, async (req, res) => {
 // --- ⏱️ DAY START / END SHIFT API ROUTES ---
 app.get("/api/salesperson/day-status", verifyToken, async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    // 🌟 Correct IST Date string (YYYY-MM-DD)
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
-    
+
     if (!session) {
       return res.json({ status: "NOT_STARTED", session: null });
     }
-    res.json({ 
-      status: session.status, 
-      startAddress: session.startAddress || "", 
-      session 
+    res.json({
+      status: session.status,
+      startAddress: session.startAddress || "",
+      session
     });
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch day status", error: err.message });
   }
 });
 
+
 app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const existing = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
 
     if (existing && existing.status === "STARTED") {
@@ -1644,7 +1867,7 @@ app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
 
 app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
     const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today, status: "STARTED" });
 
     if (!session) {
@@ -1652,28 +1875,49 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     }
 
     const { latitude, longitude } = req.body;
+    const endTimeDate = new Date();
 
-    const routeLogs = await LocationLog.find({ salespersonId: req.user.userId, date: today }).sort({ timestamp: 1 });
+    // 🌟 FIX: Strictly fetch logs between Start Day timestamp and End Day timestamp
+    const routeLogs = await LocationLog.find({
+      salespersonId: req.user.userId,
+      date: today,
+      timestamp: {
+        $gte: new Date(session.startTime),
+        $lte: endTimeDate
+      }
+    }).sort({ timestamp: 1 });
+
     const computedDistance = calculateValidDistance(routeLogs);
 
     session.status = "ENDED";
-    session.endTime = new Date();
+    session.endTime = endTimeDate;
     session.endLocation = { latitude: Number(latitude) || 0, longitude: Number(longitude) || 0 };
     session.totalDistanceKm = computedDistance;
     await session.save();
 
     const totalVisitsToday = await Lead.countDocuments({ salespersonId: req.user.userId, leadDate: today });
     const approvedInvoicesToday = await Invoice.find({ salespersonId: req.user.userId, status: "approved" });
-    
+
     const totalCollectedToday = approvedInvoicesToday.reduce((acc, inv) => acc + (inv.paidAmount || 0), 0);
-    const workingHours = ((session.endTime - new Date(session.startTime)) / (1000 * 60 * 60)).toFixed(1);
+    const workingMilliseconds = endTimeDate - new Date(session.startTime);
+    const workingHours = (workingMilliseconds / (1000 * 60 * 60)).toFixed(1);
+
+    const formatISTTime = (dateValue) => {
+      const d = new Date(dateValue);
+      return d.toLocaleTimeString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    };
 
     res.json({
       success: true,
       message: "Day ended successfully. Entries are now locked for today.",
       summary: {
-        startTime: new Date(session.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
-        endTime: new Date(session.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        startTime: formatISTTime(session.startTime),
+        endTime: formatISTTime(session.endTime),
         workingHours: `${workingHours} hrs`,
         totalVisits: totalVisitsToday,
         totalCollected: totalCollectedToday,
@@ -1685,19 +1929,31 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
   }
 });
 
+
+
 app.get("/api/salesperson/notifications", verifyToken, async (req, res) => {
   try {
-    const tasks = await Task.find({ 
-      salespersonId: req.user.userId, 
-      status: "pending" 
+
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+    const tasks = await Task.find({
+      salespersonId: req.user.userId,
+      status: "pending",
+      $or: [
+        { dueDate: { $exists: false } },
+        { dueDate: null },
+        { dueDate: "" },
+        { dueDate: { $lte: today } } //
+      ]
     }).sort({ createdAt: -1 });
 
     const formattedNotifications = tasks.map((t) => ({
       _id: t._id,
       title: `${t.taskType.toUpperCase()} Reminder`,
-      message: `Pending task for institute: ${t.instituteName}`,
+      message: `Pending task for institute: ${t.instituteName} (Due: ${t.dueDate || 'N/A'})`,
       isRead: false,
       createdAt: t.createdAt,
+      dueDate: t.dueDate,
     }));
 
     res.json(formattedNotifications);
@@ -1725,41 +1981,13 @@ app.put("/api/salesperson/notifications/:id/dismiss", verifyToken, async (req, r
   }
 });
 
-// =========================================================================
-// --- 📢 SALESPERSON PERSISTENT BROADCAST API ROUTES ---
-// =========================================================================
-app.get("/api/salesperson/broadcasts", verifyToken, async (req, res) => {
-  try {
-    const broadcasts = await Broadcast.find({
-      deletedFor: { $ne: req.user.userId }
-    }).sort({ createdAt: -1 });
-
-    res.json(broadcasts);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to fetch broadcasts", error: err.message });
-  }
-});
-
-app.post("/api/salesperson/broadcasts/:id/dismiss", verifyToken, async (req, res) => {
-  try {
-    const broadcastId = req.params.id;
-    await Broadcast.findByIdAndUpdate(broadcastId, {
-      $addToSet: { deletedFor: req.user.userId }
-    });
-
-    res.json({ success: true, message: "Broadcast dismissed successfully!" });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to dismiss broadcast", error: err.message });
-  }
-});
-
 app.get("/api/salesperson/my-deals", verifyToken, async (req, res) => {
   try {
-    const rawDeals = await Invoice.find({ 
+    const rawDeals = await Invoice.find({
       salespersonId: req.user.userId,
       status: { $ne: 'rejected' }
     }).sort({
-      createdAt: 1, 
+      createdAt: 1,
     });
 
     const consolidatedMap = {};
@@ -1877,17 +2105,22 @@ app.post(
         await existingLead.save();
 
         if (followUpDate) {
-          await Task.create({
-            salespersonId: req.user.userId,
-            instituteName: existingLead.instituteName,
-            taskType: followUpAction?.toLowerCase().includes("demo")
-              ? "demo"
-              : "call",
-            notes:
-              notes ||
-              `Follow-up scheduled (Visit #${existingLead.visitCount})`,
-            dueDate: followUpDate,
-          });
+          // 🌟 FIX: Existing pending task ko update karein, duplicate task mat banayein
+          await Task.findOneAndUpdate(
+            {
+              salespersonId: req.user.userId,
+              instituteName: existingLead.instituteName,
+              status: "pending"
+            },
+            {
+              $set: {
+                dueDate: followUpDate,
+                notes: notes || `Follow-up scheduled (Visit #${existingLead.visitCount})`,
+                taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call"
+              }
+            },
+            { upsert: true, sort: { createdAt: -1 } }
+          );
         }
 
         return res.status(200).json({
@@ -1922,15 +2155,22 @@ app.post(
       await newLead.save();
 
       if (followUpDate) {
-        await Task.create({
-          salespersonId: req.user.userId,
-          instituteName: newLead.instituteName,
-          taskType: followUpAction?.toLowerCase().includes("demo")
-            ? "demo"
-            : "call",
-          notes: notes || `Follow-up scheduled: ${followUpAction}`,
-          dueDate: followUpDate,
-        });
+        // 🌟 FIX: New lead ke case mein bhi check karein ki agar koi purana pending task ho toh wahi update ho jaye
+        await Task.findOneAndUpdate(
+          {
+            salespersonId: req.user.userId,
+            instituteName: newLead.instituteName,
+            status: "pending"
+          },
+          {
+            $set: {
+              dueDate: followUpDate,
+              notes: notes || `Follow-up scheduled: ${followUpAction}`,
+              taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call"
+            }
+          },
+          { upsert: true, sort: { createdAt: -1 } }
+        );
       }
 
       res
@@ -1987,15 +2227,24 @@ app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto")
 
     if (!updatedLead)
       return res.status(404).json({ message: "Lead not found" });
-    
+
     if (followUpDate) {
-      await Task.create({
-        salespersonId: req.user.userId,
-        instituteName: updatedLead.instituteName,
-        taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call",
-        notes: notes || `Rescheduled follow-up`,
-        dueDate: followUpDate,
-      });
+      // 🌟 FIX: Purana pending task update karein, naya task create mat karein
+      await Task.findOneAndUpdate(
+        {
+          salespersonId: req.user.userId,
+          instituteName: updatedLead.instituteName,
+          status: "pending"
+        },
+        {
+          $set: {
+            dueDate: followUpDate,
+            notes: notes || `Rescheduled follow-up`,
+            taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call"
+          }
+        },
+        { upsert: true, sort: { createdAt: -1 } }
+      );
     }
 
     res.json({ message: "Lead updated successfully!", lead: updatedLead });
@@ -2019,31 +2268,790 @@ app.get("/api/salesperson/tasks", verifyToken, async (req, res) => {
   }
 });
 
-app.post("/api/coupons/verify", verifyToken, async (req, res) => {
+
+// =========================================================================
+// --- 🧬 BIOMETRIC / WEBAUTHN API ROUTES ---
+// =========================================================================
+
+const rpName = "Crinza SalesHub";
+const rpID = process.env.NODE_ENV === "production" ? "crinza-saleshub.onrender.com" : "localhost";
+const expectedOrigin = process.env.FRONTEND_URL || "http://localhost:5173";
+const challengeStore = {};
+
+// 1. Register Challenge Generate (Device link karne ke liye)
+app.post("/api/auth/webauthn/register-options", verifyToken, async (req, res) => {
   try {
-    const { code } = req.body;
-    if (!code) return res.status(400).json({ message: "Coupon code required" });
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
-    if (!coupon)
-      return res.status(404).json({ message: "Invalid coupon code!" });
-
-    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate)) {
-      return res.status(400).json({ message: "This coupon has expired!" });
+    let excludeCredentials = [];
+    if (user.devices && Array.isArray(user.devices)) {
+      excludeCredentials = user.devices.map(dev => {
+        let credId = dev.credentialID;
+        if (Buffer.isBuffer(credId)) {
+          credId = credId.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+        return {
+          id: credId,
+          type: 'public-key',
+        };
+      }).filter(d => d.id);
     }
 
-    res.json({
-      message: "Coupon applied successfully!",
-      code: coupon.code,
-      discountType: coupon.type,
-      discountValue: coupon.discountValue,
+    const options = await generateRegistrationOptions({
+      rpName,
+      rpID,
+      userID: Buffer.from(user._id.toString()),
+      userName: user.userId,
+      excludeCredentials,
+      // 🌟 Yahan "platform" lagane se Google Cloud ki jagah direct laptop ka Windows Hello / Fingerprint khulega
+      authenticatorSelection: {
+        userVerification: "preferred",
+        authenticatorAttachment: "platform",
+        residentKey: "preferred"
+      }
     });
+
+    challengeStore[user.userId] = options.challenge;
+    res.json(options);
   } catch (err) {
-    res
-      .status(500)
-      .json({ message: "Server error verifying coupon", error: err.message });
+    console.error("🔥 WebAuthn Register Options Crash Error:", err);
+    res.status(500).json({ message: "Failed to generate registration options", error: err.message });
   }
 });
+
+// 2. Register Verify & Save Device
+app.post("/api/auth/webauthn/register-verify", verifyToken, async (req, res) => {
+  try {
+    const { credential } = req.body;
+    const user = await User.findOne({ userId: req.user.userId });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const expectedChallenge = challengeStore[user.userId];
+    delete challengeStore[user.userId];
+
+    const verification = await verifyRegistrationResponse({
+      response: credential,
+      expectedChallenge,
+      expectedOrigin,
+      expectedRPID: rpID,
+    });
+
+    if (verification.verified && verification.registrationInfo) {
+      const { credentialID, credentialPublicKey, counter } = verification.registrationInfo;
+
+      if (!user.devices) user.devices = [];
+
+      // 🌟 Safe conversion to avoid undefined Buffer crash
+      const credIdBuffer = credentialID ? Buffer.from(credentialID) : Buffer.from(credential.id, 'base64');
+      const credPubKeyBuffer = credentialPublicKey ? Buffer.from(credentialPublicKey) : Buffer.alloc(0);
+
+      const existingDevice = user.devices.find(d => {
+        if (!d.credentialID || !credIdBuffer) return false;
+        try {
+          return Buffer.compare(d.credentialID, credIdBuffer) === 0;
+        } catch (e) {
+          return false;
+        }
+      });
+
+      if (!existingDevice) {
+        user.devices.push({
+          credentialID: credIdBuffer,
+          credentialPublicKey: credPubKeyBuffer,
+          counter: counter || 0,
+          transports: credential.transports || []
+        });
+        await user.save();
+      }
+      return res.json({ success: true, message: "Biometric device registered successfully!" });
+    }
+    res.status(400).json({ success: false, message: "Verification failed" });
+  } catch (err) {
+    console.error("🔥 Detailed Register Verify Crash Error:", err);
+    res.status(500).json({ message: "Registration error", error: err.message });
+  }
+});
+
+
+
+// 3. Login Challenge Generate (Bina password ke login ke liye)
+app.post("/api/auth/webauthn/login-options", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const user = await User.findOne({ userId: userId?.trim() });
+    if (!user) return res.status(404).json({ message: "User ID not found" });
+
+    if (!user.devices || user.devices.length === 0) {
+      return res.status(400).json({ message: "No fingerprint registered. Please login with password first." });
+    }
+
+    // 🌟 Convert Buffer to Base64URL string safely for @simplewebauthn
+    const allowCredentials = user.devices.map(dev => {
+      let credId = dev.credentialID;
+      if (!credId) return null;
+
+      let idString = credId;
+      if (Buffer.isBuffer(credId)) {
+        idString = credId.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      } else if (typeof credId === 'object' && credId.buffer) {
+        // Handle MongoDB binary buffer objects
+        idString = Buffer.from(credId).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+      }
+
+      return {
+        id: idString,
+        type: 'public-key',
+        transports: dev.transports || [],
+      };
+    }).filter(Boolean);
+
+    const options = await generateAuthenticationOptions({
+      rpID,
+      allowCredentials,
+      userVerification: "preferred",
+    });
+
+    challengeStore[user.userId] = options.challenge;
+    res.json(options);
+  } catch (err) {
+    console.error("🔥 Login Options Crash Error:", err);
+    res.status(500).json({ message: "Failed to generate login options", error: err.message });
+  }
+});
+
+app.post("/api/auth/webauthn/login-verify", async (req, res) => {
+  try {
+    const { userId, credential } = req.body;
+    const user = await User.findOne({ userId: userId?.trim() });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const expectedChallenge = challengeStore[user.userId];
+    delete challengeStore[user.userId];
+
+    if (!user.devices || user.devices.length === 0) {
+      return res.status(400).json({ message: "No devices found. Please login with password to re-register fingerprint." });
+    }
+
+    // 🌟 Find matching device safely using string comparison of credential IDs
+    const deviceIndex = user.devices.findIndex(d => {
+      if (!d || !d.credentialID) return false;
+      try {
+        const dbIdStr = Buffer.isBuffer(d.credentialID)
+          ? d.credentialID.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+          : String(d.credentialID);
+        return dbIdStr === credential.id;
+      } catch (e) {
+        return false;
+      }
+    });
+
+    if (deviceIndex === -1) {
+      return res.status(400).json({ message: "Biometric device not recognized. Please login with password." });
+    }
+
+    const device = user.devices[deviceIndex];
+
+    // 🌟 Forcefully extract buffers and counter as pure primitive values to prevent Mongoose subdocument schema corruption
+    const rawPubKey = device.credentialPublicKey;
+    const rawCredId = device.credentialID;
+    const rawCounter = device.counter;
+
+    const pubKeyBuffer = Buffer.isBuffer(rawPubKey) ? rawPubKey : Buffer.from(rawPubKey || []);
+    const credIdBuffer = Buffer.isBuffer(rawCredId) ? rawCredId : Buffer.from(rawCredId || []);
+    const safeCounter = (typeof rawCounter === 'number' && !isNaN(rawCounter)) ? rawCounter : 0;
+
+    const verification = await verifyAuthenticationResponse({
+      response: credential,
+      expectedChallenge,
+      expectedOrigin,
+      expectedRPID: rpID,
+      authenticator: {
+        credentialPublicKey: pubKeyBuffer,
+        credentialID: credIdBuffer,
+        counter: safeCounter,
+      },
+    });
+
+    if (verification.verified) {
+      // Safely update counter using Mongoose subdocument set or direct assignment
+      user.devices[deviceIndex].counter = verification.authenticationInfo?.newCounter || (safeCounter + 1);
+      await user.save();
+
+      const token = jwt.sign(
+        { userId: user.userId, name: user.name, role: user.role },
+        process.env.JWT_SECRET || "secret",
+        { expiresIn: "1d" }
+      );
+
+      return res.json({
+        success: true,
+        token,
+        role: user.role,
+        userId: user.userId,
+        name: user.name,
+        message: "Biometric login successful!"
+      });
+    }
+    res.status(400).json({ success: false, message: "Authentication failed" });
+  } catch (err) {
+    console.error("🔥 Login Verify Crash Error:", err);
+    res.status(500).json({ message: "Login verification error", error: err.message });
+  }
+});
+
+
+// =========================================================================
+// --- 🌙 AUTOMATIC SHIFT END (Har raat 11:00 PM par chalega) ---
+// =========================================================================
+const cron = require('node-cron'); // Optional: Agar node-cron package use karna chahein, ya phir simple setInterval
+
+// Simple & Reliable Hourly/Minute Checker for 11:00 PM IST
+setInterval(async () => {
+  try {
+    const now = new Date();
+    // Get current IST hours and minutes
+    const istTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+    const [currentHour, currentMinute] = istTimeStr.split(':').map(Number);
+
+    // Agar raat ke 11:00 PM (23:00) se lekar 11:05 PM ke beech ka samay hai
+    if (currentHour === 23 && currentMinute <= 5) {
+      const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+      // Sare active STARTED sessions dhoondho jo aaj ya usse pehle ke hain
+      const activeSessions = await DaySession.find({
+        status: "STARTED",
+        date: { $lte: today }
+      });
+
+      for (const session of activeSessions) {
+        const endTimeDate = new Date(); // Auto end time (11:00 PM approx)
+
+        // Session ke start hone se lekar 11:00 PM tak ke logs fetch karein
+        const routeLogs = await LocationLog.find({
+          salespersonId: session.salespersonId,
+          date: session.date,
+          timestamp: {
+            $gte: new Date(session.startTime),
+            $lte: endTimeDate
+          }
+        }).sort({ timestamp: 1 });
+
+        // Distance calculate karein
+        const computedDistance = calculateValidDistance(routeLogs);
+
+        // Session ko ENDED mark kar do
+        session.status = "ENDED";
+        session.endTime = endTimeDate;
+        session.totalDistanceKm = computedDistance;
+        await session.save();
+
+        console.log(`🌙 Auto-Ended Shift at 11:00 PM for Salesperson: ${session.salespersonId} | Total Distance: ${computedDistance} km`);
+      }
+    }
+  } catch (err) {
+    console.error("🔥 Auto-End Day Job Error:", err.message);
+  }
+}, 5 * 60 * 1000); // Har 5 minute mein ek baar check karega taaki 11:00 PM miss na ho
+
+
+// =========================================================================
+// --- 📊 AUTOMATED MONTHLY & WEEKLY EXCEL REPORT CRON JOB ---
+// =========================================================================
+const { Parser } = require('json2csv');
+
+// Helper to generate CSV buffer from performance data
+const generateExcelReportBuffer = async (startDateStr, endDateStr) => {
+  const performanceData = await generatePerformanceData(startDateStr, endDateStr);
+
+  const fields = [
+    { label: 'Employee ID', value: 'employeeId' },
+    { label: 'Salesperson Name', value: 'name' },
+    { label: 'Active Working Days', value: 'activeDays' },
+    { label: 'Total Visits/Leads', value: 'totalLeads' },
+    { label: 'Total Demos Conducted', value: 'totalDemos' },
+    { label: 'Total Calls Made', value: 'totalCalls' },
+    { label: 'Deals Closed', value: 'dealsClosed' },
+    { label: 'Total Revenue', value: 'totalRevenue' },
+    { label: 'Total Collected', value: 'totalCollected' },
+    { label: 'Travel Distance', value: 'distanceKm' }
+  ];
+
+  const json2csvParser = new Parser({ fields });
+  const csvString = json2csvParser.parse(performanceData);
+  return Buffer.from(csvString, 'utf-8');
+};
+
+// =========================================================================
+// --- 📧 SEND WEEKLY / MONTHLY PERFORMANCE REPORT ---
+// =========================================================================
+
+const sendPerformanceReport = async (
+  reportType,
+  startDateStr,
+  endDateStr,
+  periodKey
+) => {
+  try {
+    // Check whether this report was already sent
+    const alreadySent = await ReportLog.findOne({
+      type: reportType,
+      period: periodKey,
+    });
+
+    if (alreadySent) {
+      console.log(
+        `ℹ️ ${reportType} report already sent for ${periodKey}`
+      );
+      return;
+    }
+
+    // Find Admin / Boss
+    const bossUser = await User.findOne({
+      role: { $in: ["boss", "admin"] },
+    });
+
+    if (!bossUser || !bossUser.email) {
+      console.log("❌ Admin/Boss email not found");
+      return;
+    }
+
+    // Generate CSV report
+    const excelBuffer = await generateExcelReportBuffer(
+      startDateStr,
+      endDateStr
+    );
+
+    const form = new FormData();
+
+    form.append("sendTo", bossUser.email);
+
+    form.append(
+      "message",
+      `
+      <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+
+        <h3 style="color: #4f46e5;">
+          Crinza ${reportType} Performance Excel Report
+        </h3>
+
+        <p>Hello Boss,</p>
+
+        <p>
+          Attached is the automated
+          <strong>${reportType.toLowerCase()} performance report</strong>.
+        </p>
+
+        <p>
+          <strong>Period:</strong>
+          ${startDateStr} to ${endDateStr}
+        </p>
+
+        <p>
+          It contains complete details of every salesperson including
+          demo counts, lead visits, deals closed, revenue generated,
+          collection and travel distance.
+        </p>
+
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;" />
+
+        <p style="font-size:12px;color:#64748b;">
+          Generated automatically by Crinza Backend Server.
+        </p>
+
+      </div>
+      `
+    );
+
+    form.append("attachments", excelBuffer, {
+      filename:
+        `Crinza_${reportType}_Report_${startDateStr}_to_${endDateStr}.csv`,
+      contentType: "text/csv",
+    });
+
+    // Send email
+    await axios.post(
+      "https://api.crinza.com/api/v1/contact/message",
+      form,
+      {
+        headers: {
+          ...form.getHeaders(),
+          Origin: "https://crinza.com",
+        },
+      }
+    );
+
+    // IMPORTANT:
+    // Save log ONLY after successful email
+    await ReportLog.create({
+      type: reportType,
+      period: periodKey,
+      sentAt: new Date(),
+    });
+
+    console.log(
+      `✅ ${reportType} report successfully sent to ${bossUser.email}`
+    );
+
+  } catch (err) {
+    console.error(
+      `🔥 ${reportType} Performance Report Error:`,
+      err.response?.data || err.message
+    );
+  }
+};
+
+// =========================================================================
+// --- ⏰ RELIABLE WEEKLY & MONTHLY PERFORMANCE REPORT SCHEDULER ---
+// =========================================================================
+
+const checkPerformanceReports = async () => {
+  try {
+    const now = new Date();
+
+    // Current date in IST
+    const istDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+
+    // Current weekday in IST
+    const dayOfWeek = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      weekday: "short",
+    }).format(now);
+
+    const [year, month, day] = istDate.split("-");
+
+    // =========================================================
+    // 1️⃣ WEEKLY REPORT — EVERY MONDAY
+    // =========================================================
+
+    if (dayOfWeek === "Mon") {
+
+      const currentDate = new Date(
+        `${year}-${month}-${day}T00:00:00`
+      );
+
+      // Previous Monday
+      const previousMonday = new Date(currentDate);
+      previousMonday.setDate(
+        previousMonday.getDate() - 7
+      );
+
+      // Previous Sunday
+      const previousSunday = new Date(currentDate);
+      previousSunday.setDate(
+        previousSunday.getDate() - 1
+      );
+
+      const startDateStr =
+        previousMonday.toISOString().split("T")[0];
+
+      const endDateStr =
+        previousSunday.toISOString().split("T")[0];
+
+      const periodKey = `Weekly_${istDate}`;
+
+      await sendPerformanceReport(
+        "Weekly",
+        startDateStr,
+        endDateStr,
+        periodKey
+      );
+    }
+
+
+    // =========================================================
+    // 2️⃣ MONTHLY REPORT — EVERY 1ST DAY
+    // =========================================================
+
+    if (day === "01") {
+
+      const currentDate = new Date(
+        `${year}-${month}-${day}T00:00:00`
+      );
+
+      // Previous month's last day
+      const previousMonthEnd = new Date(currentDate);
+      previousMonthEnd.setDate(0);
+
+      // Previous month's first day
+      const previousMonthStart = new Date(
+        previousMonthEnd.getFullYear(),
+        previousMonthEnd.getMonth(),
+        1
+      );
+
+      const startDateStr =
+        previousMonthStart.toISOString().split("T")[0];
+
+      const endDateStr =
+        previousMonthEnd.toISOString().split("T")[0];
+
+      const periodKey = `Monthly_${istDate}`;
+
+      await sendPerformanceReport(
+        "Monthly",
+        startDateStr,
+        endDateStr,
+        periodKey
+      );
+    }
+
+  } catch (err) {
+    console.error(
+      "🔥 Performance Scheduler Error:",
+      err.message
+    );
+  }
+};
+
+
+// =========================================================
+// 🚀 CHECK IMMEDIATELY WHEN SERVER STARTS
+// =========================================================
+
+checkPerformanceReports();
+
+
+// =========================================================
+// 🔄 CHECK EVERY 5 MINUTES
+// =========================================================
+
+setInterval(
+  checkPerformanceReports,
+  5 * 60 * 1000
+);
+
+// ⏰ Automated Scheduler (Har 5 minute mein check karega ki 11:00 AM hua hai ya nahi)
+// setInterval(async () => {
+//   try {
+//     const now = new Date();
+//     const istTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' }); // e.g. "11:00"
+//     const dayOfWeek = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' }); // e.g. "Mon"
+//     const dayOfMonth = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', day: 'numeric' }); // e.g. "1"
+
+//     // Sirf jab 11:00 AM se 11:05 AM ke beech ka samay ho
+//     if (istTimeStr.startsWith('11:')) {
+//       const bossUser = await User.findOne({ role: { $in: ["boss", "admin"] } });
+//       if (!bossUser || !bossUser.email) return;
+
+//       let reportType = "";
+//       let startDateStr = "";
+//       let endDateStr = "";
+
+//       // 1️⃣ Monthly Report: Har mahine ki 1st date ko subah 11 baje
+//       if (dayOfMonth === "1") {
+//         reportType = "Monthly";
+//         const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0); // Pichle mahine ki akhri tareek
+//         const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1); // Pichle mahine ki pehli tareek
+
+//         startDateStr = lastMonthStart.toISOString().split("T")[0];
+//         endDateStr = lastMonthEnd.toISOString().split("T")[0];
+//       }
+//       // 2️⃣ Weekly Report: Har Monday subah 11 baje
+//       else if (dayOfWeek === "Mon") {
+//         reportType = "Weekly";
+//         const endDateObj = new Date(now.getTime() - 24 * 60 * 60 * 1000); // Yesterday (Sunday)
+//         const startDateObj = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); // Last Monday
+
+//         startDateStr = startDateObj.toISOString().split("T")[0];
+//         endDateStr = endDateObj.toISOString().split("T")[0];
+//       }
+
+//       if (reportType) {
+//         // Excel/CSV Buffer generate karein
+//         const excelBuffer = await generateExcelReportBuffer(startDateStr, endDateStr);
+
+//         const form = new FormData();
+//         form.append('sendTo', bossUser.email);
+//         form.append('message', `
+//           <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+//             <h3 style="color: #4f46e5;">Crinza ${reportType} Performance Excel Report</h3>
+//             <p>Hello Boss,</p>
+//             <p>Attached is the automated <strong>${reportType.toLowerCase()} performance report</strong> (Period: ${startDateStr} to ${endDateStr}) in Excel (CSV) format.</p>
+//             <p>It contains complete details of every salesperson including demo counts, lead visits, deals closed, revenue generated, and travel distance.</p>
+//             <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+//             <p style="font-size: 12px; color: #64748b;">Generated automatically by Crinza Backend Server</p>
+//           </div>
+//         `);
+
+//         form.append('attachments', excelBuffer, {
+//           filename: `Crinza_${reportType}_Report_${startDateStr}_to_${endDateStr}.csv`,
+//           contentType: 'text/csv',
+//         });
+
+//         await axios.post('https://api.crinza.com/api/v1/contact/message', form, {
+//           headers: { ...form.getHeaders(), 'Origin': 'https://crinza.com' },
+//         });
+
+//         console.log(`✅ Automated ${reportType} Excel Report successfully emailed to Boss (${bossUser.email})`);
+//       }
+//     }
+//   } catch (err) {
+//     console.error("🔥 Automated Excel Report Cron Error:", err.message);
+//   }
+// }, 5 * 60 * 1000); // Har 5 minute mein check karega taaki 11:00 AM miss na ho
+
+// =========================================================================
+// --- 🧪 POSTMAN / MANUAL TEST ROUTE FOR EXCEL REPORT ---
+// =========================================================================
+// app.get("/api/test/send-excel-report", verifyToken, async (req, res) => {
+//   try {
+//     // Sirf Admin ya Boss hi yeh test trigger kar sakein
+//     if (req.user.role !== "boss" && req.user.role !== "admin") {
+//       return res.status(403).json({ message: "Access denied! Admin/Boss privileges required." });
+//     }
+
+//     const bossEmail = req.user.email || process.env.BOSS_EMAIL || "sshubhamkumar776@gmail.com";
+
+//     // Pichle 7 dino ka date range
+//     const now = new Date();
+//     const endDateObj = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+//     const startDateObj = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+//     const startDateStr = startDateObj.toISOString().split("T")[0];
+//     const endDateStr = endDateObj.toISOString().split("T")[0];
+
+//     // Excel Buffer generate karein
+//     const excelBuffer = await generateExcelReportBuffer(startDateStr, endDateStr);
+
+//     const form = new FormData();
+//     form.append('sendTo', bossEmail);
+//     form.append('message', `
+//       <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
+//         <h3 style="color: #4f46e5;">Crinza Weekly Performance Excel Report (Manual Test)</h3>
+//         <p>Hello Boss,</p>
+//         <p>This is your manually triggered test report for period: ${startDateStr} to ${endDateStr}.</p>
+//       </div>
+//     `);
+
+//     form.append('attachments', excelBuffer, {
+//       filename: `Crinza_Weekly_Report_${startDateStr}_to_${endDateStr}.csv`,
+//       contentType: 'text/csv',
+//     });
+
+//     const response = await axios.post('https://api.crinza.com/api/v1/contact/message', form, {
+//       headers: { ...form.getHeaders(), 'Origin': 'https://crinza.com' },
+//     });
+
+//     console.log(`✅ Manual Test Excel Report successfully emailed to Boss (${bossEmail})`);
+//     res.json({ success: true, message: `Excel report successfully sent to ${bossEmail}!` });
+//   } catch (err) {
+//     console.error("🔥 Manual Test Report Error:", err.response?.data || err.message);
+//     res.status(500).json({ message: "Failed to send test report", error: err.response?.data || err.message });
+//   }
+// });
+
+// =========================================================================
+// --- 📧 PERFORMANCE REPORT LOG SCHEMA ---
+// =========================================================================
+
+const reportLogSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["Weekly", "Monthly"],
+      required: true,
+    },
+
+    period: {
+      type: String,
+      required: true,
+    },
+
+    sentAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Same report ko duplicate send hone se rokega
+reportLogSchema.index(
+  { type: 1, period: 1 },
+  { unique: true }
+);
+
+const ReportLog = mongoose.model("ReportLog", reportLogSchema);
+
+
+// =========================================================================
+// --- 📊 HELPER: GENERATE PERFORMANCE DATA FOR REPORT ---
+// =========================================================================
+async function generatePerformanceData(startDateStr, endDateStr) {
+  const salespersons = await User.find({ role: "salesperson" });
+  const reportSummary = [];
+
+  for (const emp of salespersons) {
+    const empId = emp.userId;
+
+    // 1. Total Demos & Calls count
+    const totalDemos = await Task.countDocuments({
+      salespersonId: empId,
+      taskType: "demo",
+      createdAt: { $gte: new Date(startDateStr), $lte: new Date(endDateStr + "T23:59:59.999Z") }
+    });
+
+    const totalCalls = await Task.countDocuments({
+      salespersonId: empId,
+      taskType: "call",
+      createdAt: { $gte: new Date(startDateStr), $lte: new Date(endDateStr + "T23:59:59.999Z") }
+    });
+
+    // 2. Total Leads / Visits recorded
+    const totalLeads = await Lead.countDocuments({
+      salespersonId: empId,
+      createdAt: { $gte: new Date(startDateStr), $lte: new Date(endDateStr + "T23:59:59.999Z") }
+    });
+
+    // 3. Deals Closed (Approved Invoices) & Revenue
+    const approvedDeals = await Invoice.find({
+      salespersonId: empId,
+      status: "approved",
+      updatedAt: { $gte: new Date(startDateStr), $lte: new Date(endDateStr + "T23:59:59.999Z") }
+    });
+
+    const dealsClosedCount = approvedDeals.length;
+    const totalRevenue = approvedDeals.reduce((acc, inv) => acc + (inv.totalAmount || 0), 0);
+    const totalCollected = approvedDeals.reduce((acc, inv) => acc + (inv.paidAmount || 0), 0);
+
+    // 4. Total Distance Traveled
+    const locationLogs = await LocationLog.find({
+      salespersonId: empId,
+      date: { $gte: startDateStr, $lte: endDateStr }
+    }).sort({ timestamp: 1 });
+
+    const distanceKm = calculateValidDistance(locationLogs);
+
+    // 5. Total Active Working Days
+    const activeDays = await DaySession.countDocuments({
+      salespersonId: empId,
+      date: { $gte: startDateStr, $lte: endDateStr }
+    });
+
+    reportSummary.push({
+      employeeId: empId,
+      name: emp.name,
+      activeDays,
+      totalLeads,
+      totalDemos,
+      totalCalls,
+      dealsClosed: dealsClosedCount,
+      totalRevenue: `₹${totalRevenue.toLocaleString("en-IN")}`,
+      totalCollected: `₹${totalCollected.toLocaleString("en-IN")}`,
+      distanceKm: `${distanceKm} km`
+    });
+  }
+
+  return reportSummary;
+}
 
 // =========================================================================
 // --- 🌐 SERVER LISTENER ---

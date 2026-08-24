@@ -1,10 +1,12 @@
 // src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
-import { useNavigate, useLocation } from 'react-router-dom'; // 👈 Added for navigation tracking
-import { App as CapacitorApp } from '@capacitor/app'; // 👈 Added Capacitor App plugin
+import { useNavigate, useLocation } from 'react-router-dom';
+import { App as CapacitorApp } from '@capacitor/app';
+
 import Login from './components/Login';
 import SalespersonForm from './components/SalespersonForm';
+import TechnicalDashboard from './components/TechnicalDashboard';
 import AccountantPanel from './components/accountant/AccountantPanel';
 import AdminDashboard from './components/admin/AdminDashboard';
 
@@ -12,7 +14,7 @@ function App() {
   const [token, setToken] = useState(null);
   const [role, setRole] = useState(null);
   const [userId, setUserId] = useState(null);
-  
+
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -23,6 +25,7 @@ function App() {
 
   useEffect(() => {
     const root = window.document.documentElement;
+
     if (isDark) {
       root.classList.add('dark');
       localStorage.setItem('theme', 'dark');
@@ -34,6 +37,7 @@ function App() {
 
   const toggleTheme = () => setIsDark(!isDark);
 
+  // Restore logged-in session
   useEffect(() => {
     const savedToken = localStorage.getItem('token');
     const savedRole = localStorage.getItem('role');
@@ -46,23 +50,26 @@ function App() {
     }
   }, []);
 
-  // 🌟 Capacitor Hardware Back Button Handler Integration
+  // 🌟 Capacitor Hardware Back Button Handler
   useEffect(() => {
-    const handleBackButton = CapacitorApp.addListener('backButton', ({ canGoBack }) => {
-      // Agar user login page par hai ya root path par hai, toh app exit kar do
-      if (!token || location.pathname === '/') {
-        CapacitorApp.exitApp();
-      } else if (canGoBack) {
-        // Agar router history me pichhla page hai toh peeche jao
-        navigate(-1);
-      } else {
-        // Fallback agar aur pichhla page nahi hai toh app minimize/exit ho
-        CapacitorApp.exitApp();
+    const handleBackButton = CapacitorApp.addListener(
+      'backButton',
+      ({ canGoBack }) => {
+        // Login/root page → exit app
+        if (!token || location.pathname === '/') {
+          CapacitorApp.exitApp();
+        } else if (canGoBack) {
+          // Go to previous route
+          navigate(-1);
+        } else {
+          // No previous route → exit app
+          CapacitorApp.exitApp();
+        }
       }
-    });
+    );
 
     return () => {
-      handleBackButton.then(listener => listener.remove());
+      handleBackButton.then((listener) => listener.remove());
     };
   }, [token, location, navigate]);
 
@@ -80,7 +87,7 @@ function App() {
     localStorage.removeItem('token');
     localStorage.removeItem('role');
     localStorage.removeItem('userId');
-    
+
     setToken(null);
     setRole(null);
     setUserId(null);
@@ -88,6 +95,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-[var(--color-background)] font-[var(--font-body)] text-[var(--color-body)] transition-colors duration-300 relative">
+
       {/* Toast Notifications */}
       <Toaster position="top-right" reverseOrder={false} />
 
@@ -96,7 +104,7 @@ function App() {
         <button
           onClick={toggleTheme}
           className="p-3.5 rounded-full bg-[var(--color-card)] border border-[var(--color-border)] text-[var(--color-heading)] shadow-xl cursor-pointer transition-all duration-300 hover:scale-110 active:scale-95 flex items-center justify-center text-base"
-          title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
         >
           {isDark ? '☀️' : '🌙'}
         </button>
@@ -105,11 +113,30 @@ function App() {
       {!token ? (
         <Login onLoginSuccess={handleLoginSuccess} />
       ) : role === 'boss' || role === 'admin' ? (
-        <AdminDashboard userId={userId} onLogout={handleLogout} />
+        <AdminDashboard
+          userId={userId}
+          onLogout={handleLogout}
+        />
       ) : role === 'accountant' ? (
-        <AccountantPanel userId={userId} onLogout={handleLogout} />
+        <AccountantPanel
+          userId={userId}
+          onLogout={handleLogout}
+        />
+      ) : role === 'technical' ? (
+        <TechnicalDashboard
+          userId={userId}
+          onLogout={handleLogout}
+          API_BASE={
+            import.meta.env.PROD
+              ? 'https://crinza-saleshub.onrender.com'
+              : 'http://localhost:5000'
+          }
+        />
       ) : (
-        <SalespersonForm userId={userId} onLogout={handleLogout} />
+        <SalespersonForm
+          userId={userId}
+          onLogout={handleLogout}
+        />
       )}
     </div>
   );

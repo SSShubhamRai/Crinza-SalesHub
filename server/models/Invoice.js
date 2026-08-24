@@ -5,6 +5,7 @@ const invoiceSchema = new mongoose.Schema({
   salespersonId: { type: String, required: true, index: true },
   approvedBy: { type: String, default: '' },
   instituteName: { type: String, required: true },
+  ownerName: { type: String, default: '' }, // 🌟 NEW: Owner Name field added
   appName: { type: String, required: true },
   mobileNo: { type: String, required: true },
   email: { type: String, required: true, index: true },
@@ -20,7 +21,10 @@ const invoiceSchema = new mongoose.Schema({
   latitude: { type: Number, default: null },
   longitude: { type: Number, default: null },
 
+  // Validity Fields
   packageValidity: { type: String, required: true },
+  validityYears: { type: Number, default: 1 },  // 🌟 NEW: Validity Years
+  validityMonths: { type: Number, default: 0 }, // 🌟 NEW: Validity Months
   
   // Add-on Packages Field
   addons: {
@@ -38,10 +42,10 @@ const invoiceSchema = new mongoose.Schema({
   paidAmount: { type: Number, required: true },
   dueAmount: { type: Number, required: true },
 
-  // 🌟 NEW: Payment Mode & Offline Transaction Details
+  // 🌟 Payment Mode & Offline Transaction Details
   paymentMode: { 
     type: String, 
-    enum: ['ONLINE', 'CASH', 'CHEQUE'], 
+    enum: ['ONLINE', 'NEFT', 'CASH', 'CHEQUE'], 
     default: 'ONLINE' 
   },
   utrNumber: { type: String, default: '' },
@@ -49,7 +53,7 @@ const invoiceSchema = new mongoose.Schema({
   chequeNo: { type: String, default: '' },
   bankName: { type: String, default: '' },
 
-  // 🌟 NEW: AI OCR Verification Status Fields
+  // 🌟 AI OCR Verification Status Fields
   ocrStatus: { 
     type: String, 
     enum: ['PENDING', 'GREEN', 'YELLOW', 'RED'], 

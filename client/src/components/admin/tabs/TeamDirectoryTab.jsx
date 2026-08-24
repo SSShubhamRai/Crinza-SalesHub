@@ -54,7 +54,7 @@ export const TeamDirectoryTab = ({
                   </span>
                 </div>
                 <span className="text-[10px] bg-[var(--color-surface)] px-3 py-1 rounded-xl border border-[var(--color-border)] font-semibold">
-                  {stat.totalDeals} Deals
+                  {stat.totalDeals} Total Deals
                 </span>
               </div>
 

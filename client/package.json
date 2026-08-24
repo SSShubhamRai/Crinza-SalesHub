@@ -17,6 +17,7 @@
     "@capacitor/geolocation": "^8.2.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.1.2",
+    "@simplewebauthn/browser": "^13.3.0",
     "@types/canvas-confetti": "^1.9.0",
     "axios": "^1.18.1",
     "canvas-confetti": "^1.9.4",
@@ -29,6 +30,7 @@
     "react-leaflet": "^5.0.0",
     "react-phone-input-2": "^2.15.1",
     "react-router-dom": "^7.18.2",
+    "react-select": "^5.10.2",
     "socket.io-client": "^4.8.3",
     "xlsx": "^0.18.5"
   },

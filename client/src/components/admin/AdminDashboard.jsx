@@ -17,6 +17,7 @@ import { TransferLeadsTab } from "./tabs/TransferLeadsTab";
 import { TeamBroadcastTab } from "./tabs/TeamBroadcastTab";
 import { LiveTrackingTab } from "./tabs/LiveTrackingTab";
 import { SecurityAlertsTab } from "./tabs/SecurityAlertsTab";
+import { TechnicalProjectsTab } from "./tabs/TechnicalProjectsTab"; // 👈 NEW: Technical Projects Tracking Tab
 
 const AdminDashboard = ({ userId, onLogout }) => {
   const API_BASE = import.meta.env.PROD
@@ -55,6 +56,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
   const [selectedTrackerEmp, setSelectedTrackerEmp] = useState("");
   const [trackerDate, setTrackerDate] = useState(new Date().toISOString().split('T')[0]);
+  const [trackerEndDate, setTrackerEndDate] = useState(""); 
   const [travelData, setTravelData] = useState({ totalDistanceKm: 0, routePoints: [] });
   const [liveLocations, setLiveLocations] = useState({});
   const [resolvedAddresses, setResolvedAddresses] = useState({});
@@ -142,12 +144,19 @@ const AdminDashboard = ({ userId, onLogout }) => {
     };
   }, [API_BASE]);
 
-  const fetchSalespersonTravelHistory = useCallback(async (empId, dateVal) => {
+  const fetchSalespersonTravelHistory = useCallback(async (empId, startDate, endDate) => {
     if (!empId) return;
     try {
       const token = localStorage.getItem("token");
-      const targetDate = dateVal || trackerDate;
-      const res = await fetch(`${API_BASE}/api/boss/salesperson-travel/${empId}?date=${targetDate}`, {
+      const targetStart = startDate || trackerDate;
+      const targetEnd = endDate || trackerEndDate || targetStart;
+
+      let url = `${API_BASE}/api/boss/salesperson-travel/${empId}?date=${targetStart}`;
+      if (targetEnd && targetEnd !== targetStart) {
+        url = `${API_BASE}/api/boss/salesperson-travel/${empId}?startDate=${targetStart}&endDate=${targetEnd}`;
+      }
+
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
@@ -157,7 +166,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
     } catch (err) {
       console.error("Failed to fetch travel history:", err);
     }
-  }, [API_BASE, trackerDate]);
+  }, [API_BASE, trackerDate, trackerEndDate]);
 
   const fetchSalespersonShiftInfo = useCallback(async (empId, dateVal) => {
     if (!empId) return;
@@ -203,13 +212,13 @@ const AdminDashboard = ({ userId, onLogout }) => {
 
   useEffect(() => {
     if (activeTab === "live-tracking" && selectedTrackerEmp) {
-      fetchSalespersonTravelHistory(selectedTrackerEmp, trackerDate);
+      fetchSalespersonTravelHistory(selectedTrackerEmp, trackerDate, trackerEndDate);
       fetchSalespersonShiftInfo(selectedTrackerEmp, trackerDate);
     }
     if (activeTab === "leads-export") {
       fetchAllSystemLeads();
     }
-  }, [selectedTrackerEmp, trackerDate, activeTab, fetchSalespersonTravelHistory, fetchSalespersonShiftInfo, fetchAllSystemLeads]);
+  }, [selectedTrackerEmp, trackerDate, trackerEndDate, activeTab, fetchSalespersonTravelHistory, fetchSalespersonShiftInfo, fetchAllSystemLeads]);
 
   const resolvePlaceName = async (lat, lon, pointKey) => {
     if (resolvedAddresses[pointKey]) return; 
@@ -391,7 +400,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Creation failed");
 
-      const successMsg = data.message || `${newEmp.role === "accountant" ? "Accountant" : "Salesperson"} ${newEmp.name} created successfully!`;
+      const successMsg = data.message || `Employee ${newEmp.name} created successfully!`;
       toast.success(successMsg);
       setEmpStatus({ success: successMsg, error: "" });
       setNewEmp({
@@ -622,15 +631,20 @@ const AdminDashboard = ({ userId, onLogout }) => {
     return matchesSearch && matchesRole;
   });
 
-  const filteredSystemLeads = allSystemLeads.filter((lead) => {
+const filteredSystemLeads = allSystemLeads.filter((lead) => {
     const lStatus = lead.leadStatus?.toLowerCase() || "";
     const fAction = lead.followUpAction?.toLowerCase() || "";
+    const dStatus = lead.demoStatus?.toLowerCase() || "";
 
     let matchesStatus = true;
     if (adminLeadFilter === "call-back") {
       matchesStatus = lStatus.includes("call") || fAction.includes("call");
     } else if (adminLeadFilter === "next-meeting") {
       matchesStatus = lStatus.includes("meeting") || fAction.includes("meeting") || fAction.includes("next meeting");
+    } else if (adminLeadFilter === "demo-done") {
+      matchesStatus = dStatus === "completed";
+    } else if (adminLeadFilter === "demo-pending") {
+      matchesStatus = !lead.demoStatus || dStatus === "not given" || dStatus === "scheduled";
     } else if (adminLeadFilter === "not-interested") {
       matchesStatus = lStatus.includes("not interested");
     } else if (adminLeadFilter === "deal-closed") {
@@ -735,6 +749,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
           </div>
         </div>
 
+        {/* Desktop Navbar Tabs */}
         <div className="hidden md:flex gap-2 p-1.5 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm overflow-x-auto">
           <button onClick={() => setActiveTab("tracker")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${activeTab === "tracker" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             📋 Task Tracker
@@ -760,11 +775,15 @@ const AdminDashboard = ({ userId, onLogout }) => {
           <button onClick={() => setActiveTab("live-tracking")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${activeTab === "live-tracking" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             🛰️ Live Tracking & Travel
           </button>
+          <button onClick={() => setActiveTab("tech-projects")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${activeTab === "tech-projects" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
+            🛠️ App Production Queue
+          </button>
           <button onClick={() => setActiveTab("security-alerts")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap relative active:scale-95 ${activeTab === "security-alerts" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             🚨 Security & Spoofing {spoofingAlerts.length > 0 && <span className="ml-1 bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px] font-extrabold animate-pulse">{spoofingAlerts.length}</span>}
           </button>
         </div>
 
+        {/* Mobile Dropdown Tabs */}
         <div className="block md:hidden w-full">
           <select
             value={activeTab}
@@ -779,6 +798,7 @@ const AdminDashboard = ({ userId, onLogout }) => {
             <option value="transfer">🔄 Transfer Leads</option>
             <option value="broadcast">📢 Team Broadcast</option>
             <option value="live-tracking">🛰️ Live Tracking & Travel</option>
+            <option value="tech-projects">🛠️ App Production Queue</option>
             <option value="security-alerts">🚨 Security & Spoofing ({spoofingAlerts.length})</option>
           </select>
         </div>
@@ -894,6 +914,8 @@ const AdminDashboard = ({ userId, onLogout }) => {
               <LiveTrackingTab
                 trackerDate={trackerDate}
                 setTrackerDate={setTrackerDate}
+                trackerEndDate={trackerEndDate}
+                setTrackerEndDate={setTrackerEndDate}
                 selectedTrackerEmp={selectedTrackerEmp}
                 setSelectedTrackerEmp={setSelectedTrackerEmp}
                 employees={employees}
@@ -905,6 +927,10 @@ const AdminDashboard = ({ userId, onLogout }) => {
                 resolvedAddresses={resolvedAddresses}
                 resolvePlaceName={resolvePlaceName}
               />
+            )}
+
+            {activeTab === "tech-projects" && (
+              <TechnicalProjectsTab API_BASE={API_BASE} employees={employees} />
             )}
 
             {activeTab === "security-alerts" && (
