@@ -33,7 +33,7 @@ const {
 // --- Firebase Admin Initialization (Node v24 Compatible) ---
 try {
   const { initializeApp, cert, getApps } = require("firebase-admin/app");
-  const serviceAccount = require("./firebase-service-account.json");
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
   if (!getApps().length) {
     initializeApp({
@@ -163,6 +163,37 @@ const taskSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 const Task = mongoose.model("Task", taskSchema);
+
+const reportLogSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: ["Weekly", "Monthly"],
+      required: true,
+    },
+
+    period: {
+      type: String,
+      required: true,
+    },
+
+    sentAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Same report ko duplicate send hone se rokega
+reportLogSchema.index(
+  { type: 1, period: 1 },
+  { unique: true }
+);
+
+const ReportLog = mongoose.model("ReportLog", reportLogSchema);
 
 // =========================================================================
 // --- 🛠️ TECHNICAL / APP PRODUCTION PROJECT SCHEMA ---
@@ -2946,40 +2977,6 @@ setInterval(
 //   }
 // });
 
-// =========================================================================
-// --- 📧 PERFORMANCE REPORT LOG SCHEMA ---
-// =========================================================================
-
-const reportLogSchema = new mongoose.Schema(
-  {
-    type: {
-      type: String,
-      enum: ["Weekly", "Monthly"],
-      required: true,
-    },
-
-    period: {
-      type: String,
-      required: true,
-    },
-
-    sentAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  {
-    timestamps: true,
-  }
-);
-
-// Same report ko duplicate send hone se rokega
-reportLogSchema.index(
-  { type: 1, period: 1 },
-  { unique: true }
-);
-
-const ReportLog = mongoose.model("ReportLog", reportLogSchema);
 
 
 // =========================================================================
