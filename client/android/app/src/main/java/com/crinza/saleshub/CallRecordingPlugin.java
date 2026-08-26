@@ -9,17 +9,25 @@ import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.getcapacitor.annotation.PluginMethod;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
 @CapacitorPlugin(
-    name = "CallRecording"
+    name = "CallRecording",
+    permissions = {
+        @Permission(
+            alias = "audio",
+            strings = {
+                Manifest.permission.RECORD_AUDIO
+            }
+        )
+    }
 )
 public class CallRecordingPlugin extends Plugin {
 
     private static CallRecordingPlugin instance;
-
-    private static final int RECORD_AUDIO_PERMISSION_REQUEST = 5001;
 
     // =========================================================
     // INITIALIZE
@@ -32,7 +40,7 @@ public class CallRecordingPlugin extends Plugin {
     }
 
     // =========================================================
-    // 📡 SEND CALL STATE TO REACT
+    // SEND CALL STATE TO REACT
     // =========================================================
 
     public static void notifyCallState(
@@ -55,7 +63,7 @@ public class CallRecordingPlugin extends Plugin {
     }
 
     // =========================================================
-    // 🎙️ CHECK PERMISSION
+    // CHECK PERMISSION
     // =========================================================
 
     @PluginMethod
@@ -75,7 +83,7 @@ public class CallRecordingPlugin extends Plugin {
     }
 
     // =========================================================
-    // 🎙️ REQUEST PERMISSION
+    // REQUEST PERMISSION
     // =========================================================
 
     @PluginMethod
@@ -87,6 +95,7 @@ public class CallRecordingPlugin extends Plugin {
                         Manifest.permission.RECORD_AUDIO
                 ) == PackageManager.PERMISSION_GRANTED;
 
+        // Already granted
         if (granted) {
 
             JSObject result = new JSObject();
@@ -98,16 +107,36 @@ public class CallRecordingPlugin extends Plugin {
             return;
         }
 
-        requestPermission(
-                Manifest.permission.RECORD_AUDIO,
-                RECORD_AUDIO_PERMISSION_REQUEST
+        // Ask Android for microphone permission
+        requestPermissionForAlias(
+                "audio",
+                call,
+                "permissionCallback"
         );
-
-        call.resolve();
     }
 
     // =========================================================
-    // 🎙️ START RECORDING WORKFLOW
+    // PERMISSION CALLBACK
+    // =========================================================
+
+    @PermissionCallback
+    private void permissionCallback(PluginCall call) {
+
+        boolean granted =
+                ContextCompat.checkSelfPermission(
+                        getContext(),
+                        Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED;
+
+        JSObject result = new JSObject();
+
+        result.put("granted", granted);
+
+        call.resolve(result);
+    }
+
+    // =========================================================
+    // START RECORDING WORKFLOW
     // =========================================================
 
     @PluginMethod
@@ -116,7 +145,9 @@ public class CallRecordingPlugin extends Plugin {
         String callId = call.getString("callId");
 
         if (callId == null || callId.trim().isEmpty()) {
+
             call.reject("callId is required.");
+
             return;
         }
 
@@ -127,9 +158,11 @@ public class CallRecordingPlugin extends Plugin {
                 ) == PackageManager.PERMISSION_GRANTED;
 
         if (!granted) {
+
             call.reject(
                     "RECORD_AUDIO permission is not granted."
             );
+
             return;
         }
 
@@ -147,7 +180,7 @@ public class CallRecordingPlugin extends Plugin {
     }
 
     // =========================================================
-    // 🛑 STOP RECORDING WORKFLOW
+    // STOP RECORDING WORKFLOW
     // =========================================================
 
     @PluginMethod
