@@ -22,6 +22,14 @@ const Tesseract = require("tesseract.js"); // 🌟 AI OCR Payment Proof Verifica
 require("dotenv").config();
 
 
+const SalespersonPoint = require("./models/SalespersonPoint");
+
+const {
+  addSalespersonPoints,
+} = require("./utils/salespersonPoints");
+
+
+
 const {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -117,6 +125,21 @@ const storage = new CloudinaryStorage({
   },
 });
 
+const callRecordingStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "crinza_call_recordings",
+    resource_type: "video",
+  },
+});
+
+const uploadCallRecording = multer({
+  storage: callRecordingStorage,
+  limits: {
+    fileSize: 50 * 1024 * 1024,
+  },
+});
+
 const upload = multer({
   storage: storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB Limit restriction
@@ -163,6 +186,103 @@ const taskSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 const Task = mongoose.model("Task", taskSchema);
+
+// =========================================================================
+// --- 📞 CALL TRACKING SCHEMA ---
+// =========================================================================
+
+const callLogSchema = new mongoose.Schema(
+  {
+    salespersonId: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
+    leadId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lead",
+      default: null,
+      index: true,
+    },
+
+    customerName: {
+      type: String,
+      default: "",
+    },
+
+    phoneNumber: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
+    // CALL INITIATED / CONNECTED / NOT_CONNECTED / MISSED / REJECTED
+    status: {
+      type: String,
+      enum: [
+        "INITIATED",
+        "CONNECTED",
+         "ENDED",
+        "NOT_CONNECTED",
+        "MISSED",
+        "REJECTED",
+        "FAILED",
+      ],
+      default: "INITIATED",
+      index: true,
+    },
+
+    dialedAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+
+    connectedAt: {
+      type: Date,
+      default: null,
+    },
+
+    endedAt: {
+      type: Date,
+      default: null,
+    },
+
+    durationSeconds: {
+      type: Number,
+      default: 0,
+    },
+
+    // Future audio-recording support
+    recordingUrl: {
+      type: String,
+      default: "",
+    },
+
+    recordingConsent: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Faster analytics queries
+callLogSchema.index({
+  salespersonId: 1,
+  dialedAt: -1,
+});
+
+callLogSchema.index({
+  salespersonId: 1,
+  phoneNumber: 1,
+  dialedAt: -1,
+});
+
+const CallLog = mongoose.model("CallLog", callLogSchema);
 
 const reportLogSchema = new mongoose.Schema(
   {
@@ -289,22 +409,39 @@ function deg2rad(deg) {
 // 🌟 Local Distance Calculation with 200 Meters Threshold & Road Factor
 function calculateValidDistance(coordinatesList) {
   let straightDistance = 0;
-  const MIN_DISTANCE_THRESHOLD = 0.03; // 0.03KM = 30m meters threshold
-  const ROAD_FACTOR = 1.8; //  for road curves and turns
+
+  const MIN_DISTANCE_THRESHOLD = 0.03; // 30 meters
+  const ROAD_FACTOR = 1.8; // compulsory road adjustment factor
 
   for (let i = 1; i < coordinatesList.length; i++) {
     const prev = coordinatesList[i - 1];
     const curr = coordinatesList[i];
 
-    const dist = calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
+    if (
+      !Number.isFinite(Number(prev.latitude)) ||
+      !Number.isFinite(Number(prev.longitude)) ||
+      !Number.isFinite(Number(curr.latitude)) ||
+      !Number.isFinite(Number(curr.longitude))
+    ) {
+      continue;
+    }
 
+    const dist = calculateDistance(
+      Number(prev.latitude),
+      Number(prev.longitude),
+      Number(curr.latitude),
+      Number(curr.longitude)
+    );
+
+    // Ignore movements smaller than 30 meters
     if (dist >= MIN_DISTANCE_THRESHOLD) {
       straightDistance += dist;
     }
   }
 
-  // Straight distance ko road factor se multiply kar diya
+  // Apply compulsory road factor
   const totalRoadwayDistance = straightDistance * ROAD_FACTOR;
+
   return Number(totalRoadwayDistance.toFixed(2));
 }
 // =========================================================================
@@ -342,78 +479,118 @@ io.on("connection", (socket) => {
     console.log(`👤 Active Session Registered for: ${userId} (${socket.id})`);
   });
 
- socket.on("update_location", async (data) => {
-    try {
-      const { salespersonId, latitude, longitude } = data;
-      if (!salespersonId || !latitude || !longitude) return;
+socket.on("update_location", async (data) => {
+  try {
+    const { salespersonId, latitude, longitude } = data;
 
-      if (socket.user.userId !== salespersonId && socket.user.role !== 'admin' && socket.user.role !== 'boss') {
-        return;
-      }
-
-      // 🌟 Correct IST Date string to match start-day logic
-      const currentDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-
-      // 🌟 NAYA CHECK: Validate karein ki salesperson ka din shuru (STARTED) hai ya nahi
-      const activeSession = await DaySession.findOne({
-        salespersonId,
-        date: currentDate,
-        status: "STARTED"
-      });
-
-      // Agar day start nahi hua hai, toh location save/track nahi hogi
-      if (!activeSession) {
-        return;
-      }
-
-      const currentTime = new Date();
-      const lastLog = await LocationLog.findOne({ salespersonId, date: currentDate }).sort({ timestamp: -1 });
-
-      let isMockedByTeleport = false;
-
-      if (lastLog) {
-        const distanceKm = calculateDistance(lastLog.latitude, lastLog.longitude, latitude, longitude);
-        const timeDiffHours = (currentTime - new Date(lastLog.timestamp)) / (1000 * 60 * 60);
-
-        if (distanceKm < 0.03) {
-          io.emit("live_location_broadcast", {
-            salespersonId,
-            latitude,
-            longitude,
-            isMocked: false,
-            timestamp: currentTime,
-          });
-          return;
-        }
-
-        if (timeDiffHours > 0) {
-          const speedKmh = distanceKm / timeDiffHours;
-          if (speedKmh > 150) {
-            isMockedByTeleport = true;
-            console.warn(`🚨 SECURITY ALERT: Possible Fake GPS / Teleportation detected for ${salespersonId}! Calculated Speed: ${speedKmh.toFixed(2)} km/h`);
-          }
-        }
-      }
-
-      await LocationLog.create({
-        salespersonId,
-        latitude,
-        longitude,
-        date: currentDate,
-        isMocked: isMockedByTeleport,
-      });
-
-      io.emit("live_location_broadcast", {
-        salespersonId,
-        latitude,
-        longitude,
-        isMocked: isMockedByTeleport,
-        timestamp: currentTime,
-      });
-    } catch (err) {
-      console.error("🔥 Socket Location Error:", err);
+    // Validate location data
+    if (
+      !salespersonId ||
+      !Number.isFinite(Number(latitude)) ||
+      !Number.isFinite(Number(longitude))
+    ) {
+      return;
     }
-  });
+
+    // Authorization check
+    if (
+      socket.user.userId !== salespersonId &&
+      socket.user.role !== "admin" &&
+      socket.user.role !== "boss"
+    ) {
+      return;
+    }
+
+    const currentDate = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+
+    // Only track during an active Day Session
+    const activeSession = await DaySession.findOne({
+      salespersonId,
+      date: currentDate,
+      status: "STARTED",
+    });
+
+    if (!activeSession) {
+      return;
+    }
+
+    const currentTime = new Date();
+
+    // Only use the latest location AFTER Day Start
+    const lastLog = await LocationLog.findOne({
+      salespersonId,
+      date: currentDate,
+      timestamp: {
+        $gte: new Date(activeSession.startTime),
+      },
+    }).sort({ timestamp: -1 });
+
+    let isMockedByTeleport = false;
+
+    if (lastLog) {
+      const distanceKm = calculateDistance(
+        Number(lastLog.latitude),
+        Number(lastLog.longitude),
+        Number(latitude),
+        Number(longitude)
+      );
+
+      const timeDiffHours =
+        (currentTime - new Date(lastLog.timestamp)) /
+        (1000 * 60 * 60);
+
+      // Small movement: broadcast live location,
+      // but don't create unnecessary DB records.
+      if (distanceKm < 0.03) {
+        io.emit("live_location_broadcast", {
+          salespersonId,
+          latitude: Number(latitude),
+          longitude: Number(longitude),
+          isMocked: false,
+          timestamp: currentTime,
+        });
+
+        return;
+      }
+
+      // Detect unrealistic teleportation
+      if (timeDiffHours > 0) {
+        const speedKmh = distanceKm / timeDiffHours;
+
+        if (speedKmh > 150) {
+          isMockedByTeleport = true;
+
+          console.warn(
+            `🚨 SECURITY ALERT: Possible Fake GPS / Teleportation detected for ${salespersonId}! Calculated Speed: ${speedKmh.toFixed(2)} km/h`
+          );
+        }
+      }
+    }
+
+    // Save valid location
+    await LocationLog.create({
+      salespersonId,
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      date: currentDate,
+      timestamp: currentTime,
+      isMocked: isMockedByTeleport,
+    });
+
+    // Broadcast live location
+    io.emit("live_location_broadcast", {
+      salespersonId,
+      latitude: Number(latitude),
+      longitude: Number(longitude),
+      isMocked: isMockedByTeleport,
+      timestamp: currentTime,
+    });
+  } catch (err) {
+    console.error("🔥 Socket Location Error:", err);
+  }
+});
 
   socket.on("disconnect", () => {
     for (const [userId, socketId] of Object.entries(activeUserSessions)) {
@@ -914,6 +1091,372 @@ app.post("/api/boss/broadcast", verifyToken, async (req, res) => {
     res.status(500).json({ message: "Failed to send broadcast", error: err.message });
   }
 });
+
+// ============================================================
+// 📞 ADMIN / BOSS — SALESPERSON CALL ANALYTICS
+// ============================================================
+
+app.get(
+  "/api/boss/salesperson-call-analytics/:salespersonId",
+  verifyToken,
+  async (req, res) => {
+    try {
+      if (
+        req.user.role !== "admin" &&
+        req.user.role !== "boss"
+      ) {
+        return res.status(403).json({
+          message: "Access denied!",
+        });
+      }
+
+      const { salespersonId } = req.params;
+      const { from, to } = req.query;
+
+      const match = {
+        salespersonId,
+      };
+
+      if (from || to) {
+        match.dialedAt = {};
+
+        if (from) {
+          const fromDate = new Date(`${from}T00:00:00`);
+          match.dialedAt.$gte = fromDate;
+        }
+
+        if (to) {
+          const toDate = new Date(`${to}T23:59:59.999`);
+          match.dialedAt.$lte = toDate;
+        }
+      }
+
+      const logs = await CallLog.find(match)
+        .sort({ dialedAt: -1 });
+
+      const totalDials = logs.length;
+
+      const uniquePhones = new Set(
+        logs.map((call) => call.phoneNumber)
+      );
+
+      const connectedCalls = logs.filter(
+        (call) =>
+          call.status === "CONNECTED" ||
+          call.status === "ENDED"
+      ).length;
+
+      const notConnectedCalls = logs.filter(
+        (call) =>
+          call.status === "NOT_CONNECTED" ||
+          call.status === "MISSED" ||
+          call.status === "REJECTED" ||
+          call.status === "FAILED"
+      ).length;
+
+      const totalDurationSeconds = logs.reduce(
+        (sum, call) =>
+          sum + (Number(call.durationSeconds) || 0),
+        0
+      );
+
+      const averageDurationSeconds =
+        connectedCalls > 0
+          ? Math.floor(
+              totalDurationSeconds / connectedCalls
+            )
+          : 0;
+
+      const duplicateDials =
+        totalDials - uniquePhones.size;
+
+      return res.json({
+        success: true,
+        salespersonId,
+
+        analytics: {
+          totalDials,
+          uniqueDials: uniquePhones.size,
+          duplicateDials,
+          connectedCalls,
+          notConnectedCalls,
+          totalDurationSeconds,
+          averageDurationSeconds,
+        },
+      });
+    } catch (err) {
+      console.error(
+        "Admin salesperson call analytics error:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to fetch salesperson call analytics",
+        error: err.message,
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/boss/salesperson-points/:salespersonId",
+  verifyToken,
+  async (req, res) => {
+    try {
+      // Only admin/boss can access
+      if (
+        req.user.role !== "admin" &&
+        req.user.role !== "boss"
+      ) {
+        return res.status(403).json({
+          success: false,
+          message: "Access denied!",
+        });
+      }
+
+      const { salespersonId } = req.params;
+      const { from, to } = req.query;
+
+      // -----------------------------
+      // Date validation
+      // -----------------------------
+      if (!from || !to) {
+        return res.status(400).json({
+          success: false,
+          message: "from and to dates are required",
+        });
+      }
+
+      const fromDate = new Date(`${from}T00:00:00+05:30`);
+      const toDate = new Date(`${to}T23:59:59.999+05:30`);
+
+      if (
+        Number.isNaN(fromDate.getTime()) ||
+        Number.isNaN(toDate.getTime())
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid date range",
+        });
+      }
+
+      if (fromDate > toDate) {
+        return res.status(400).json({
+          success: false,
+          message: "From date cannot be after To date",
+        });
+      }
+
+      // -----------------------------
+      // Get points for selected range
+      // -----------------------------
+      const pointRecords = await SalespersonPoint.find({
+        salespersonId,
+        date: {
+          $gte: from,
+          $lte: to,
+        },
+      })
+        .sort({ date: 1 })
+        .lean();
+
+      // -----------------------------
+      // Get actual Start Day records
+      // -----------------------------
+      const workingDayRecords = await DaySession.find({
+        salespersonId,
+        date: {
+          $gte: from,
+          $lte: to,
+        },
+        status: "STARTED",
+      })
+        .sort({ date: 1 })
+        .lean();
+
+      // -----------------------------
+      // Unique working days
+      // -----------------------------
+      const workingDates = [
+        ...new Set(
+          workingDayRecords.map((session) => session.date)
+        ),
+      ];
+
+      const workingDays = workingDates.length;
+
+      // -----------------------------
+      // Total points
+      // -----------------------------
+      const totalPoints = pointRecords.reduce(
+        (sum, record) =>
+          sum + (Number(record.totalPoints) || 0),
+        0
+      );
+
+      // -----------------------------
+      // Average points
+      // -----------------------------
+      const averagePoints =
+        workingDays > 0
+          ? Number((totalPoints / workingDays).toFixed(2))
+          : 0;
+
+      // -----------------------------
+      // Daily breakdown
+      // -----------------------------
+      const pointsByDate = {};
+
+      pointRecords.forEach((record) => {
+        pointsByDate[record.date] =
+          (pointsByDate[record.date] || 0) +
+          (Number(record.totalPoints) || 0);
+      });
+
+      const dailyBreakdown = workingDates.map((date) => {
+        const pointRecord = pointRecords.find(
+          (record) => record.date === date
+        );
+
+        return {
+          date,
+
+          startedDay: true,
+
+          totalPoints:
+            pointsByDate[date] || 0,
+
+          breakdown: {
+            leadsCreated:
+              pointRecord?.leadsCreated || 0,
+
+            revisits:
+              pointRecord?.revisits || 0,
+
+            demosDone:
+              pointRecord?.demosDone || 0,
+
+            dealsClosed:
+              pointRecord?.dealsClosed || 0,
+
+            callsConnected:
+              pointRecord?.callsConnected || 0,
+
+            dialCalls:
+              pointRecord?.dialCalls || 0,
+          },
+        };
+      });
+
+      return res.json({
+        success: true,
+
+        salespersonId,
+
+        dateRange: {
+          from,
+          to,
+        },
+
+        summary: {
+          totalPoints,
+          workingDays,
+          averagePoints,
+          targetPerDay: 100,
+
+          targetAchievement:
+            workingDays > 0
+              ? Number(
+                  (
+                    (totalPoints /
+                      (workingDays * 100)) *
+                    100
+                  ).toFixed(2)
+                )
+              : 0,
+        },
+
+        dailyBreakdown,
+      });
+    } catch (err) {
+      console.error(
+        "❌ Salesperson points analytics error:",
+        err
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to fetch salesperson points analytics",
+        error: err.message,
+      });
+    }
+  }
+);
+
+// ============================================================
+// 📞 ADMIN / BOSS — SALESPERSON CALL HISTORY
+// ============================================================
+
+app.get(
+  "/api/boss/salesperson-call-history/:salespersonId",
+  verifyToken,
+  async (req, res) => {
+    try {
+      if (
+        req.user.role !== "admin" &&
+        req.user.role !== "boss"
+      ) {
+        return res.status(403).json({
+          message: "Access denied!",
+        });
+      }
+
+      const { salespersonId } = req.params;
+      const { from, to } = req.query;
+
+      const query = {
+        salespersonId,
+      };
+
+      if (from || to) {
+        query.dialedAt = {};
+
+        if (from) {
+          query.dialedAt.$gte =
+            new Date(`${from}T00:00:00`);
+        }
+
+        if (to) {
+          query.dialedAt.$lte =
+            new Date(`${to}T23:59:59.999`);
+        }
+      }
+
+      const calls = await CallLog.find(query)
+        .sort({ dialedAt: -1 })
+        .limit(500);
+
+      return res.json({
+        success: true,
+        salespersonId,
+        calls,
+      });
+    } catch (err) {
+      console.error(
+        "Admin salesperson call history error:",
+        err
+      );
+
+      return res.status(500).json({
+        message:
+          "Failed to fetch salesperson call history",
+        error: err.message,
+      });
+    }
+  }
+);
 
 // --- 👑 ADMIN: Get All Technical Projects ---
 app.get("/api/boss/technical-projects", verifyToken, async (req, res) => {
@@ -1662,6 +2205,10 @@ const handleInvoiceSubmission = async (req, res) => {
     });
 
     await newInvoice.save();
+    await addSalespersonPoints(
+  req.user.userId,
+  "DEAL_CLOSED"
+);
 
     res.status(201).json({
       message: "Invoice request & installment ledger submitted to Accountant!",
@@ -1866,6 +2413,575 @@ app.get("/api/salesperson/day-status", verifyToken, async (req, res) => {
   }
 });
 
+// =========================================================================
+// --- 📞 START CALL TRACKING ---
+// =========================================================================
+
+app.post("/api/salesperson/calls/start", verifyToken, async (req, res) => {
+  try {
+    const {
+      leadId,
+      customerName,
+      phoneNumber,
+    } = req.body;
+
+    if (!phoneNumber) {
+      return res.status(400).json({
+        message: "Phone number is required",
+      });
+    }
+
+    const normalizedPhone = String(phoneNumber)
+      .replace(/\D/g, "")
+      .slice(-10);
+
+    if (!normalizedPhone) {
+      return res.status(400).json({
+        message: "Invalid phone number",
+      });
+    }
+
+    const call = await CallLog.create({
+      salespersonId: req.user.userId,
+
+      leadId: leadId || null,
+
+      customerName: customerName || "",
+
+      phoneNumber: normalizedPhone,
+
+      status: "INITIATED",
+
+      dialedAt: new Date(),
+    });
+
+    await addSalespersonPoints(
+  req.user.userId,
+  "DIAL_CALL"
+);
+
+    res.status(201).json({
+      success: true,
+      message: "Call initiated and tracked",
+      call,
+    });
+  } catch (err) {
+    console.error("Start call tracking error:", err);
+
+    res.status(500).json({
+      message: "Failed to track call",
+      error: err.message,
+    });
+  }
+});
+
+
+
+app.patch(
+  "/api/salesperson/calls/:callId/connected",
+  verifyToken,
+  async (req, res) => {
+    try {
+      const { callId } = req.params;
+
+      const call = await CallLog.findOne({
+        _id: callId,
+        salespersonId: req.user.userId,
+      });
+
+      if (!call) {
+        return res.status(404).json({
+          message: "Call record not found",
+        });
+      }
+
+      // Prevent overwriting an already connected call
+      if (call.status === "CONNECTED") {
+        return res.json({
+          success: true,
+          message: "Call already marked as connected",
+          call,
+        });
+      }
+
+      call.status = "CONNECTED";
+      call.connectedAt = new Date();
+
+      await call.save();
+
+      await addSalespersonPoints(
+  req.user.userId,
+  "CALL_CONNECTED"
+);
+
+      return res.json({
+        success: true,
+        message: "Call marked as connected",
+        call,
+      });
+    } catch (err) {
+      console.error(
+        "Connected call update error:",
+        err
+      );
+
+      return res.status(500).json({
+        message: "Failed to update connected call",
+        error: err.message,
+      });
+    }
+  }
+);
+
+app.patch(
+  "/api/salesperson/calls/:callId/end",
+  verifyToken,
+  async (req, res) => {
+    try {
+      const { callId } = req.params;
+
+      const call = await CallLog.findOne({
+        _id: callId,
+        salespersonId: req.user.userId,
+      });
+
+      if (!call) {
+        return res.status(404).json({
+          message: "Call record not found",
+        });
+      }
+
+      const endedAt = new Date();
+
+      call.endedAt = endedAt;
+
+      // Calculate duration only when call was actually connected
+      if (call.connectedAt) {
+        const durationMs =
+          endedAt.getTime() -
+          new Date(call.connectedAt).getTime();
+
+        call.durationSeconds = Math.max(
+          0,
+          Math.floor(durationMs / 1000)
+        );
+      } else {
+        call.durationSeconds = 0;
+      }
+
+      call.status = "ENDED";
+
+      await call.save();
+
+      return res.json({
+        success: true,
+        message: "Call ended and duration saved",
+        call,
+      });
+    } catch (err) {
+      console.error(
+        "End call update error:",
+        err
+      );
+
+      return res.status(500).json({
+        message: "Failed to end call",
+        error: err.message,
+      });
+    }
+  }
+);
+// =========================================================================
+// 🎙️ UPLOAD SALESPERSON CALL RECORDING
+// =========================================================================
+
+// ============================================================
+// 🎙️ UPLOAD CALL RECORDING
+// ============================================================
+
+app.patch(
+  "/api/salesperson/calls/:callId/recording",
+  verifyToken,
+  uploadCallRecording.single("recording"),
+  async (req, res) => {
+    try {
+      const { callId } = req.params;
+
+      if (!req.file) {
+        return res.status(400).json({
+          message: "Recording file is required",
+        });
+      }
+
+      const call = await CallLog.findOne({
+        _id: callId,
+        salespersonId: req.user.userId,
+      });
+
+      if (!call) {
+        return res.status(404).json({
+          message: "Call record not found",
+        });
+      }
+
+      // Cloudinary URL returned by multer-storage-cloudinary
+      const recordingUrl =
+        req.file.path || req.file.secure_url;
+
+      if (!recordingUrl) {
+        return res.status(500).json({
+          message: "Cloudinary recording URL not available",
+        });
+      }
+
+      call.recordingUrl = recordingUrl;
+
+      // Recording has been uploaded successfully
+      call.recordingConsent = true;
+
+      await call.save();
+
+      return res.json({
+        success: true,
+        message: "Call recording uploaded successfully",
+        recordingUrl,
+        call,
+      });
+    } catch (err) {
+      console.error(
+        "Call recording upload error:",
+        err
+      );
+
+      return res.status(500).json({
+        message: "Failed to upload call recording",
+        error: err.message,
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/salesperson/calls/:callId/recording",
+  verifyToken,
+  uploadCallRecording.single("recording"),
+  async (req, res) => {
+    try {
+      const { callId } = req.params;
+
+      // ---------------------------------------------------------
+      // 1. Check recording file
+      // ---------------------------------------------------------
+      if (!req.file) {
+        return res.status(400).json({
+          message: "Recording file is required.",
+        });
+      }
+
+      // ---------------------------------------------------------
+      // 2. Find CallLog
+      // ---------------------------------------------------------
+      const call = await CallLog.findById(callId);
+
+      if (!call) {
+        return res.status(404).json({
+          message: "Call record not found.",
+        });
+      }
+
+      // ---------------------------------------------------------
+      // 3. Security: salesperson can update own call only
+      // ---------------------------------------------------------
+      if (
+        String(call.salespersonId) !==
+        String(req.user._id)
+      ) {
+        return res.status(403).json({
+          message: "You are not allowed to update this call.",
+        });
+      }
+
+      // ---------------------------------------------------------
+      // 4. Cloudinary URL save
+      // ---------------------------------------------------------
+      call.recordingUrl = req.file.path;
+
+      // Recording was uploaded.
+      // Consent handling can be refined later according to
+      // your actual recording-consent flow.
+      call.recordingConsent = true;
+
+      await call.save();
+
+      // ---------------------------------------------------------
+      // 5. Response
+      // ---------------------------------------------------------
+      return res.status(200).json({
+        message: "Call recording uploaded successfully.",
+        recordingUrl: call.recordingUrl,
+        callId: call._id,
+      });
+
+    } catch (error) {
+      console.error(
+        "❌ Call recording upload error:",
+        error
+      );
+
+      return res.status(500).json({
+        message: "Failed to upload call recording.",
+        error: error.message,
+      });
+    }
+  }
+);
+// =========================================================================
+// --- 📞 END CALL TRACKING ---
+// =========================================================================
+
+app.put("/api/salesperson/calls/:id/end", verifyToken, async (req, res) => {
+  try {
+    const {
+      status,
+      durationSeconds,
+      connectedAt,
+    } = req.body;
+
+    const allowedStatuses = [
+      "CONNECTED",
+      "NOT_CONNECTED",
+      "MISSED",
+      "REJECTED",
+      "FAILED",
+    ];
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        message: "Invalid call status",
+      });
+    }
+
+    const call = await CallLog.findOne({
+      _id: req.params.id,
+      salespersonId: req.user.userId,
+    });
+
+    if (!call) {
+      return res.status(404).json({
+        message: "Call record not found",
+      });
+    }
+
+    const endedAt = new Date();
+
+    call.status = status;
+    call.endedAt = endedAt;
+
+    if (connectedAt) {
+      call.connectedAt = new Date(connectedAt);
+    }
+
+    call.durationSeconds =
+      status === "CONNECTED"
+        ? Math.max(0, Number(durationSeconds) || 0)
+        : 0;
+
+    await call.save();
+
+    res.json({
+      success: true,
+      message: "Call updated successfully",
+      call,
+    });
+  } catch (err) {
+    console.error("End call tracking error:", err);
+
+    res.status(500).json({
+      message: "Failed to update call",
+      error: err.message,
+    });
+  }
+});
+
+// =========================================================================
+// --- 📞 SALESPERSON CALL HISTORY ---
+// =========================================================================
+
+app.get("/api/salesperson/calls", verifyToken, async (req, res) => {
+  try {
+    const limit = Math.min(
+      Number(req.query.limit) || 100,
+      500
+    );
+
+    const calls = await CallLog.find({
+      salespersonId: req.user.userId,
+    })
+      .sort({ dialedAt: -1 })
+      .limit(limit)
+      .lean();
+
+    res.json(calls);
+  } catch (err) {
+    console.error("Fetch call history error:", err);
+
+    res.status(500).json({
+      message: "Failed to fetch call history",
+      error: err.message,
+    });
+  }
+});
+
+// =========================================================================
+// --- 📊 SALESPERSON CALL ANALYTICS ---
+// =========================================================================
+app.get("/api/salesperson/call-analytics", verifyToken, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+
+    const now = new Date();
+
+    let startDate;
+    let endDate;
+
+    // ---------------------------------------------------------
+    // CUSTOM DATE RANGE
+    // ---------------------------------------------------------
+    if (from || to) {
+      if (!from || !to) {
+        return res.status(400).json({
+          message: "Both 'from' and 'to' dates are required.",
+        });
+      }
+
+      startDate = new Date(`${from}T00:00:00`);
+      endDate = new Date(`${to}T23:59:59.999`);
+
+      if (
+        Number.isNaN(startDate.getTime()) ||
+        Number.isNaN(endDate.getTime())
+      ) {
+        return res.status(400).json({
+          message: "Invalid date format. Use YYYY-MM-DD.",
+        });
+      }
+
+      if (startDate > endDate) {
+        return res.status(400).json({
+          message: "'from' date cannot be after 'to' date.",
+        });
+      }
+    }
+
+    // ---------------------------------------------------------
+    // DEFAULT = TODAY
+    // ---------------------------------------------------------
+    else {
+      startDate = new Date(now);
+      startDate.setHours(0, 0, 0, 0);
+
+      endDate = new Date(now);
+    }
+
+    // ---------------------------------------------------------
+    // FETCH CALLS
+    // ---------------------------------------------------------
+    const calls = await CallLog.find({
+      salespersonId: req.user.userId,
+      dialedAt: {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    })
+      .sort({ dialedAt: -1 })
+      .lean();
+
+    // ---------------------------------------------------------
+    // TOTAL DIALS
+    // ---------------------------------------------------------
+    const totalDials = calls.length;
+
+    // ---------------------------------------------------------
+    // UNIQUE + DUPLICATE
+    // ---------------------------------------------------------
+    const uniqueNumbers = new Set(
+      calls.map((call) => call.phoneNumber)
+    );
+
+    const uniqueDials = uniqueNumbers.size;
+
+    const duplicateDials = Math.max(
+      0,
+      totalDials - uniqueDials
+    );
+
+    // ---------------------------------------------------------
+    // CONNECTED
+    // ---------------------------------------------------------
+    const connectedCalls = calls.filter(
+      (call) => call.status === "CONNECTED"
+    ).length;
+
+    // ---------------------------------------------------------
+    // NOT CONNECTED
+    // ---------------------------------------------------------
+    const notConnectedCalls = calls.filter(
+      (call) =>
+        call.status !== "CONNECTED"
+    ).length;
+
+    // ---------------------------------------------------------
+    // TOTAL DURATION
+    // ---------------------------------------------------------
+    const totalDurationSeconds = calls.reduce(
+      (total, call) =>
+        total + (Number(call.durationSeconds) || 0),
+      0
+    );
+
+    // ---------------------------------------------------------
+    // AVERAGE DURATION
+    // ---------------------------------------------------------
+    const averageDurationSeconds =
+      connectedCalls > 0
+        ? Math.round(
+            totalDurationSeconds / connectedCalls
+          )
+        : 0;
+
+    // ---------------------------------------------------------
+    // RESPONSE
+    // ---------------------------------------------------------
+    res.json({
+      success: true,
+
+      dateRange: {
+        from: startDate.toISOString(),
+        to: endDate.toISOString(),
+      },
+
+      analytics: {
+        totalDials,
+        uniqueDials,
+        duplicateDials,
+        connectedCalls,
+        notConnectedCalls,
+        totalDurationSeconds,
+        averageDurationSeconds,
+      },
+    });
+  } catch (err) {
+    console.error(
+      "Call analytics error:",
+      err
+    );
+
+    res.status(500).json({
+      message: "Failed to calculate call analytics",
+      error: err.message,
+    });
+  }
+});
 
 app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
   try {
@@ -1910,15 +3026,46 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
 
     // 🌟 FIX: Strictly fetch logs between Start Day timestamp and End Day timestamp
     const routeLogs = await LocationLog.find({
-      salespersonId: req.user.userId,
-      date: today,
-      timestamp: {
-        $gte: new Date(session.startTime),
-        $lte: endTimeDate
-      }
-    }).sort({ timestamp: 1 });
+  salespersonId: req.user.userId,
+  date: today,
+  timestamp: {
+    $gte: new Date(session.startTime),
+    $lte: endTimeDate,
+  },
+}).sort({ timestamp: 1 });
 
-    const computedDistance = calculateValidDistance(routeLogs);
+// Build complete route starting from Day Start location
+const routePoints = [];
+
+if (
+  session.startLocation &&
+  Number.isFinite(Number(session.startLocation.latitude)) &&
+  Number.isFinite(Number(session.startLocation.longitude))
+) {
+  routePoints.push({
+    latitude: Number(session.startLocation.latitude),
+    longitude: Number(session.startLocation.longitude),
+    timestamp: new Date(session.startTime),
+  });
+}
+
+// Add all GPS tracking points
+routePoints.push(...routeLogs);
+
+// Add Day End location as the final point
+if (
+  Number.isFinite(Number(latitude)) &&
+  Number.isFinite(Number(longitude))
+) {
+  routePoints.push({
+    latitude: Number(latitude),
+    longitude: Number(longitude),
+    timestamp: endTimeDate,
+  });
+}
+
+const computedDistance = calculateValidDistance(routePoints);
+
 
     session.status = "ENDED";
     session.endTime = endTimeDate;
@@ -1959,6 +3106,51 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     res.status(500).json({ message: "Failed to end day", error: err.message });
   }
 });
+
+app.get(
+  "/api/salesperson/points/today",
+  verifyToken,
+  async (req, res) => {
+    try {
+      const today = new Date().toLocaleDateString("en-CA", {
+        timeZone: "Asia/Kolkata",
+      });
+
+      const points = await SalespersonPoint.findOne({
+        salespersonId: req.user.userId,
+        date: today,
+      }).lean();
+
+      const totalPoints = points?.totalPoints || 0;
+
+      return res.json({
+        success: true,
+        date: today,
+        totalPoints,
+        target: 100,
+        targetAchieved: totalPoints >= 100,
+
+        breakdown: {
+          leadsCreated: points?.leadsCreated || 0,
+          revisits: points?.revisits || 0,
+          demosDone: points?.demosDone || 0,
+          dealsClosed: points?.dealsClosed || 0,
+          callsConnected: points?.callsConnected || 0,
+          dialCalls: points?.dialCalls || 0,
+        },
+      });
+    } catch (err) {
+      console.error("❌ Fetch today's salesperson points error:", err);
+
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch today's points",
+        error: err.message,
+      });
+    }
+  }
+);
+
 
 
 
@@ -2135,6 +3327,11 @@ app.post(
 
         await existingLead.save();
 
+        await addSalespersonPoints(
+  req.user.userId,
+  "REVISIT"
+);
+
         if (followUpDate) {
           // 🌟 FIX: Existing pending task ko update karein, duplicate task mat banayein
           await Task.findOneAndUpdate(
@@ -2184,6 +3381,11 @@ app.post(
       });
 
       await newLead.save();
+
+      await addSalespersonPoints(
+  req.user.userId,
+  "LEAD_CREATED"
+);
 
       if (followUpDate) {
         // 🌟 FIX: New lead ke case mein bhi check karein ki agar koi purana pending task ho toh wahi update ho jaye
@@ -2250,11 +3452,65 @@ app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto")
       updateFields.meetingPhoto = req.file.path;
     }
 
-    const updatedLead = await Lead.findByIdAndUpdate(
-      req.params.id,
-      { $set: updateFields },
-      { returnDocument: 'after' },
-    );
+const existingLead = await Lead.findById(req.params.id);
+
+if (!existingLead) {
+  return res.status(404).json({ message: "Lead not found" });
+}
+
+// Check whether demo was already completed
+const oldDemoStatus = String(
+  existingLead.demoStatus || ""
+).trim().toLowerCase();
+
+const incomingDemoStatus = String(
+  updateFields.demoStatus || ""
+).trim().toLowerCase();
+
+console.log("🎯 DEMO STATUS CHECK:", {
+  leadId: req.params.id,
+  oldDemoStatus,
+  incomingDemoStatus,
+  rawOldStatus: existingLead.demoStatus,
+  rawIncomingStatus: updateFields.demoStatus,
+});
+
+const updatedLead = await Lead.findByIdAndUpdate(
+  req.params.id,
+  { $set: updateFields },
+  { returnDocument: "after" }
+);
+
+if (!updatedLead) {
+  return res.status(404).json({
+    message: "Lead not found",
+  });
+}
+
+const newDemoStatus = String(
+  updatedLead.demoStatus || ""
+).trim().toLowerCase();
+
+console.log("🎯 DEMO STATUS AFTER UPDATE:", {
+  oldDemoStatus,
+  newDemoStatus,
+  rawNewStatus: updatedLead.demoStatus,
+});
+
+// ⭐ First time demo becomes Completed → +25
+if (
+  oldDemoStatus !== "completed" &&
+  newDemoStatus === "completed"
+) {
+  console.log("🏆 ADDING DEMO POINTS +25");
+
+  await addSalespersonPoints(
+    req.user.userId,
+    "DEMO_DONE"
+  );
+
+  console.log("✅ DEMO POINTS +25 ADDED");
+}
 
     if (!updatedLead)
       return res.status(404).json({ message: "Lead not found" });

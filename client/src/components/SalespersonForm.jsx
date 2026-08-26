@@ -11,7 +11,7 @@
  * 📢 Live Team Broadcast Announcement Listener, and ⏱️ Day Start/End Shift Control.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { State, City } from "country-state-city";
 import { io } from "socket.io-client"; // 🌟 Socket.io client for real-time live tracking
 import { Geolocation } from "@capacitor/geolocation"; // 🌟 Capacitor Geolocation for Native Mock Detection
@@ -23,6 +23,11 @@ import { submitInvoiceRequest } from "../api/api";
 import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion"; // 🌟 Smooth Layout & View Animations
 import confetti from "canvas-confetti"; // 🌟 Positive Reinforcement Celebration
+
+
+import { registerPlugin } from "@capacitor/core";
+
+const CallRecording = registerPlugin("CallRecording");
 
 // 🌟 Safe fallback for Vite CommonJS interop
 const PhoneInput = ReactPhoneInput.default || ReactPhoneInput;
@@ -225,6 +230,16 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const [daySummaryModal, setDaySummaryModal] = useState(null);
   const [showEndDayModal, setShowEndDayModal] = useState(false);
 
+  const [callAnalytics, setCallAnalytics] = useState(null);
+  const [callHistory, setCallHistory] = useState([]);
+  const [callAnalyticsLoading, setCallAnalyticsLoading] = useState(false);
+
+  const [expandedCustomer, setExpandedCustomer] = useState(null);
+
+  const [callDateFilter, setCallDateFilter] = useState("today");
+  const [callFromDate, setCallFromDate] = useState("");
+  const [callToDate, setCallToDate] = useState("");
+
   // --- Deals & Leads Data States ---
   const [myDeals, setMyDeals] = useState([]);
   const [loadingDeals, setLoadingDeals] = useState(true);
@@ -286,6 +301,33 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const API_BASE = import.meta.env.PROD
     ? "https://crinza-saleshub.onrender.com"
     : "http://localhost:5000";
+
+  const fetchTodayPoints = useCallback(async () => {
+  try {
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(
+      `${API_BASE}/api/salesperson/points/today`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error("Failed to fetch today's points");
+    }
+
+    const data = await res.json();
+
+    if (data.success) {
+      setTodayPoints(data);
+    }
+  } catch (err) {
+    console.error("Failed to load today's points:", err);
+  }
+}, [API_BASE]);
 
   // --- 🌟 PUSH NOTIFICATIONS SETUP ---
   useEffect(() => {
@@ -494,6 +536,582 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     }
   };
 
+  // =========================================================================
+// --- 📞 TRACK SALESPERSON CALL ---
+// =========================================================================
+
+const handleTrackedCall = async (lead) => {
+  if (!lead?.mobileNo) {
+    toast.error("Customer phone number not available.");
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+      `${API_BASE}/api/salesperson/calls/start`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          leadId: lead._id,
+          customerName: lead.contactPerson || "",
+          phoneNumber: lead.mobileNo,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.message || "Failed to track call"
+      );
+    }
+
+    // Save the current call ID
+    sessionStorage.setItem(
+      "activeCallId",
+      data.call._id
+    );
+
+    // ========================================================
+    // 🎙️ START NATIVE CALL RECORDING WORKFLOW
+    // ========================================================
+
+    try {
+      const { Capacitor } = await import("@capacitor/core");
+
+      if (Capacitor.isNativePlatform()) {
+        const CallRecording =
+          Capacitor.Plugins.CallRecording;
+
+        if (CallRecording) {
+          let permission =
+            await CallRecording.checkPermission();
+
+          if (!permission.granted) {
+            await CallRecording.requestPermission();
+
+            permission =
+              await CallRecording.checkPermission();
+          }
+
+          if (permission.granted) {
+            await CallRecording.startRecording({
+              callId: data.call._id,
+            });
+
+            sessionStorage.setItem(
+              "recordingCallId",
+              data.call._id
+            );
+
+            console.log(
+              "🎙️ Call recording workflow started:",
+              data.call._id
+            );
+          } else {
+            console.warn(
+              "🎙️ Recording permission not granted."
+            );
+          }
+        }
+      }
+    } catch (recordingError) {
+      console.warn(
+        "🎙️ Native recording workflow error:",
+        recordingError
+      );
+    }
+
+    // ========================================================
+    // 📞 OPEN PHONE DIALER
+    // ========================================================
+
+    window.location.href = `tel:${lead.mobileNo}`;
+
+  } catch (error) {
+    console.error(
+      "Call tracking error:",
+      error
+    );
+
+    // Don't block the salesperson from making the call
+    window.location.href = `tel:${lead.mobileNo}`;
+  }
+};
+
+// ============================================================
+// 🎙️ UPLOAD CALL RECORDING
+// ============================================================
+
+const handleCallRecordingUpload = async (
+  callId,
+  file
+) => {
+  if (!callId) {
+    toast.error("Call ID not available.");
+    return;
+  }
+
+  if (!file) {
+    return;
+  }
+
+  // Basic audio validation
+  if (!file.type.startsWith("audio/")) {
+    toast.error(
+      "Please select a valid audio recording."
+    );
+    return;
+  }
+
+  // 50 MB limit
+  const maxSize =
+    50 * 1024 * 1024;
+
+  if (file.size > maxSize) {
+    toast.error(
+      "Recording must be smaller than 50 MB."
+    );
+    return;
+  }
+
+  try {
+    const token =
+      localStorage.getItem("token");
+
+    if (!token) {
+      toast.error(
+        "Authentication token not found."
+      );
+      return;
+    }
+
+    const formData =
+      new FormData();
+
+    formData.append(
+      "recording",
+      file
+    );
+
+    const response = await fetch(
+      `${API_BASE}/api/salesperson/calls/${callId}/recording`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+        },
+        body: formData,
+      }
+    );
+
+    const data =
+      await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.message ||
+        "Failed to upload recording."
+      );
+    }
+
+    toast.success(
+      "Call recording uploaded successfully."
+    );
+
+    console.log(
+      "🎙️ Recording uploaded:",
+      data.recordingUrl
+    );
+
+    // Refresh call history
+    fetchCallHistory();
+
+  } catch (error) {
+    console.error(
+      "Recording upload error:",
+      error
+    );
+
+    toast.error(
+      error.message ||
+      "Failed to upload recording."
+    );
+  }
+};
+
+// =========================================================================
+// --- 📊 FETCH CALL ANALYTICS ---
+// =========================================================================
+
+const fetchCallAnalytics = useCallback(async () => {
+  try {
+    setCallAnalyticsLoading(true);
+
+    const token = localStorage.getItem("token");
+
+    let url = `${API_BASE}/api/salesperson/call-analytics`;
+
+    // Custom date range
+    if (callDateFilter === "custom") {
+      if (!callFromDate || !callToDate) {
+        setCallAnalyticsLoading(false);
+        return;
+      }
+
+      url += `?from=${callFromDate}&to=${callToDate}`;
+    }
+
+    // Today
+    else if (callDateFilter === "today") {
+      const today = new Date().toISOString().split("T")[0];
+
+      url += `?from=${today}&to=${today}`;
+    }
+
+    // This Week
+    else if (callDateFilter === "week") {
+      const today = new Date();
+      const day = today.getDay();
+
+      const diff = day === 0 ? 6 : day - 1;
+
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - diff);
+
+      const from = weekStart.toISOString().split("T")[0];
+      const to = today.toISOString().split("T")[0];
+
+      url += `?from=${from}&to=${to}`;
+    }
+
+    // This Month
+    else if (callDateFilter === "month") {
+      const today = new Date();
+
+      const monthStart = new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        1
+      );
+
+      const from = monthStart.toISOString().split("T")[0];
+      const to = today.toISOString().split("T")[0];
+
+      url += `?from=${from}&to=${to}`;
+    }
+
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(
+        data.message || "Failed to fetch call analytics"
+      );
+    }
+
+    setCallAnalytics(data.analytics);
+  } catch (error) {
+    console.error("Call analytics error:", error);
+  } finally {
+    setCallAnalyticsLoading(false);
+  }
+}, [
+  API_BASE,
+  callDateFilter,
+  callFromDate,
+  callToDate,
+]);
+
+const getCallFilterLabel = () => {
+  if (callDateFilter === "today") return "Today";
+  if (callDateFilter === "week") return "This Week";
+  if (callDateFilter === "month") return "This Month";
+
+  if (callDateFilter === "custom") {
+    if (callFromDate && callToDate) {
+      return `${callFromDate} → ${callToDate}`;
+    }
+
+    return "Custom Range";
+  }
+
+  return "Today";
+};
+
+useEffect(() => {
+  let listener;
+
+  const setupCallStateListener = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      return;
+    }
+
+    listener = await CallRecording.addListener(
+      "callStateChanged",
+      async (event) => {
+
+        console.log(
+          "📞 Native call state:",
+          event
+        );
+
+        const callId =
+          sessionStorage.getItem("activeCallId");
+
+        if (!callId) {
+          console.warn(
+            "No activeCallId found."
+          );
+          return;
+        }
+
+        const token =
+          localStorage.getItem("token");
+
+        if (!token) {
+          console.warn(
+            "Authentication token not found."
+          );
+          return;
+        }
+
+        // =====================================================
+        // 📲 CONNECTED
+        // =====================================================
+
+        if (event.state === "connected") {
+
+          try {
+
+            const response = await fetch(
+              `${API_BASE}/api/salesperson/calls/${callId}/connected`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Content-Type":
+                    "application/json",
+
+                  Authorization:
+                    `Bearer ${token}`,
+                },
+              }
+            );
+
+            const data =
+              await response.json();
+
+            if (!response.ok) {
+              throw new Error(
+                data.message ||
+                "Failed to update connected call."
+              );
+            }
+
+            console.log(
+              "✅ Call marked connected:",
+              data
+            );
+
+          } catch (error) {
+
+            console.error(
+              "❌ Connected call update error:",
+              error
+            );
+          }
+        }
+
+        // =====================================================
+        // 📴 ENDED
+        // =====================================================
+
+        if (event.state === "ended") {
+
+          try {
+
+            const response = await fetch(
+              `${API_BASE}/api/salesperson/calls/${callId}/end`,
+              {
+                method: "PATCH",
+                headers: {
+                  "Content-Type":
+                    "application/json",
+
+                  Authorization:
+                    `Bearer ${token}`,
+                },
+              }
+            );
+
+            const data =
+              await response.json();
+
+            if (!response.ok) {
+              throw new Error(
+                data.message ||
+                "Failed to end call."
+              );
+            }
+
+            console.log(
+              "✅ Call marked ended:",
+              data
+            );
+
+            sessionStorage.removeItem(
+              "activeCallId"
+            );
+
+          } catch (error) {
+
+            console.error(
+              "❌ Ended call update error:",
+              error
+            );
+          }
+        }
+      }
+    );
+  };
+
+  setupCallStateListener();
+
+  return () => {
+    if (listener) {
+      listener.remove();
+    }
+  };
+}, []);
+
+useEffect(() => {
+  if (callDateFilter === "custom") {
+    return;
+  }
+
+  fetchCallAnalytics();
+}, [callDateFilter, fetchCallAnalytics]);
+
+// =========================================================================
+// --- 📞 FETCH CALL HISTORY ---
+// =========================================================================
+
+const fetchCallHistory = useCallback(async () => {
+  try {
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(
+      `${API_BASE}/api/salesperson/calls?limit=100`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(
+        data.message || "Failed to fetch call history"
+      );
+    }
+
+    setCallHistory(data);
+  } catch (error) {
+    console.error("Call history error:", error);
+  }
+}, [API_BASE]);
+
+useEffect(() => {
+  fetchCallAnalytics();
+  fetchCallHistory();
+}, [fetchCallAnalytics, fetchCallHistory]);
+
+
+const formatCallDuration = (seconds = 0) => {
+  const totalSeconds = Number(seconds) || 0;
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${secs}s`;
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m ${secs}s`;
+  }
+
+  return `${secs}s`;
+};
+
+// =========================================================================
+// --- 📞 GROUP CALL HISTORY BY CUSTOMER ---
+// =========================================================================
+
+const groupedCallHistory = useMemo(() => {
+  const groups = {};
+
+  callHistory.forEach((call) => {
+    const key =
+      call.phoneNumber ||
+      call.leadId ||
+      call.customerName ||
+      "Unknown";
+
+    if (!groups[key]) {
+      groups[key] = {
+        customerName: call.customerName || "Unknown Customer",
+        phoneNumber: call.phoneNumber || "",
+        leadId: call.leadId || null,
+
+        totalCalls: 0,
+        connectedCalls: 0,
+        totalDurationSeconds: 0,
+        lastCalledAt: null,
+
+        calls: [],
+      };
+    }
+
+    groups[key].totalCalls += 1;
+
+    if (call.status === "CONNECTED") {
+      groups[key].connectedCalls += 1;
+    }
+
+    groups[key].totalDurationSeconds +=
+      Number(call.durationSeconds) || 0;
+
+    if (
+      !groups[key].lastCalledAt ||
+      new Date(call.dialedAt) >
+        new Date(groups[key].lastCalledAt)
+    ) {
+      groups[key].lastCalledAt = call.dialedAt;
+    }
+
+    groups[key].calls.push(call);
+  });
+
+  return Object.values(groups);
+}, [callHistory]);
+
   // --- 🌟 FETCH NOTIFICATIONS HOOK ---
 const fetchSalespersonNotifications = useCallback(async () => {
   try {
@@ -505,13 +1123,13 @@ const fetchSalespersonNotifications = useCallback(async () => {
     if (res.ok) {
       const data = await res.json();
 
-      // फ्रंटएंड पर फ़िल्टर (ताकि कोई गलती से फ्यूचर नोटिफिकेशन न आ जाए)
+      
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const filtered = data.filter(n => {
-        if (!n.dueDate) return true; // अगर ड्यू डेट नहीं है तो दिखाओ
-        return new Date(n.dueDate) <= today; // आज या पुरानी तारीख
+        if (!n.dueDate) return true; 
+        return new Date(n.dueDate) <= today; 
       });
 
       setNotifications(filtered);
@@ -671,32 +1289,52 @@ const fetchSalespersonNotifications = useCallback(async () => {
 
     let intervalId = null;
 
-    const emitLocation = () => {
-      if (document.hidden || !navigator.geolocation || !userId) return;
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          socketRef.current?.emit("update_location", {
-            salespersonId: userId,
-            latitude,
-            longitude,
-          });
-        },
-        (err) => console.error("Background GPS error:", err),
-        { enableHighAccuracy: false, maximumAge: 30000, timeout: 8000 },
-      );
-    };
+const emitLocation = () => {
+  if (!navigator.geolocation || !userId || dayStatus !== "ACTIVE") {
+    return;
+  }
 
-    if (navigator.geolocation && userId) {
-      emitLocation();
-      intervalId = setInterval(emitLocation, 45000);
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { latitude, longitude } = position.coords;
+
+      socketRef.current?.emit("update_location", {
+        salespersonId: userId,
+        latitude,
+        longitude,
+      });
+    },
+    (err) => {
+      console.error("GPS error:", err);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 10000,
+      timeout: 10000,
     }
+  );
+};
 
-    return () => {
-      if (intervalId !== null) clearInterval(intervalId);
-      if (socketRef.current) socketRef.current.disconnect();
-    };
-  }, [userId, API_BASE, onLogout, fetchBroadcastNotifications]);
+// Start tracking ONLY after Day Start
+if (navigator.geolocation && userId && dayStatus === "ACTIVE") {
+  emitLocation();
+
+  intervalId = setInterval(() => {
+    emitLocation();
+  }, 10000);
+}
+
+return () => {
+  if (intervalId !== null) {
+    clearInterval(intervalId);
+    intervalId = null;
+  }
+
+  if (socketRef.current) {
+    socketRef.current.disconnect();
+  }
+};
+  }, [userId, API_BASE, onLogout, fetchBroadcastNotifications, dayStatus]);
 
   // --- Initial Form States ---
   const initialFormData = {
@@ -781,6 +1419,14 @@ const fetchSalespersonNotifications = useCallback(async () => {
   const [availablePincodes, setAvailablePincodes] = useState([]);
   const [leadAvailablePincodes, setLeadAvailablePincodes] = useState([]);
 
+  const [todayPoints, setTodayPoints] = useState({
+  totalPoints: 0,
+  target: 100,
+  targetAchieved: false,
+  breakdown: {},
+});
+const [showPointsPopup, setShowPointsPopup] = useState(false);
+
   // --- 🌟 ALL FORMATS ALLOWED ---
   const validateImageFile = (uploadedFile) => {
     if (!uploadedFile) return false;
@@ -832,11 +1478,13 @@ const fetchSalespersonNotifications = useCallback(async () => {
     fetchMyLeads();
     fetchSalespersonNotifications();
     checkDayStatus();
+    fetchTodayPoints();
   }, [
     fetchMyDeals,
     fetchMyLeads,
     fetchSalespersonNotifications,
     checkDayStatus,
+    fetchTodayPoints,
   ]);
 
   const indianStates = State.getStatesOfCountry("IN");
@@ -1948,7 +2596,7 @@ const fetchSalespersonNotifications = useCallback(async () => {
                           return (
                             <div
                               key={n._id || Math.random()}
-                              // अगर पास्ट डेट है तो bg-red-100 और border-red-500, वरना हरा
+                              
                               className={`p-3.5 rounded-2xl border transition ${
                                 isPastDate
                                   ? "bg-red-100 border-red-500 text-red-900"
@@ -1975,12 +2623,15 @@ const fetchSalespersonNotifications = useCallback(async () => {
                               <div className="flex gap-2 border-t border-black/10 pt-2">
                                 {/* Call Now Button */}
                                 {targetLead && (
-                                  <a
-                                    href={`tel:${targetLead.mobileNo}`}
-                                    className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition"
-                                  >
-                                    📞 Call
-                                  </a>
+                                  <button
+  type="button"
+  onClick={() => handleTrackedCall(targetLead)}
+  className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition"
+>
+  📞 Call
+</button>
+                                  
+
                                 )}
                                 {/* Dismiss Button */}
                                 <button
@@ -2022,6 +2673,130 @@ const fetchSalespersonNotifications = useCallback(async () => {
                 )}
               </AnimatePresence>
             </div>
+            {/* 🏆 POINTS BUTTON */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowPointsPopup((prev) => !prev)}
+                className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-600 border border-purple-500/20 transition-all duration-200 cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95 min-h-[46px]"
+              >
+                <span>🏆</span>
+
+                <span className="hidden sm:inline">
+                  Points
+                </span>
+
+                <span className="bg-purple-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
+                  {todayPoints.totalPoints}
+                </span>
+              </button>
+
+              {/* 🏆 POINTS POPUP */}
+              <AnimatePresence>
+                {showPointsPopup && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="absolute top-full right-0 mt-2 w-80 max-w-[calc(100vw-20px)] bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-[99999]"
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+                      <div>
+                        <h3 className="font-bold text-[var(--color-heading)]">
+                          🏆 Today's Points
+                        </h3>
+
+                        <p className="text-[10px] text-[var(--color-body)]">
+                          Daily Target: 100 Points
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPointsPopup(false)}
+                        className="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-heading)] hover:bg-[var(--color-border)] transition"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* Total Points */}
+                    <div className="mt-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 p-4 text-center">
+                      <div className="text-3xl font-extrabold text-purple-600">
+                        {todayPoints.totalPoints}
+                        <span className="text-sm text-[var(--color-body)]">
+                          {" "} / 100
+                        </span>
+                      </div>
+
+                      {todayPoints.targetAchieved ? (
+                        <p className="mt-1 text-xs font-bold text-emerald-600">
+                          ✅ Daily target achieved!
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-[var(--color-body)]">
+                          🎯{" "}
+                          {Math.max(
+                            100 - todayPoints.totalPoints,
+                            0
+                          )}{" "}
+                          points remaining
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Breakdown */}
+                    <div className="mt-4 space-y-2 text-xs text-[var(--color-heading)]">
+
+                      <div className="flex justify-between">
+                        <span>🆕 Leads Created</span>
+                        <strong>
+                          {todayPoints.breakdown?.leadsCreated || 0}
+                        </strong>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span>🔄 Revisits</span>
+                        <strong>
+                          {todayPoints.breakdown?.revisits || 0}
+                        </strong>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span>🎥 Demos Done</span>
+                        <strong>
+                          {todayPoints.breakdown?.demosDone || 0}
+                        </strong>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span>🤝 Deals Closed</span>
+                        <strong>
+                          {todayPoints.breakdown?.dealsClosed || 0}
+                        </strong>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span>📞 Calls Connected</span>
+                        <strong>
+                          {todayPoints.breakdown?.callsConnected || 0}
+                        </strong>
+                      </div>
+
+                      <div className="flex justify-between">
+                        <span>📲 Dial Calls</span>
+                        <strong>
+                          {todayPoints.breakdown?.dialCalls || 0}
+                        </strong>
+                      </div>
+
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
 
             <button
               onClick={() => setShowLogoutModal(true)}
@@ -2346,6 +3121,640 @@ const fetchSalespersonNotifications = useCallback(async () => {
                     </strong>
                   </div>
                 </div>
+
+                {/* =========================================================================
+    📞 CALL ANALYTICS
+=========================================================================== */}
+
+<div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 shadow-sm mb-6">
+
+  <div className="flex flex-wrap gap-2 mb-5">
+
+  <button
+    type="button"
+    onClick={() => {
+      setCallDateFilter("today");
+    }}
+    className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
+      callDateFilter === "today"
+        ? "bg-[var(--color-primary)] text-white"
+        : "bg-[var(--color-surface)] border-[var(--color-border)]"
+    }`}
+  >
+    Today
+  </button>
+
+  <button
+    type="button"
+    onClick={() => {
+      setCallDateFilter("week");
+    }}
+    className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
+      callDateFilter === "week"
+        ? "bg-[var(--color-primary)] text-white"
+        : "bg-[var(--color-surface)] border-[var(--color-border)]"
+    }`}
+  >
+    This Week
+  </button>
+
+  <button
+    type="button"
+    onClick={() => {
+      setCallDateFilter("month");
+    }}
+    className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
+      callDateFilter === "month"
+        ? "bg-[var(--color-primary)] text-white"
+        : "bg-[var(--color-surface)] border-[var(--color-border)]"
+    }`}
+  >
+    This Month
+  </button>
+
+  <button
+    type="button"
+    onClick={() => {
+      setCallDateFilter("custom");
+    }}
+    className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
+      callDateFilter === "custom"
+        ? "bg-[var(--color-primary)] text-white"
+        : "bg-[var(--color-surface)] border-[var(--color-border)]"
+    }`}
+  >
+    Custom
+  </button>
+
+</div>
+
+{callDateFilter === "custom" && (
+  <div className="flex flex-col sm:flex-row gap-3 mb-5">
+
+    <div className="flex-1">
+      <label className="block text-xs font-semibold mb-1">
+        From Date
+      </label>
+
+      <input
+        type="date"
+        value={callFromDate}
+        onChange={(e) => setCallFromDate(e.target.value)}
+        className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-sm"
+      />
+    </div>
+
+    <div className="flex-1">
+      <label className="block text-xs font-semibold mb-1">
+        To Date
+      </label>
+
+      <input
+        type="date"
+        value={callToDate}
+        onChange={(e) => setCallToDate(e.target.value)}
+        className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-sm"
+      />
+    </div>
+
+    <div className="flex items-end">
+      <button
+        type="button"
+        onClick={fetchCallAnalytics}
+        disabled={!callFromDate || !callToDate}
+        className="px-5 py-2 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold disabled:opacity-50"
+      >
+        Apply
+      </button>
+    </div>
+
+  </div>
+)}
+
+  <div className="flex items-center justify-between mb-5">
+    <div>
+      <h2 className="text-lg sm:text-xl font-bold text-[var(--color-heading)]">
+        📞 Call Analytics
+      </h2>
+
+      <p className="text-xs text-[var(--color-body)] mt-1">
+        Your calling performance
+      </p>
+    </div>
+
+    <button
+      type="button"
+      onClick={() => {
+        fetchCallAnalytics();
+        fetchCallHistory();
+      }}
+      className="px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold"
+    >
+      🔄 Refresh
+    </button>
+  </div>
+
+  
+
+  {/* =========================================================
+    📊 SELECTED DATE RANGE ANALYTICS
+========================================================= */}
+
+{callAnalyticsLoading ? (
+  <div className="py-8 text-center text-sm text-[var(--color-body)]">
+    Loading call analytics...
+  </div>
+) : callAnalytics ? (
+  <>
+    {/* SELECTED PERIOD */}
+    <div className="mb-5">
+      <h3 className="text-sm font-bold text-[var(--color-heading)]">
+        {getCallFilterLabel()}
+      </h3>
+
+      {callAnalytics.dateRange && (
+        <p className="text-xs text-[var(--color-body)] mt-1">
+          {new Date(callAnalytics.dateRange.from).toLocaleDateString()}{" "}
+          →{" "}
+          {new Date(callAnalytics.dateRange.to).toLocaleDateString()}
+        </p>
+      )}
+    </div>
+
+    {/* ANALYTICS CARDS */}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+
+      {/* TOTAL DIALS */}
+      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-body)]">
+          Total Dials
+        </p>
+
+        <p className="text-2xl font-bold mt-1">
+          {callAnalytics.totalDials}
+        </p>
+      </div>
+
+      {/* UNIQUE */}
+      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-body)]">
+          Unique
+        </p>
+
+        <p className="text-2xl font-bold mt-1">
+          {callAnalytics.uniqueDials}
+        </p>
+      </div>
+
+      {/* DUPLICATE */}
+      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-body)]">
+          Duplicate
+        </p>
+
+        <p className="text-2xl font-bold mt-1">
+          {callAnalytics.duplicateDials}
+        </p>
+      </div>
+
+      {/* CONNECTED */}
+      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-body)]">
+          Connected
+        </p>
+
+        <p className="text-2xl font-bold mt-1">
+          {callAnalytics.connectedCalls}
+        </p>
+      </div>
+
+      {/* NOT CONNECTED */}
+      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-body)]">
+          Not Connected
+        </p>
+
+        <p className="text-2xl font-bold mt-1">
+          {callAnalytics.notConnectedCalls}
+        </p>
+      </div>
+
+      {/* TALK TIME */}
+      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-body)]">
+          Talk Time
+        </p>
+
+        <p className="text-lg font-bold mt-2">
+          {formatCallDuration(
+            callAnalytics.totalDurationSeconds
+          )}
+        </p>
+      </div>
+
+      {/* AVG DURATION */}
+      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-body)]">
+          Avg. Duration
+        </p>
+
+        <p className="text-lg font-bold mt-2">
+          {formatCallDuration(
+            callAnalytics.averageDurationSeconds
+          )}
+        </p>
+      </div>
+
+    </div>
+  </>
+) : (
+  <div className="py-8 text-center text-sm text-[var(--color-body)]">
+    No call analytics available yet.
+  </div>
+)}
+
+</div>
+
+{/* =========================================================================
+    📞 CUSTOMER-WISE CALL HISTORY
+=========================================================================== */}
+
+<div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 shadow-sm mb-6">
+
+  <div className="mb-5">
+    <h2 className="text-lg sm:text-xl font-bold text-[var(--color-heading)]">
+      📞 Customer Call History
+    </h2>
+
+    <p className="text-xs text-[var(--color-body)] mt-1">
+      View calls and total conversation time customer-wise
+    </p>
+  </div>
+
+  {groupedCallHistory.length === 0 ? (
+    <div className="py-8 text-center text-sm text-[var(--color-body)]">
+      No call history available yet.
+    </div>
+  ) : (
+    <div className="space-y-3">
+
+      {groupedCallHistory.map((customer) => {
+  const customerKey =
+    customer.phoneNumber ||
+    customer.leadId ||
+    customer.customerName;
+
+  const isExpanded = expandedCustomer === customerKey;
+
+  return (
+    <div
+      key={customerKey}
+      className="rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden"
+    >
+
+      {/* CUSTOMER SUMMARY */}
+      <button
+        type="button"
+        onClick={() =>
+          setExpandedCustomer(
+            isExpanded ? null : customerKey
+          )
+        }
+        className="w-full text-left p-4"
+      >
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+
+          {/* CUSTOMER */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+
+              <h3 className="font-bold text-[var(--color-heading)] truncate">
+                {customer.customerName}
+              </h3>
+
+              <span className="text-xs">
+                {isExpanded ? "▲" : "▼"}
+              </span>
+
+            </div>
+
+            <p className="text-xs text-[var(--color-body)] mt-1">
+              {customer.phoneNumber || "Phone unavailable"}
+            </p>
+          </div>
+
+          {/* SUMMARY */}
+          <div className="grid grid-cols-3 gap-4 text-center">
+
+            <div>
+              <p className="text-xs text-[var(--color-body)]">
+                Calls
+              </p>
+
+              <p className="font-bold">
+                {customer.totalCalls}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-[var(--color-body)]">
+                Connected
+              </p>
+
+              <p className="font-bold">
+                {customer.connectedCalls}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-[var(--color-body)]">
+                Talk Time
+              </p>
+
+              <p className="font-bold">
+                {formatCallDuration(
+                  customer.totalDurationSeconds
+                )}
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* LAST CALLED */}
+        <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+
+          <p className="text-xs text-[var(--color-body)]">
+            Last Called
+          </p>
+
+          <p className="text-sm font-semibold mt-1">
+            {customer.lastCalledAt
+              ? new Date(
+                  customer.lastCalledAt
+                ).toLocaleString()
+              : "—"}
+          </p>
+
+        </div>
+
+      </button>
+
+
+      {/* =========================================================
+          INDIVIDUAL CALLS
+      ========================================================= */}
+
+      {isExpanded && (
+        <div className="border-t border-[var(--color-border)] p-4">
+
+          <h4 className="text-sm font-bold text-[var(--color-heading)] mb-3">
+            📞 Individual Calls
+          </h4>
+
+          <div className="space-y-3">
+
+            {customer.calls
+              .slice()
+              .sort(
+                (a, b) =>
+                  new Date(b.dialedAt) -
+                  new Date(a.dialedAt)
+              )
+              .map((call, index) => (
+
+                <div
+                  key={
+                    call._id ||
+                    `${customerKey}-${index}`
+                  }
+                  className="p-4 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)]"
+                >
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+
+                    {/* DATE/TIME */}
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {call.dialedAt
+                          ? new Date(
+                              call.dialedAt
+                            ).toLocaleString()
+                          : "Date unavailable"}
+                      </p>
+
+                      <p className="text-xs text-[var(--color-body)] mt-1">
+                        {call.phoneNumber ||
+                          customer.phoneNumber ||
+                          "Phone unavailable"}
+                      </p>
+                    </div>
+
+
+                    {/* STATUS */}
+                    <div>
+                      <span
+                        className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                          call.status === "CONNECTED"
+                            ? "bg-green-100 text-green-700"
+                            : call.status === "MISSED"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {call.status || "UNKNOWN"}
+                      </span>
+                    </div>
+
+
+                    {/* DURATION */}
+                    <div className="text-left sm:text-right">
+
+                      <p className="text-xs text-[var(--color-body)]">
+                        Duration
+                      </p>
+
+                      <p className="font-bold mt-1">
+                        {formatCallDuration(
+                          call.durationSeconds
+                        )}
+                      </p>
+
+                    </div>
+                    {/* 🎙️ CALL RECORDING */}
+<div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+
+  <input
+    type="file"
+    accept="audio/*,.m4a,.mp3,.wav,.aac,.ogg"
+    id={`recording-${call._id}`}
+    className="hidden"
+    onChange={(e) => {
+      const file = e.target.files?.[0];
+
+      if (file) {
+        handleCallRecordingUpload(
+          call._id,
+          file
+        );
+      }
+
+      // Same file ko dobara select karne allow karega
+      e.target.value = "";
+    }}
+  />
+
+  {call.recordingUrl ? (
+    <div className="space-y-2">
+
+      <p className="text-xs font-semibold text-[var(--color-heading)]">
+        🎙️ Recording
+      </p>
+
+      <audio
+        controls
+        preload="metadata"
+        className="w-full"
+        src={call.recordingUrl}
+      />
+
+      <label
+        htmlFor={`recording-${call._id}`}
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold cursor-pointer"
+      >
+        🔄 Replace Recording
+      </label>
+
+    </div>
+  ) : (
+
+    <label
+      htmlFor={`recording-${call._id}`}
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold cursor-pointer"
+    >
+      🎙️ Upload Recording
+    </label>
+
+  )}
+
+</div>
+
+                  </div>
+
+                  {/* CONNECTED / ENDED TIME */}
+                  {(call.connectedAt ||
+                    call.endedAt) && (
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)] grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+                      <div>
+                        <p className="text-xs text-[var(--color-body)]">
+                          Connected At
+                        </p>
+
+                        <p className="text-xs font-semibold mt-1">
+                          {call.connectedAt
+                            ? new Date(
+                                call.connectedAt
+                              ).toLocaleString()
+                            : "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-[var(--color-body)]">
+                          Ended At
+                        </p>
+
+                        <p className="text-xs font-semibold mt-1">
+                          {call.endedAt
+                            ? new Date(
+                                call.endedAt
+                              ).toLocaleString()
+                            : "—"}
+                        </p>
+                      </div>
+
+                    </div>
+                  )}
+
+                </div>
+
+              ))}
+
+          </div>
+
+        </div>
+      )}
+
+    </div>
+  );
+})}
+
+
+
+    </div>
+  )}
+
+</div>
+
+{/* =========================================================================
+    📞 CALL HISTORY
+=========================================================================== */}
+
+<div className="mt-6">
+
+  <h3 className="text-base font-bold text-[var(--color-heading)] mb-3">
+    📞 Recent Calls
+  </h3>
+
+  {callHistory.length === 0 ? (
+    <div className="p-6 rounded-2xl bg-[var(--color-surface)] text-sm text-[var(--color-body)] text-center">
+      No calls recorded yet.
+    </div>
+  ) : (
+    <div className="space-y-2">
+
+      {callHistory.slice(0, 20).map((call) => (
+        <div
+          key={call._id}
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]"
+        >
+
+          <div>
+            <p className="font-semibold text-sm text-[var(--color-heading)]">
+              {call.customerName || "Unknown Customer"}
+            </p>
+
+            <p className="text-xs text-[var(--color-body)]">
+              📞 {call.phoneNumber}
+            </p>
+
+            <p className="text-[10px] text-[var(--color-body)] mt-1">
+              {new Date(call.dialedAt).toLocaleString("en-IN")}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+
+            <span className="text-xs font-semibold">
+              {call.status}
+            </span>
+
+            <span className="text-xs font-bold">
+              {formatCallDuration(call.durationSeconds)}
+            </span>
+
+          </div>
+
+        </div>
+      ))}
+
+    </div>
+  )}
+
+</div>
 
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-2">
@@ -2674,12 +4083,14 @@ const fetchSalespersonNotifications = useCallback(async () => {
                             <div className="break-words">
                               👤 <strong>Contact:</strong> {lead.contactPerson} |
                               📞{" "}
-                              <a
-                                href={`tel:${lead.mobileNo}`}
-                                className="text-[var(--color-primary)] font-bold hover:underline"
-                              >
-                                {lead.mobileNo}
-                              </a>
+                              <button
+  type="button"
+  onClick={() => handleTrackedCall(lead)}
+  className="text-[var(--color-primary)] font-bold hover:underline cursor-pointer"
+>
+  {lead.mobileNo}
+</button>
+
                             </div>
                             <div
                               onClick={() => setSelectedLead(lead)}

@@ -17,7 +17,9 @@ import { TransferLeadsTab } from "./tabs/TransferLeadsTab";
 import { TeamBroadcastTab } from "./tabs/TeamBroadcastTab";
 import { LiveTrackingTab } from "./tabs/LiveTrackingTab";
 import { SecurityAlertsTab } from "./tabs/SecurityAlertsTab";
-import { TechnicalProjectsTab } from "./tabs/TechnicalProjectsTab"; // 👈 NEW: Technical Projects Tracking Tab
+import { TechnicalProjectsTab } from "./tabs/TechnicalProjectsTab";
+import { CallMonitoringTab } from "./tabs/CallMonitoringTab";
+import SalespersonPointsTab from "./tabs/SalespersonPointsTab";
 
 const AdminDashboard = ({ userId, onLogout }) => {
   const API_BASE = import.meta.env.PROD
@@ -772,6 +774,27 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
           <button onClick={() => setActiveTab("broadcast")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${activeTab === "broadcast" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             📢 Team Broadcast
           </button>
+          <button
+  onClick={() => setActiveTab("call-monitoring")}
+  className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+    activeTab === "call-monitoring"
+      ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20"
+      : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+  }`}
+>
+  📞 Call Monitoring
+</button>
+
+<button
+  onClick={() => setActiveTab("salesperson-points")}
+  className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+    activeTab === "salesperson-points"
+      ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20"
+      : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+  }`}
+>
+  🎯 Salesperson Points
+</button>
           <button onClick={() => setActiveTab("live-tracking")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${activeTab === "live-tracking" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             🛰️ Live Tracking & Travel
           </button>
@@ -796,7 +819,14 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
             <option value="directory">👥 Team Directory & Deals</option>
             <option value="coupons">🎟️ Discount Coupons</option>
             <option value="transfer">🔄 Transfer Leads</option>
+
             <option value="broadcast">📢 Team Broadcast</option>
+                <option value="call-monitoring">
+  📞 Call Monitoring
+</option>
+<option value="salesperson-points">
+  🎯 Salesperson Points
+</option>
             <option value="live-tracking">🛰️ Live Tracking & Travel</option>
             <option value="tech-projects">🛠️ App Production Queue</option>
             <option value="security-alerts">🚨 Security & Spoofing ({spoofingAlerts.length})</option>
@@ -909,6 +939,17 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
                 isBroadcasting={isBroadcasting}
               />
             )}
+
+            {activeTab === "call-monitoring" && (
+  <CallMonitoringTab
+    API_BASE={API_BASE}
+    employees={employees}
+  />
+)}
+
+{activeTab === "salesperson-points" && (
+  <SalespersonPointsTab employees={employees} />
+)}
 
             {activeTab === "live-tracking" && (
               <LiveTrackingTab
