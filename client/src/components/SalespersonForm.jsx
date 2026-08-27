@@ -540,11 +540,26 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
 // --- 📞 TRACK SALESPERSON CALL ---
 // =========================================================================
 
+
 const handleTrackedCall = async (lead) => {
   if (!lead?.mobileNo) {
     toast.error("Customer phone number not available.");
     return;
   }
+
+  // 🌟 1. Format and Clean Phone Number for Dialer (+91 format)
+  const rawPhone = String(lead.mobileNo).replace(/\D/g, "");
+  let clean10Digits = rawPhone;
+
+  // Agar number 12 digits ka hai aur '91' se shuru ho raha hai toh 10 digits nikal lo
+  if (rawPhone.length === 12 && rawPhone.startsWith("91")) {
+    clean10Digits = rawPhone.slice(2);
+  } else if (rawPhone.length > 10) {
+    clean10Digits = rawPhone.slice(-10); // Aakhri 10 digits
+  }
+
+  const dialerNumber = `+91${clean10Digits}`; // Standard Format: +916206009406
+  const backendNumber = `91${clean10Digits}`; // Backend/Database format: 916206009406
 
   try {
     const token = localStorage.getItem("token");
@@ -560,7 +575,7 @@ const handleTrackedCall = async (lead) => {
         body: JSON.stringify({
           leadId: lead._id,
           customerName: lead.contactPerson || "",
-          phoneNumber: lead.mobileNo,
+          phoneNumber: backendNumber, // Backend ko clean 12-digit number bhejein
         }),
       }
     );
@@ -630,10 +645,10 @@ const handleTrackedCall = async (lead) => {
     }
 
     // ========================================================
-    // 📞 OPEN PHONE DIALER
+    // 📞 OPEN PHONE DIALER WITH PROPER +91 FORMAT
     // ========================================================
 
-    window.location.href = `tel:${lead.mobileNo}`;
+    window.location.href = `tel:${dialerNumber}`;
 
   } catch (error) {
     console.error(
@@ -642,7 +657,7 @@ const handleTrackedCall = async (lead) => {
     );
 
     // Don't block the salesperson from making the call
-    window.location.href = `tel:${lead.mobileNo}`;
+    window.location.href = `tel:${dialerNumber}`;
   }
 };
 
