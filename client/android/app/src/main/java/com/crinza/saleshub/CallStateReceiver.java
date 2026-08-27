@@ -12,6 +12,10 @@ public class CallStateReceiver extends BroadcastReceiver {
 
     private static String lastState = "";
 
+    // ⏱️ Variables to track call duration
+    private static long callStartTime = 0;
+    private static boolean wasCalling = false;
+
     @Override
     public void onReceive(Context context, Intent intent) {
 
@@ -41,12 +45,16 @@ public class CallStateReceiver extends BroadcastReceiver {
         lastState = state;
 
         // =====================================================
-        // 📲 CALL CONNECTED
+        // 📲 CALL CONNECTED / OFFHOOK
         // =====================================================
 
         if (TelephonyManager.EXTRA_STATE_OFFHOOK.equals(state)) {
 
             Log.d(TAG, "📲 CALL CONNECTED / OFFHOOK");
+
+            // Start timer when call goes offhook (connected/dialing out)
+            wasCalling = true;
+            callStartTime = System.currentTimeMillis();
 
             CallRecordingPlugin.notifyCallState(
                     context,
@@ -57,16 +65,26 @@ public class CallStateReceiver extends BroadcastReceiver {
         }
 
         // =====================================================
-        // 📴 CALL ENDED
+        // 📴 CALL ENDED / IDLE
         // =====================================================
 
         if (TelephonyManager.EXTRA_STATE_IDLE.equals(state)) {
 
             Log.d(TAG, "📴 CALL ENDED / IDLE");
 
-            CallRecordingPlugin.notifyCallState(
+            long durationSeconds = 0;
+            if (wasCalling && callStartTime > 0) {
+                long callEndTime = System.currentTimeMillis();
+                durationSeconds = (callEndTime - callStartTime) / 1000;
+                wasCalling = false;
+                callStartTime = 0;
+            }
+
+            // Notify plugin with exact duration
+            CallRecordingPlugin.notifyCallStateWithDuration(
                     context,
-                    "ended"
+                    "ended",
+                    durationSeconds
             );
 
             return;

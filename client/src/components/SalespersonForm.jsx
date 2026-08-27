@@ -853,149 +853,161 @@ const getCallFilterLabel = () => {
 };
 
 useEffect(() => {
-  let listener;
+    let listener;
 
-  const setupCallStateListener = async () => {
-    if (!Capacitor.isNativePlatform()) {
-      return;
-    }
-
-    listener = await CallRecording.addListener(
-      "callStateChanged",
-      async (event) => {
-
-        console.log(
-          "📞 Native call state:",
-          event
-        );
-
-        const callId =
-          sessionStorage.getItem("activeCallId");
-
-        if (!callId) {
-          console.warn(
-            "No activeCallId found."
-          );
-          return;
-        }
-
-        const token =
-          localStorage.getItem("token");
-
-        if (!token) {
-          console.warn(
-            "Authentication token not found."
-          );
-          return;
-        }
-
-        // =====================================================
-        // 📲 CONNECTED
-        // =====================================================
-
-        if (event.state === "connected") {
-
-          try {
-
-            const response = await fetch(
-              `${API_BASE}/api/salesperson/calls/${callId}/connected`,
-              {
-                method: "PATCH",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-              }
-            );
-
-            const data =
-              await response.json();
-
-            if (!response.ok) {
-              throw new Error(
-                data.message ||
-                "Failed to update connected call."
-              );
-            }
-
-            console.log(
-              "✅ Call marked connected:",
-              data
-            );
-
-          } catch (error) {
-
-            console.error(
-              "❌ Connected call update error:",
-              error
-            );
-          }
-        }
-
-        // =====================================================
-        // 📴 ENDED
-        // =====================================================
-
-        if (event.state === "ended") {
-
-          try {
-
-            const response = await fetch(
-              `${API_BASE}/api/salesperson/calls/${callId}/end`,
-              {
-                method: "PATCH",
-                headers: {
-                  "Content-Type":
-                    "application/json",
-
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-              }
-            );
-
-            const data =
-              await response.json();
-
-            if (!response.ok) {
-              throw new Error(
-                data.message ||
-                "Failed to end call."
-              );
-            }
-
-            console.log(
-              "✅ Call marked ended:",
-              data
-            );
-
-            sessionStorage.removeItem(
-              "activeCallId"
-            );
-
-          } catch (error) {
-
-            console.error(
-              "❌ Ended call update error:",
-              error
-            );
-          }
-        }
+    const setupCallStateListener = async () => {
+      if (!Capacitor.isNativePlatform()) {
+        return;
       }
-    );
-  };
 
-  setupCallStateListener();
+      listener = await CallRecording.addListener(
+        "callStateChanged",
+        async (event) => {
 
-  return () => {
-    if (listener) {
-      listener.remove();
-    }
-  };
-}, []);
+          console.log(
+            "📞 Native call state:",
+            event
+          );
+
+          const callId =
+            sessionStorage.getItem("activeCallId");
+
+          if (!callId) {
+            console.warn(
+              "No activeCallId found."
+            );
+            return;
+          }
+
+          const token =
+            localStorage.getItem("token");
+
+          if (!token) {
+            console.warn(
+              "Authentication token not found."
+            );
+            return;
+          }
+
+          // =====================================================
+          // 📲 CONNECTED
+          // =====================================================
+
+          if (event.state === "connected") {
+
+            try {
+
+              const response = await fetch(
+                `${API_BASE}/api/salesperson/calls/${callId}/connected`,
+                {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type":
+                      "application/json",
+
+                    Authorization:
+                      `Bearer ${token}`,
+                  },
+                }
+              );
+
+              const data =
+                await response.json();
+
+              if (!response.ok) {
+                throw new Error(
+                  data.message ||
+                  "Failed to update connected call."
+                );
+              }
+
+              console.log(
+                "✅ Call marked connected:",
+                data
+              );
+
+            } catch (error) {
+
+              console.error(
+                "❌ Connected call update error:",
+                error
+              );
+            }
+          }
+
+          // =====================================================
+          // 📴 ENDED (Updated with durationSeconds & Refreshes)
+          // =====================================================
+
+          if (event.state === "ended") {
+
+            try {
+
+              const response = await fetch(
+                `${API_BASE}/api/salesperson/calls/${callId}/end`,
+                {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type":
+                      "application/json",
+
+                    Authorization:
+                      `Bearer ${token}`,
+                  },
+                  // 🌟 Yahan native code se aane wali duration bheji ja rahi hai
+                  body: JSON.stringify({
+                    durationSeconds: event.durationSeconds || 0,
+                  }),
+                }
+              );
+
+              const data =
+                await response.json();
+
+              if (!response.ok) {
+                throw new Error(
+                  data.message ||
+                  "Failed to end call."
+                );
+              }
+
+              console.log(
+                "✅ Call marked ended with duration:",
+                data
+              );
+
+              sessionStorage.removeItem(
+                "activeCallId"
+              );
+
+              // 🌟 Call history aur analytics ko turant refresh karne ke liye
+              if (typeof fetchCallHistory === "function") {
+                fetchCallHistory();
+              }
+              if (typeof fetchCallAnalytics === "function") {
+                fetchCallAnalytics();
+              }
+
+            } catch (error) {
+
+              console.error(
+                "❌ Ended call update error:",
+                error
+              );
+            }
+          }
+        }
+      );
+    };
+
+    setupCallStateListener();
+
+    return () => {
+      if (listener) {
+        listener.remove();
+      }
+    };
+  }, [API_BASE, fetchCallHistory, fetchCallAnalytics]);
 
 useEffect(() => {
   if (callDateFilter === "custom") {
@@ -1305,7 +1317,7 @@ const emitLocation = () => {
       });
     },
     (err) => {
-      
+
       console.error("GPS error:", err);
     },
     {

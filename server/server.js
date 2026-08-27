@@ -3122,6 +3122,7 @@ app.patch(
   async (req, res) => {
     try {
       const { callId } = req.params;
+      const { durationSeconds } = req.body; // 🌟 Frontend/Native se aane wali duration capture karein
 
       const call = await CallLog.findOne({
         _id: callId,
@@ -3134,12 +3135,22 @@ app.patch(
         });
       }
 
+      // Check karo ki call pehle se connected/ended thi ya nahi (duplicate points rokne ke liye)
+      const wasAlreadyConnected = call.status === "CONNECTED" || call.status === "ENDED";
       const endedAt = new Date();
 
       call.endedAt = endedAt;
+      call.status = "ENDED";
 
-      // Calculate duration only when call was actually connected
-      if (call.connectedAt) {
+      // Agar pehle connectedAt set nahi hua tha aur call end hui hai, toh current time ko connected man sakte hain agar call chali ho
+      if (!call.connectedAt && (Number(durationSeconds) > 0)) {
+        call.connectedAt = new Date(endedAt.getTime() - (durationSeconds * 1000));
+      }
+
+      // 🌟 Smart Duration Priority: Native/Frontend duration -> Timestamp difference -> 0
+      if (Number(durationSeconds) > 0) {
+        call.durationSeconds = Number(durationSeconds);
+      } else if (call.connectedAt) {
         const durationMs =
           endedAt.getTime() -
           new Date(call.connectedAt).getTime();
@@ -3152,13 +3163,21 @@ app.patch(
         call.durationSeconds = 0;
       }
 
-      call.status = "ENDED";
-
       await call.save();
+
+      // 🌟 FIX: Agar call valid thi aur pehle points nahi mile the, toh points add karo
+      if (!wasAlreadyConnected) {
+        try {
+          await addSalespersonPoints(req.user.userId, "CALL_CONNECTED");
+          console.log(`✅ Call Connected points added successfully for: ${req.user.userId}`);
+        } catch (ptErr) {
+          console.error("🔥 Error adding call connected points:", ptErr.message);
+        }
+      }
 
       return res.json({
         success: true,
-        message: "Call ended and duration saved",
+        message: "Call ended and duration saved successfully",
         call,
       });
     } catch (err) {
