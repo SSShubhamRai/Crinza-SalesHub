@@ -3330,7 +3330,6 @@ app.put("/api/salesperson/calls/:id/end", verifyToken, async (req, res) => {
       connectedAt,
     } = req.body;
 
-    // 🌟 FIX 1: "ENDED" ko allowed statuses mein add kar diya
     const allowedStatuses = [
       "CONNECTED",
       "ENDED",
@@ -3357,22 +3356,24 @@ app.put("/api/salesperson/calls/:id/end", verifyToken, async (req, res) => {
       });
     }
 
+    // Check karo ki call pehle se connected thi ya nahi (duplicate points rokne ke liye)
+    const wasAlreadyConnected = call.status === "CONNECTED" || call.status === "ENDED";
     const endedAt = new Date();
     
-    // Status update (agar "ENDED" aaya hai toh status ko ENDED ya CONNECTED rakh sakte hain)
     call.status = status;
     call.endedAt = endedAt;
 
     if (connectedAt) {
       call.connectedAt = new Date(connectedAt);
+    } else if ((status === "CONNECTED" || status === "ENDED") && !call.connectedAt) {
+      call.connectedAt = new Date();
     }
 
-    // 🌟 FIX 2: Smart Duration Calculation
+    // Smart Duration Calculation
     if (status === "CONNECTED" || status === "ENDED") {
       if (Number(durationSeconds) > 0) {
         call.durationSeconds = Number(durationSeconds);
       } else if (call.connectedAt) {
-        // Agar duration nahi bheji, par connectedAt pata hai, toh time difference nikal lo
         const durationMs = endedAt.getTime() - new Date(call.connectedAt).getTime();
         call.durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
       } else {
@@ -3384,12 +3385,22 @@ app.put("/api/salesperson/calls/:id/end", verifyToken, async (req, res) => {
 
     await call.save();
 
+    // 🌟 FIX: Agar call connect/end hui hai aur pehle count nahi hui thi, toh points add karo!
+    if ((status === "CONNECTED" || status === "ENDED") && !wasAlreadyConnected) {
+      try {
+        await addSalespersonPoints(req.user.userId, "CALL_CONNECTED");
+        console.log(`✅ Call Connected points added successfully for: ${req.user.userId}`);
+      } catch (ptErr) {
+        console.error("🔥 Error adding call connected points:", ptErr.message);
+      }
+    }
+
     res.json({
       success: true,
       message: "Call updated successfully",
       call,
     });
-  } catch (err) {
+  } catch (err) { // 👈 Yahan pehle 'graph (err)' tha jo error de raha tha
     console.error("End call tracking error:", err);
 
     res.status(500).json({
