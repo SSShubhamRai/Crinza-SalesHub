@@ -1749,12 +1749,14 @@ app.post("/api/boss/transfer-single-deal", verifyToken, async (req, res) => {
   }
 });
 
+// =========================================================================
+// --- 📍 ADMIN / BOSS: SALESPERSON TRAVEL HISTORY & TOTAL DISTANCE ---
+// =========================================================================
 app.get(
   "/api/boss/salesperson-travel/:salespersonId",
   verifyToken,
   async (req, res) => {
     try {
-      // 🔐 Only Admin / Boss can access
       if (req.user.role !== "boss" && req.user.role !== "admin") {
         return res.status(403).json({
           message: "Access denied!",
@@ -1764,18 +1766,9 @@ app.get(
       const { salespersonId } = req.params;
       const { date, startDate, endDate } = req.query;
 
-      // 🇮🇳 Today's date in IST
       const todayIST = new Date().toLocaleDateString("en-CA", {
         timeZone: "Asia/Kolkata",
       });
-
-      // ============================================================
-      // 📅 DATE FILTER
-      // ============================================================
-
-      let queryFilter = {
-        salespersonId,
-      };
 
       let selectedStartDate;
       let selectedEndDate;
@@ -1783,40 +1776,29 @@ app.get(
       if (startDate && endDate) {
         selectedStartDate = startDate;
         selectedEndDate = endDate;
-
-        queryFilter.date = {
-          $gte: startDate,
-          $lte: endDate,
-        };
       } else if (startDate) {
         selectedStartDate = startDate;
         selectedEndDate = startDate;
-
-        queryFilter.date = startDate;
       } else if (date) {
         selectedStartDate = date;
         selectedEndDate = date;
-
-        queryFilter.date = date;
       } else {
         selectedStartDate = todayIST;
         selectedEndDate = todayIST;
-
-        queryFilter.date = todayIST;
       }
 
-      // ============================================================
-      // 📍 GPS LOCATION LOGS
-      // ============================================================
-
-      const logs = await LocationLog.find(queryFilter)
+      // 1️⃣ GPS Location Logs (Range ke mutabiq)
+      const logs = await LocationLog.find({
+        salespersonId,
+        date: {
+          $gte: selectedStartDate,
+          $lte: selectedEndDate,
+        },
+      })
         .sort({ timestamp: 1 })
         .lean();
 
-      // ============================================================
-      // 📍 LAST LIVE LOCATION
-      // ============================================================
-
+      // 2️⃣ Last Live Location
       const lastLiveLog = await LocationLog.findOne({
         salespersonId,
         date: selectedEndDate,
@@ -1825,7 +1807,6 @@ app.get(
         .lean();
 
       let lastLiveLocation = null;
-
       if (lastLiveLog) {
         lastLiveLocation = {
           latitude: Number(lastLiveLog.latitude),
@@ -1834,105 +1815,44 @@ app.get(
         };
       }
 
-      // ============================================================
-      // 📏 DAY SESSION
-      // ============================================================
-
-      const session = await DaySession.findOne({
+      // 3️⃣ 🌟 FIX: Date Range ke saare DaySessions fetch karo aur total distance sum karo!
+      const sessions = await DaySession.find({
         salespersonId,
-        date: selectedEndDate,
+        date: {
+          $gte: selectedStartDate,
+          $lte: selectedEndDate,
+        },
       }).lean();
 
-      // ============================================================
-      // 📏 TOTAL DISTANCE
-      // ============================================================
-      //
-      // IMPORTANT:
-      // Do NOT calculate total distance from LocationLog.
-      //
-      // Correct business distance is already maintained inside
-      // DaySession:
-      //
-      // START → LEAD → INVOICE → LEAD → END
-      //
-      // Therefore use DaySession.totalDistanceKm
-      // ============================================================
+      let totalDistanceKm = 0;
+      let allDistancePoints = [];
+      let latestSession = sessions[sessions.length - 1] || null;
 
-      const totalDistanceKm = session
-        ? Number(session.totalDistanceKm) || 0
-        : 0;
+      sessions.forEach((sess) => {
+        totalDistanceKm += Number(sess.totalDistanceKm) || 0;
+        if (sess.distancePoints && Array.isArray(sess.distancePoints)) {
+          allDistancePoints = allDistancePoints.concat(sess.distancePoints);
+        }
+      });
 
-      // ============================================================
-      // 📍 ACTIVITY DISTANCE POINTS
-      // ============================================================
-
-      const distancePoints = session?.distancePoints || [];
-
-      // ============================================================
-      // 📍 START LOCATION
-      // ============================================================
-
-      const startLocation = session?.startLocation
-        ? {
-            latitude: Number(session.startLocation.latitude),
-            longitude: Number(session.startLocation.longitude),
-          }
-        : null;
-
-      // ============================================================
-      // 📍 END LOCATION
-      // ============================================================
-
-      const endLocation = session?.endLocation
-        ? {
-            latitude: Number(session.endLocation.latitude),
-            longitude: Number(session.endLocation.longitude),
-          }
-        : null;
-
-      // ============================================================
-      // ✅ RESPONSE
-      // ============================================================
-
+      // Response return karein
       return res.json({
         success: true,
-
         salespersonId,
-
         startDate: selectedStartDate,
         endDate: selectedEndDate,
-
-        // 📏 Correct business/activity distance
         totalDistanceKm: Number(totalDistanceKm.toFixed(3)),
-
-        // 📍 Latest GPS location
         lastLiveLocation,
-
-        // 🟢 Day session status
-        sessionStatus: session?.status || null,
-
-        // 🕐 Day timing
-        startTime: session?.startTime || null,
-        endTime: session?.endTime || null,
-
-        // 📍 Day Start
-        startLocation,
-
-        // 📍 Day End
-        endLocation,
-
-        // 📍 START → LEAD → INVOICE → ... → END
-        distancePoints,
-
-        // 📍 GPS tracking history
+        sessionStatus: latestSession?.status || null,
+        startTime: latestSession?.startTime || null,
+        endTime: latestSession?.endTime || null,
+        startLocation: latestSession?.startLocation || null,
+        endLocation: latestSession?.endLocation || null,
+        distancePoints: allDistancePoints,
         routePoints: logs,
       });
     } catch (err) {
-      console.error(
-        "❌ Failed to fetch salesperson travel:",
-        err
-      );
-
+      console.error("❌ Failed to fetch salesperson travel:", err);
       return res.status(500).json({
         success: false,
         message: "Failed to fetch travel history",
