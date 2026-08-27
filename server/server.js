@@ -3330,8 +3330,10 @@ app.put("/api/salesperson/calls/:id/end", verifyToken, async (req, res) => {
       connectedAt,
     } = req.body;
 
+    // 🌟 FIX 1: "ENDED" ko allowed statuses mein add kar diya
     const allowedStatuses = [
       "CONNECTED",
+      "ENDED",
       "NOT_CONNECTED",
       "MISSED",
       "REJECTED",
@@ -3356,7 +3358,8 @@ app.put("/api/salesperson/calls/:id/end", verifyToken, async (req, res) => {
     }
 
     const endedAt = new Date();
-
+    
+    // Status update (agar "ENDED" aaya hai toh status ko ENDED ya CONNECTED rakh sakte hain)
     call.status = status;
     call.endedAt = endedAt;
 
@@ -3364,10 +3367,20 @@ app.put("/api/salesperson/calls/:id/end", verifyToken, async (req, res) => {
       call.connectedAt = new Date(connectedAt);
     }
 
-    call.durationSeconds =
-      status === "CONNECTED"
-        ? Math.max(0, Number(durationSeconds) || 0)
-        : 0;
+    // 🌟 FIX 2: Smart Duration Calculation
+    if (status === "CONNECTED" || status === "ENDED") {
+      if (Number(durationSeconds) > 0) {
+        call.durationSeconds = Number(durationSeconds);
+      } else if (call.connectedAt) {
+        // Agar duration nahi bheji, par connectedAt pata hai, toh time difference nikal lo
+        const durationMs = endedAt.getTime() - new Date(call.connectedAt).getTime();
+        call.durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
+      } else {
+        call.durationSeconds = 0;
+      }
+    } else {
+      call.durationSeconds = 0;
+    }
 
     await call.save();
 
