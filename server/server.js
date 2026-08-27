@@ -3183,6 +3183,9 @@ app.patch(
   }
 );
 
+const { parseBuffer } = require('music-metadata');
+// const axios = require('axios');
+
 app.post(
   "/api/salesperson/calls/:callId/recording",
   verifyToken,
@@ -3214,9 +3217,11 @@ app.post(
       // ---------------------------------------------------------
       // 3. Security: salesperson can update own call only
       // ---------------------------------------------------------
+      // Note: req.user.userId custom string id hai ya req.user._id ObjectId hai, 
+      // uske hisab se match check karein (aapke codebase mein req.user.userId use hota hai)
       if (
-        String(call.salespersonId) !==
-        String(req.user._id)
+        String(call.salespersonId) !== String(req.user.userId) &&
+        String(call.salespersonId) !== String(req.user._id)
       ) {
         return res.status(403).json({
           message: "You are not allowed to update this call.",
@@ -3226,21 +3231,58 @@ app.post(
       // ---------------------------------------------------------
       // 4. Cloudinary URL save
       // ---------------------------------------------------------
-      call.recordingUrl = req.file.path;
-
-      // Recording was uploaded.
-      // Consent handling can be refined later according to
-      // your actual recording-consent flow.
+      const recordingUrl = req.file.path || req.file.secure_url;
+      call.recordingUrl = recordingUrl;
       call.recordingConsent = true;
 
+      // ---------------------------------------------------------
+      // 🌟 5. EXTRACT EXACT AUDIO DURATION USING music-metadata
+      // ---------------------------------------------------------
+      try {
+        // Cloudinary se audio file ka buffer download karein
+        const audioResponse = await axios.get(recordingUrl, { responseType: 'arraybuffer' });
+        const audioBuffer = Buffer.from(audioResponse.data);
+
+        // Buffer ko parse karke exact duration nikalein
+        const metadata = await parseBuffer(audioBuffer, req.file.mimetype);
+
+        if (metadata && metadata.format && metadata.format.duration) {
+          const exactSeconds = Math.round(metadata.format.duration);
+          call.durationSeconds = exactSeconds;
+          call.status = "CONNECTED"; // Automatic connected mark ho jayega
+
+          // Agar connectedAt pehle set nahi tha, toh duration ke hisab se set kar do
+          if (!call.connectedAt) {
+            const endedTime = call.endedAt || new Date();
+            call.connectedAt = new Date(new Date(endedTime).getTime() - (exactSeconds * 1000));
+          }
+
+          console.log(`🎙️ Audio duration extracted successfully: ${exactSeconds} seconds for call ${callId}`);
+        }
+      } catch (parseErr) {
+        console.warn("⚠️ Could not extract audio duration from metadata, keeping default duration:", parseErr.message);
+      }
+
+      const wasAlreadyConnected = call.status === "CONNECTED";
       await call.save();
 
+      // Agar call pehle connected count nahi hui thi, toh points add kar do
+      if (!wasAlreadyConnected && call.status === "CONNECTED") {
+        try {
+          await addSalespersonPoints(req.user.userId, "CALL_CONNECTED");
+        } catch (ptErr) {
+          console.error("🔥 Error adding points from recording upload:", ptErr.message);
+        }
+      }
+
       // ---------------------------------------------------------
-      // 5. Response
+      // 6. Response
       // ---------------------------------------------------------
       return res.status(200).json({
-        message: "Call recording uploaded successfully.",
+        success: true,
+        message: "Call recording uploaded and duration calculated successfully.",
         recordingUrl: call.recordingUrl,
+        durationSeconds: call.durationSeconds,
         callId: call._id,
       });
 
