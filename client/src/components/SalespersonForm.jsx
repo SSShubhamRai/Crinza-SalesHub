@@ -752,6 +752,33 @@ const handleCallRecordingUpload = async (
 // --- 📊 FETCH CALL ANALYTICS ---
 // =========================================================================
 
+const fetchCallHistory = useCallback(async () => {
+  try {
+    const token = localStorage.getItem("token");
+
+    const res = await fetch(
+      `${API_BASE}/api/salesperson/calls?limit=100`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(
+        data.message || "Failed to fetch call history"
+      );
+    }
+
+    setCallHistory(data);
+  } catch (error) {
+    console.error("Call history error:", error);
+  }
+}, [API_BASE]);
+
 const fetchCallAnalytics = useCallback(async () => {
   try {
     setCallAnalyticsLoading(true);
@@ -1021,32 +1048,7 @@ useEffect(() => {
 // --- 📞 FETCH CALL HISTORY ---
 // =========================================================================
 
-const fetchCallHistory = useCallback(async () => {
-  try {
-    const token = localStorage.getItem("token");
 
-    const res = await fetch(
-      `${API_BASE}/api/salesperson/calls?limit=100`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      }
-    );
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(
-        data.message || "Failed to fetch call history"
-      );
-    }
-
-    setCallHistory(data);
-  } catch (error) {
-    console.error("Call history error:", error);
-  }
-}, [API_BASE]);
 
 useEffect(() => {
   fetchCallAnalytics();
