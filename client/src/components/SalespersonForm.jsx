@@ -1305,6 +1305,7 @@ const emitLocation = () => {
       });
     },
     (err) => {
+      
       console.error("GPS error:", err);
     },
     {

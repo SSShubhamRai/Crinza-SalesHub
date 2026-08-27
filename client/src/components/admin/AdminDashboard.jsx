@@ -146,29 +146,45 @@ const AdminDashboard = ({ userId, onLogout }) => {
     };
   }, [API_BASE]);
 
-  const fetchSalespersonTravelHistory = useCallback(async (empId, startDate, endDate) => {
+const fetchSalespersonTravelHistory = useCallback(
+  async (empId, startDate, endDate) => {
     if (!empId) return;
+
     try {
       const token = localStorage.getItem("token");
+
       const targetStart = startDate || trackerDate;
       const targetEnd = endDate || trackerEndDate || targetStart;
 
-      let url = `${API_BASE}/api/boss/salesperson-travel/${empId}?date=${targetStart}`;
+      let url = `${API_BASE}/api/boss/salesperson-travel/${empId}?date=${encodeURIComponent(
+        targetStart
+      )}`;
+
       if (targetEnd && targetEnd !== targetStart) {
-        url = `${API_BASE}/api/boss/salesperson-travel/${empId}?startDate=${targetStart}&endDate=${targetEnd}`;
+        url = `${API_BASE}/api/boss/salesperson-travel/${empId}?startDate=${encodeURIComponent(
+          targetStart
+        )}&endDate=${encodeURIComponent(targetEnd)}`;
       }
 
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
+
       const data = await res.json();
+
       if (res.ok) {
         setTravelData(data);
+      } else {
+        console.error("Travel API error:", data);
       }
     } catch (err) {
       console.error("Failed to fetch travel history:", err);
     }
-  }, [API_BASE, trackerDate, trackerEndDate]);
+  },
+  [API_BASE, trackerDate, trackerEndDate]
+);
 
   const fetchSalespersonShiftInfo = useCallback(async (empId, dateVal) => {
     if (!empId) return;

@@ -19,11 +19,17 @@ export const LiveTrackingTab = ({
   const todayStr = new Date().toISOString().split('T')[0];
 
   // 🌟 Fallback logic: Live socket data ya phir database ka latest route point
-  const livePt = liveLocations[selectedTrackerEmp];
-  const latestDbPt = !livePt && travelData?.routePoints?.length > 0 
-    ? travelData.routePoints[travelData.routePoints.length - 1] 
+const livePt = liveLocations[selectedTrackerEmp];
+
+const latestDbPt =
+  travelData?.routePoints?.length > 0
+    ? travelData.routePoints[travelData.routePoints.length - 1]
     : null;
-  const activePt = livePt || latestDbPt;
+
+const activePt =
+  livePt ||
+  travelData?.lastLiveLocation ||
+  latestDbPt;
 
   return (
     <div className="space-y-6 animate-fade-in">

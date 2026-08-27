@@ -369,22 +369,105 @@ const LocationLog = mongoose.model("LocationLog", locationLogSchema);
 // --- ⏱️ DAY START / END ATTENDANCE & SHIFT SCHEMA ---
 // =========================================================================
 const daySessionSchema = new mongoose.Schema({
-  salespersonId: { type: String, required: true, index: true },
-  date: { type: String, required: true, index: true }, // Format: 'YYYY-MM-DD'
-  status: { type: String, enum: ["STARTED", "ENDED"], default: "STARTED" },
-  startTime: { type: Date, default: Date.now },
+
+  salespersonId: {
+    type: String,
+    required: true,
+    index: true
+  },
+
+  date: {
+    type: String,
+    required: true,
+    index: true
+  }, // YYYY-MM-DD
+
+  status: {
+    type: String,
+    enum: ["STARTED", "ENDED"],
+    default: "STARTED"
+  },
+
+  startTime: {
+    type: Date,
+    default: Date.now
+  },
+
+  // 📍 Start Day Location - Point A
   startLocation: {
     latitude: Number,
     longitude: Number,
   },
-  startAddress: { type: String, default: "" }, // 👈 Storing human-readable start location name
-  endTime: { type: Date },
+
+  startAddress: {
+    type: String,
+    default: ""
+  },
+
+  // 📍 All important activity locations
+  // A = Start Day
+  // B = Lead
+  // C = Invoice
+  // D = Lead
+  // E = End Day
+  distancePoints: [
+    {
+      type: {
+        type: String,
+        enum: ["START", "LEAD", "INVOICE", "END"],
+        required: true
+      },
+
+      referenceId: {
+        type: String,
+        default: null
+      },
+
+      latitude: {
+        type: Number,
+        required: true
+      },
+
+      longitude: {
+        type: Number,
+        required: true
+      },
+
+      timestamp: {
+        type: Date,
+        default: Date.now
+      },
+
+      distanceFromPreviousKm: {
+        type: Number,
+        default: 0
+      },
+
+      totalDistanceKm: {
+        type: Number,
+        default: 0
+      }
+    }
+  ],
+
+  // 📍 End Day Location - final point
+  endTime: {
+    type: Date
+  },
+
   endLocation: {
     latitude: Number,
     longitude: Number,
   },
-  totalDistanceKm: { type: Number, default: 0 },
+
+  // 🔢 Final/Current total distance
+  totalDistanceKm: {
+    type: Number,
+    default: 0
+  },
+
 });
+
 const DaySession = mongoose.model("DaySession", daySessionSchema);
 
 // =========================================================================
@@ -483,16 +566,29 @@ socket.on("update_location", async (data) => {
   try {
     const { salespersonId, latitude, longitude } = data;
 
-    // Validate location data
+    // ============================================================
+    // 📍 1. VALIDATE LOCATION
+    // ============================================================
+
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
     if (
       !salespersonId ||
-      !Number.isFinite(Number(latitude)) ||
-      !Number.isFinite(Number(longitude))
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
     ) {
       return;
     }
 
-    // Authorization check
+    // ============================================================
+    // 🔐 2. AUTHORIZATION
+    // ============================================================
+
     if (
       socket.user.userId !== salespersonId &&
       socket.user.role !== "admin" &&
@@ -501,11 +597,20 @@ socket.on("update_location", async (data) => {
       return;
     }
 
+    // ============================================================
+    // 🇮🇳 3. CURRENT IST DATE
+    // ============================================================
+
     const currentDate = new Date().toLocaleDateString("en-CA", {
       timeZone: "Asia/Kolkata",
     });
 
-    // Only track during an active Day Session
+    const currentTime = new Date();
+
+    // ============================================================
+    // 🟢 4. ONLY TRACK DURING ACTIVE DAY
+    // ============================================================
+
     const activeSession = await DaySession.findOne({
       salespersonId,
       date: currentDate,
@@ -516,46 +621,40 @@ socket.on("update_location", async (data) => {
       return;
     }
 
-    const currentTime = new Date();
+    // ============================================================
+    // 📍 5. GET LAST SAVED GPS LOCATION
+    // ============================================================
 
-    // Only use the latest location AFTER Day Start
     const lastLog = await LocationLog.findOne({
       salespersonId,
       date: currentDate,
       timestamp: {
         $gte: new Date(activeSession.startTime),
       },
-    }).sort({ timestamp: -1 });
+    }).sort({
+      timestamp: -1,
+    });
 
     let isMockedByTeleport = false;
+    let distanceKm = 0;
+    let timeDiffHours = 0;
+
+    // ============================================================
+    // 🚨 6. TELEPORT / FAKE GPS DETECTION
+    // ============================================================
 
     if (lastLog) {
-      const distanceKm = calculateDistance(
+      distanceKm = calculateDistance(
         Number(lastLog.latitude),
         Number(lastLog.longitude),
-        Number(latitude),
-        Number(longitude)
+        lat,
+        lng
       );
 
-      const timeDiffHours =
+      timeDiffHours =
         (currentTime - new Date(lastLog.timestamp)) /
         (1000 * 60 * 60);
 
-      // Small movement: broadcast live location,
-      // but don't create unnecessary DB records.
-      if (distanceKm < 0.03) {
-        io.emit("live_location_broadcast", {
-          salespersonId,
-          latitude: Number(latitude),
-          longitude: Number(longitude),
-          isMocked: false,
-          timestamp: currentTime,
-        });
-
-        return;
-      }
-
-      // Detect unrealistic teleportation
       if (timeDiffHours > 0) {
         const speedKmh = distanceKm / timeDiffHours;
 
@@ -563,32 +662,65 @@ socket.on("update_location", async (data) => {
           isMockedByTeleport = true;
 
           console.warn(
-            `🚨 SECURITY ALERT: Possible Fake GPS / Teleportation detected for ${salespersonId}! Calculated Speed: ${speedKmh.toFixed(2)} km/h`
+            `🚨 SECURITY ALERT: Possible Fake GPS / Teleportation detected for ${salespersonId}! Speed: ${speedKmh.toFixed(
+              2
+            )} km/h`
           );
         }
       }
     }
 
-    // Save valid location
-    await LocationLog.create({
+    // ============================================================
+    // 💾 7. SAVE LOCATION
+    // ============================================================
+    //
+    // IMPORTANT:
+    // LocationLog is ONLY for GPS/live-location history.
+    //
+    // It is NOT used for your business-distance calculation.
+    //
+    // Business distance remains:
+    //
+    // START → LEAD → INVOICE → LEAD → END
+    //
+    // and is stored in:
+    //
+    // DaySession.totalDistanceKm
+    //
+    // ============================================================
+
+    const newLocationLog = await LocationLog.create({
       salespersonId,
-      latitude: Number(latitude),
-      longitude: Number(longitude),
+      latitude: lat,
+      longitude: lng,
       date: currentDate,
       timestamp: currentTime,
       isMocked: isMockedByTeleport,
     });
 
-    // Broadcast live location
+    // ============================================================
+    // 📡 8. BROADCAST LIVE LOCATION
+    // ============================================================
+
     io.emit("live_location_broadcast", {
       salespersonId,
-      latitude: Number(latitude),
-      longitude: Number(longitude),
+
+      latitude: lat,
+      longitude: lng,
+
       isMocked: isMockedByTeleport,
+
       timestamp: currentTime,
+
+      // Useful for frontend debugging/display
+      locationLogId: newLocationLog._id,
     });
+
   } catch (err) {
-    console.error("🔥 Socket Location Error:", err);
+    console.error(
+      "🔥 Socket Location Error:",
+      err
+    );
   }
 });
 
@@ -1622,45 +1754,192 @@ app.get(
   verifyToken,
   async (req, res) => {
     try {
+      // 🔐 Only Admin / Boss can access
       if (req.user.role !== "boss" && req.user.role !== "admin") {
-        return res.status(403).json({ message: "Access denied!" });
+        return res.status(403).json({
+          message: "Access denied!",
+        });
       }
 
       const { salespersonId } = req.params;
       const { date, startDate, endDate } = req.query;
 
-      let queryFilter = { salespersonId };
+      // 🇮🇳 Today's date in IST
+      const todayIST = new Date().toLocaleDateString("en-CA", {
+        timeZone: "Asia/Kolkata",
+      });
+
+      // ============================================================
+      // 📅 DATE FILTER
+      // ============================================================
+
+      let queryFilter = {
+        salespersonId,
+      };
+
+      let selectedStartDate;
+      let selectedEndDate;
 
       if (startDate && endDate) {
-        queryFilter.date = { $gte: startDate, $lte: endDate };
+        selectedStartDate = startDate;
+        selectedEndDate = endDate;
+
+        queryFilter.date = {
+          $gte: startDate,
+          $lte: endDate,
+        };
       } else if (startDate) {
+        selectedStartDate = startDate;
+        selectedEndDate = startDate;
+
         queryFilter.date = startDate;
       } else if (date) {
+        selectedStartDate = date;
+        selectedEndDate = date;
+
         queryFilter.date = date;
       } else {
-        queryFilter.date = new Date().toISOString().split("T")[0];
+        selectedStartDate = todayIST;
+        selectedEndDate = todayIST;
+
+        queryFilter.date = todayIST;
       }
 
-      const logs = await LocationLog.find(queryFilter).sort({ timestamp: 1 });
+      // ============================================================
+      // 📍 GPS LOCATION LOGS
+      // ============================================================
 
-      const totalDistanceKm = calculateValidDistance(logs);
+      const logs = await LocationLog.find(queryFilter)
+        .sort({ timestamp: 1 })
+        .lean();
 
-      res.json({
-        success: true,
+      // ============================================================
+      // 📍 LAST LIVE LOCATION
+      // ============================================================
+
+      const lastLiveLog = await LocationLog.findOne({
         salespersonId,
-        startDate: startDate || date || new Date().toISOString().split("T")[0],
-        endDate: endDate || startDate || date || new Date().toISOString().split("T")[0],
-        totalDistanceKm,
+        date: selectedEndDate,
+      })
+        .sort({ timestamp: -1 })
+        .lean();
+
+      let lastLiveLocation = null;
+
+      if (lastLiveLog) {
+        lastLiveLocation = {
+          latitude: Number(lastLiveLog.latitude),
+          longitude: Number(lastLiveLog.longitude),
+          timestamp: lastLiveLog.timestamp,
+        };
+      }
+
+      // ============================================================
+      // 📏 DAY SESSION
+      // ============================================================
+
+      const session = await DaySession.findOne({
+        salespersonId,
+        date: selectedEndDate,
+      }).lean();
+
+      // ============================================================
+      // 📏 TOTAL DISTANCE
+      // ============================================================
+      //
+      // IMPORTANT:
+      // Do NOT calculate total distance from LocationLog.
+      //
+      // Correct business distance is already maintained inside
+      // DaySession:
+      //
+      // START → LEAD → INVOICE → LEAD → END
+      //
+      // Therefore use DaySession.totalDistanceKm
+      // ============================================================
+
+      const totalDistanceKm = session
+        ? Number(session.totalDistanceKm) || 0
+        : 0;
+
+      // ============================================================
+      // 📍 ACTIVITY DISTANCE POINTS
+      // ============================================================
+
+      const distancePoints = session?.distancePoints || [];
+
+      // ============================================================
+      // 📍 START LOCATION
+      // ============================================================
+
+      const startLocation = session?.startLocation
+        ? {
+            latitude: Number(session.startLocation.latitude),
+            longitude: Number(session.startLocation.longitude),
+          }
+        : null;
+
+      // ============================================================
+      // 📍 END LOCATION
+      // ============================================================
+
+      const endLocation = session?.endLocation
+        ? {
+            latitude: Number(session.endLocation.latitude),
+            longitude: Number(session.endLocation.longitude),
+          }
+        : null;
+
+      // ============================================================
+      // ✅ RESPONSE
+      // ============================================================
+
+      return res.json({
+        success: true,
+
+        salespersonId,
+
+        startDate: selectedStartDate,
+        endDate: selectedEndDate,
+
+        // 📏 Correct business/activity distance
+        totalDistanceKm: Number(totalDistanceKm.toFixed(3)),
+
+        // 📍 Latest GPS location
+        lastLiveLocation,
+
+        // 🟢 Day session status
+        sessionStatus: session?.status || null,
+
+        // 🕐 Day timing
+        startTime: session?.startTime || null,
+        endTime: session?.endTime || null,
+
+        // 📍 Day Start
+        startLocation,
+
+        // 📍 Day End
+        endLocation,
+
+        // 📍 START → LEAD → INVOICE → ... → END
+        distancePoints,
+
+        // 📍 GPS tracking history
         routePoints: logs,
       });
     } catch (err) {
-      res.status(500).json({
+      console.error(
+        "❌ Failed to fetch salesperson travel:",
+        err
+      );
+
+      return res.status(500).json({
         success: false,
         message: "Failed to fetch travel history",
         error: err.message,
       });
     }
-  },
+  }
 );
 
 // 🌟 Admin API to fetch salesperson's day session shift timings & status
@@ -2091,134 +2370,438 @@ app.post("/api/boss/transfer-leads", verifyToken, async (req, res) => {
 // =========================================================================
 const handleInvoiceSubmission = async (req, res) => {
   try {
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+    // ============================================================
+    // 🇮🇳 TODAY'S DATE - IST
+    // ============================================================
+
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+
+    // ============================================================
+    // 🔐 GET ACTIVE DAY SESSION
+    // ============================================================
+
+    const session = await DaySession.findOne({
+      salespersonId: req.user.userId,
+      date: today,
+    });
+
     if (!session || session.status !== "STARTED") {
-      return res.status(403).json({ message: "Action Blocked: You must start your day first before submitting invoices!" });
+      return res.status(403).json({
+        message:
+          "Action Blocked: You must start your day first before submitting invoices!",
+      });
     }
 
-    const invoiceId = "CRINZA-" + Date.now().toString().slice(-6);
+    // ============================================================
+    // 📍 VALIDATE INVOICE LOCATION
+    // ============================================================
 
-    let parsedAddons = { testModule: false, windowApp: false, iosApp: false };
+    const invoiceLatitude = Number(req.body.latitude);
+    const invoiceLongitude = Number(req.body.longitude);
+
+    if (
+      !Number.isFinite(invoiceLatitude) ||
+      !Number.isFinite(invoiceLongitude)
+    ) {
+      return res.status(400).json({
+        message:
+          "Valid latitude and longitude are required to calculate invoice travel distance.",
+      });
+    }
+
+    // ============================================================
+    // 🧾 GENERATE INVOICE ID
+    // ============================================================
+
+    const invoiceId =
+      "CRINZA-" + Date.now().toString().slice(-6);
+
+    // ============================================================
+    // 📦 PARSE ADDONS
+    // ============================================================
+
+    let parsedAddons = {
+      testModule: false,
+      windowApp: false,
+      iosApp: false,
+    };
+
     if (req.body.addons) {
       try {
-        parsedAddons = typeof req.body.addons === "string" ? JSON.parse(req.body.addons) : req.body.addons;
-      } catch (e) {}
+        parsedAddons =
+          typeof req.body.addons === "string"
+            ? JSON.parse(req.body.addons)
+            : req.body.addons;
+      } catch (e) {
+        console.log("⚠️ Failed to parse addons:", e.message);
+      }
     }
 
-    // 🌟 Safe parsing for categories array
+    // ============================================================
+    // 📦 PARSE CATEGORIES
+    // ============================================================
+
     let parsedCategories = [];
+
     if (req.body.categories) {
       try {
-        parsedCategories = typeof req.body.categories === "string" ? JSON.parse(req.body.categories) : req.body.categories;
+        parsedCategories =
+          typeof req.body.categories === "string"
+            ? JSON.parse(req.body.categories)
+            : req.body.categories;
       } catch (e) {
         parsedCategories = [req.body.categories];
       }
     }
 
-    // 🌟 Extract Cloudinary secure URLs from multi-field files object safely
-    const paymentProofPath = req.files && req.files['paymentProof'] ? req.files['paymentProof'][0].path : "";
-    const logoProofPath = req.files && req.files['logoProof'] ? req.files['logoProof'][0].path : "";
+    // ============================================================
+    // ☁️ CLOUDINARY FILES
+    // ============================================================
 
-    const { ownerName, validityYears, validityMonths } = req.body;
+    const paymentProofPath =
+      req.files &&
+      req.files["paymentProof"]
+        ? req.files["paymentProof"][0].path
+        : "";
+
+    const logoProofPath =
+      req.files &&
+      req.files["logoProof"]
+        ? req.files["logoProof"][0].path
+        : "";
+
+    // ============================================================
+    // 👤 OWNER / VALIDITY
+    // ============================================================
+
+    const {
+      ownerName,
+      validityYears,
+      validityMonths,
+    } = req.body;
 
     const yearsNum = Number(validityYears) || 0;
     const monthsNum = Number(validityMonths) || 0;
-    let computedValidity = req.body.packageValidity || "1 Year";
+
+    let computedValidity =
+      req.body.packageValidity || "1 Year";
+
     if (yearsNum > 0 || monthsNum > 0) {
-      const yPart = yearsNum > 0 ? `${yearsNum} Year${yearsNum > 1 ? 's' : ''}` : '';
-      const mPart = monthsNum > 0 ? `${monthsNum} Month${monthsNum > 1 ? 's' : ''}` : '';
-      computedValidity = [yPart, mPart].filter(Boolean).join(' ');
+      const yPart =
+        yearsNum > 0
+          ? `${yearsNum} Year${yearsNum > 1 ? "s" : ""}`
+          : "";
+
+      const mPart =
+        monthsNum > 0
+          ? `${monthsNum} Month${monthsNum > 1 ? "s" : ""}`
+          : "";
+
+      computedValidity = [yPart, mPart]
+        .filter(Boolean)
+        .join(" ");
     }
 
-    const paymentMode = req.body.paymentMode || 'ONLINE';
-    const utrNumber = req.body.utrNumber ? req.body.utrNumber.trim() : '';
-    const claimedPaid = Number(req.body.paidAmount) || 0;
+    // ============================================================
+    // 💳 PAYMENT INFORMATION
+    // ============================================================
+
+    const paymentMode =
+      req.body.paymentMode || "ONLINE";
+
+    const utrNumber = req.body.utrNumber
+      ? req.body.utrNumber.trim()
+      : "";
+
+    const claimedPaid =
+      Number(req.body.paidAmount) || 0;
+
+    // ============================================================
+    // 🤖 OCR STATUS
+    // ============================================================
 
     let ocrStatus = "PENDING";
     let ocrMessage = "Manual review required";
 
-    if (paymentMode === 'ONLINE' && utrNumber) {
-      const existingUtrCheck = await Invoice.findOne({
-        utrNumber: utrNumber,
-        status: { $in: ['pending', 'approved'] }
-      });
+    // ============================================================
+    // 🔍 UTR DUPLICATE CHECK
+    // ============================================================
+
+    if (paymentMode === "ONLINE" && utrNumber) {
+      const existingUtrCheck =
+        await Invoice.findOne({
+          utrNumber: utrNumber,
+          status: {
+            $in: ["pending", "approved"],
+          },
+        });
 
       if (existingUtrCheck) {
         ocrStatus = "RED";
-        ocrMessage = `Fraud Alert: UTR "${utrNumber}" already used in Invoice #${existingUtrCheck.invoiceId}!`;
+
+        ocrMessage =
+          `Fraud Alert: UTR "${utrNumber}" already used in Invoice #${existingUtrCheck.invoiceId}!`;
       }
     }
 
-    if (paymentMode === 'ONLINE' && paymentProofPath && utrNumber && ocrStatus !== "RED") {
+    // ============================================================
+    // 🤖 OCR PAYMENT PROOF
+    // ============================================================
+
+    if (
+      paymentMode === "ONLINE" &&
+      paymentProofPath &&
+      utrNumber &&
+      ocrStatus !== "RED"
+    ) {
       try {
-        console.log("🔍 Running AI OCR Scan on payment proof...");
-        const { data: { text } } = await Tesseract.recognize(paymentProofPath, 'eng');
-        const cleanedText = text.replace(/[\s,]/g, '');
-        const isAmountMatched = cleanedText.includes(claimedPaid.toString());
-        const isUtrMatched = cleanedText.includes(utrNumber);
+        console.log(
+          "🔍 Running AI OCR Scan on payment proof..."
+        );
+
+        const {
+          data: { text },
+        } = await Tesseract.recognize(
+          paymentProofPath,
+          "eng"
+        );
+
+        const cleanedText =
+          text.replace(/[\s,]/g, "");
+
+        const isAmountMatched =
+          cleanedText.includes(
+            claimedPaid.toString()
+          );
+
+        const isUtrMatched =
+          cleanedText.includes(utrNumber);
 
         if (isUtrMatched && isAmountMatched) {
           ocrStatus = "GREEN";
-          ocrMessage = "AI Verified: UTR & Amount Matched 100%";
+          ocrMessage =
+            "AI Verified: UTR & Amount Matched 100%";
         } else {
           ocrStatus = "YELLOW";
-          ocrMessage = `Mismatch Warning: Entered UTR or Amount differs from screenshot!`;
+          ocrMessage =
+            "Mismatch Warning: Entered UTR or Amount differs from screenshot!";
         }
       } catch (ocrErr) {
         ocrStatus = "YELLOW";
-        ocrMessage = "OCR scan failed to read image clearly.";
+        ocrMessage =
+          "OCR scan failed to read image clearly.";
       }
-    } else if (paymentMode !== 'ONLINE') {
+    } else if (paymentMode !== "ONLINE") {
       ocrStatus = "GREEN";
       ocrMessage = "Offline Payment Mode";
     }
 
+    // ============================================================
+    // 🧾 CREATE INVOICE
+    // ============================================================
+
     const newInvoice = new Invoice({
       ...req.body,
-      categories: parsedCategories, // ✅ Fixed categories mapping
-      ownerName: ownerName || '',
+
+      categories: parsedCategories,
+
+      ownerName: ownerName || "",
+
       validityYears: yearsNum,
+
       validityMonths: monthsNum,
+
       packageValidity: computedValidity,
-      baseAmount: Number(req.body.baseAmount) || Number(req.body.totalAmount) || 0,
-      totalAmount: Number(req.body.totalAmount) || 0,
+
+      baseAmount:
+        Number(req.body.baseAmount) ||
+        Number(req.body.totalAmount) ||
+        0,
+
+      totalAmount:
+        Number(req.body.totalAmount) || 0,
+
       paidAmount: claimedPaid,
-      dueAmount: Number(req.body.dueAmount) || 0,
-      previousDueBalance: Number(req.body.previousDueBalance) || 0,
-      discountAmount: Number(req.body.discountAmount) || 0,
-      latitude: req.body.latitude ? Number(req.body.latitude) : null,
-      longitude: req.body.longitude ? Number(req.body.longitude) : null,
+
+      dueAmount:
+        Number(req.body.dueAmount) || 0,
+
+      previousDueBalance:
+        Number(req.body.previousDueBalance) || 0,
+
+      discountAmount:
+        Number(req.body.discountAmount) || 0,
+
+      // 📍 Invoice location
+      latitude: invoiceLatitude,
+      longitude: invoiceLongitude,
+
       invoiceId,
+
       salespersonId: req.user.userId,
-      paymentProof: paymentProofPath, // ✅ Fixed file path mapping
-      logoProof: logoProofPath,       // ✅ Added logoProof storage support
+
+      paymentProof: paymentProofPath,
+
+      logoProof: logoProofPath,
+
       addons: parsedAddons,
+
       paymentMode,
+
       utrNumber,
-      receiptNo: req.body.receiptNo || '',
-      chequeNo: req.body.chequeNo || '',
-      bankName: req.body.bankName || '',
+
+      receiptNo:
+        req.body.receiptNo || "",
+
+      chequeNo:
+        req.body.chequeNo || "",
+
+      bankName:
+        req.body.bankName || "",
+
       ocrStatus,
+
       ocrMessage,
+
       status: "pending",
     });
 
-    await newInvoice.save();
-    await addSalespersonPoints(
-  req.user.userId,
-  "DEAL_CLOSED"
-);
+    // ============================================================
+    // 💾 SAVE INVOICE
+    // ============================================================
 
-    res.status(201).json({
-      message: "Invoice request & installment ledger submitted to Accountant!",
+    await newInvoice.save();
+
+    // ============================================================
+    // 📍 INVOICE DISTANCE CALCULATION
+    // ============================================================
+
+    // Make sure distancePoints exists
+    if (!Array.isArray(session.distancePoints)) {
+      session.distancePoints = [];
+    }
+
+    // ------------------------------------------------------------
+    // 📍 GET PREVIOUS DISTANCE POINT
+    // ------------------------------------------------------------
+
+    const previousPoint =
+      session.distancePoints[
+        session.distancePoints.length - 1
+      ];
+
+    let distanceFromPreviousKm = 0;
+
+    // ------------------------------------------------------------
+    // 📏 PREVIOUS POINT → INVOICE
+    // ------------------------------------------------------------
+
+    if (previousPoint) {
+      distanceFromPreviousKm = calculateDistance(
+        Number(previousPoint.latitude),
+        Number(previousPoint.longitude),
+        invoiceLatitude,
+        invoiceLongitude
+      );
+    }
+
+    // ------------------------------------------------------------
+    // 📊 PREVIOUS TOTAL DISTANCE
+    // ------------------------------------------------------------
+
+    const previousTotal =
+      Number(session.totalDistanceKm) || 0;
+
+    // ------------------------------------------------------------
+    // 📊 NEW TOTAL DISTANCE
+    // ------------------------------------------------------------
+
+    const newTotalDistance =
+      previousTotal + distanceFromPreviousKm;
+
+    // ============================================================
+    // 📍 ADD INVOICE TO DISTANCE POINTS
+    // ============================================================
+
+    session.distancePoints.push({
+      type: "INVOICE",
+
+      // Link distance point to invoice
+      referenceId: newInvoice._id.toString(),
+
+      latitude: invoiceLatitude,
+
+      longitude: invoiceLongitude,
+
+      timestamp: new Date(),
+
+      // Previous activity → Invoice
+      distanceFromPreviousKm: Number(
+        distanceFromPreviousKm.toFixed(3)
+      ),
+
+      // Total distance till Invoice
+      totalDistanceKm: Number(
+        newTotalDistance.toFixed(3)
+      ),
+    });
+
+    // ============================================================
+    // 📊 UPDATE DAY TOTAL
+    // ============================================================
+
+    session.totalDistanceKm = Number(
+      newTotalDistance.toFixed(3)
+    );
+
+    // ============================================================
+    // 💾 SAVE UPDATED SESSION
+    // ============================================================
+
+    await session.save();
+
+    // ============================================================
+    // ⭐ EXISTING SALESPERSON POINTS
+    // ============================================================
+
+    await addSalespersonPoints(
+      req.user.userId,
+      "DEAL_CLOSED"
+    );
+
+    // ============================================================
+    // ✅ RESPONSE
+    // ============================================================
+
+    return res.status(201).json({
+      success: true,
+
+      message:
+        "Invoice request & installment ledger submitted to Accountant!",
+
       invoiceId,
+
+      // 📏 Distance from previous activity to Invoice
+      distanceAddedKm: Number(
+        distanceFromPreviousKm.toFixed(3)
+      ),
+
+      // 📏 Today's total distance
+      totalDistanceKm: Number(
+        session.totalDistanceKm.toFixed(3)
+      ),
     });
   } catch (err) {
-    console.error("🔥 [FATAL] INVOICE SUBMISSION FAILED:", err.message);
-    res.status(500).json({
+    console.error(
+      "🔥 [FATAL] INVOICE SUBMISSION FAILED:",
+      err.message
+    );
+
+    return res.status(500).json({
       message: "Failed to submit request",
-      error: err.message
+      error: err.message,
     });
   }
 };
@@ -2995,15 +3578,37 @@ app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
       return res.status(400).json({ message: "You have already ended your day today. Cannot restart." });
     }
 
-    const { latitude, longitude, startAddress } = req.body;
-    const newSession = new DaySession({
-      salespersonId: req.user.userId,
-      date: today,
-      status: "STARTED",
-      startTime: new Date(),
-      startLocation: { latitude: Number(latitude) || 0, longitude: Number(longitude) || 0 },
-      startAddress: startAddress || ""
-    });
+const { latitude, longitude, startAddress } = req.body;
+
+const newSession = new DaySession({
+  salespersonId: req.user.userId,
+  date: today,
+  status: "STARTED",
+  startTime: new Date(),
+
+  // 📍 Point A — Start Day location
+  startLocation: {
+    latitude: Number(latitude) || 0,
+    longitude: Number(longitude) || 0
+  },
+
+  startAddress: startAddress || "",
+
+  // 📍 Distance calculation ka first point
+  distancePoints: [
+    {
+      type: "START",
+      referenceId: null,
+      latitude: Number(latitude) || 0,
+      longitude: Number(longitude) || 0,
+      timestamp: new Date(),
+      distanceFromPreviousKm: 0,
+      totalDistanceKm: 0
+    }
+  ],
+
+  totalDistanceKm: 0
+});
 
     await newSession.save();
     res.status(201).json({ success: true, message: "Day started successfully!", startAddress: newSession.startAddress, session: newSession });
@@ -3014,96 +3619,259 @@ app.post("/api/salesperson/start-day", verifyToken, async (req, res) => {
 
 app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
   try {
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
-    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today, status: "STARTED" });
+    // ============================================================
+    // 🇮🇳 TODAY - IST
+    // ============================================================
+
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Kolkata",
+    });
+
+    // ============================================================
+    // 🔐 GET ACTIVE SESSION
+    // ============================================================
+
+    const session = await DaySession.findOne({
+      salespersonId: req.user.userId,
+      date: today,
+      status: "STARTED",
+    });
 
     if (!session) {
-      return res.status(400).json({ message: "No active day session found to end!" });
+      return res.status(400).json({
+        message: "No active day session found to end!",
+      });
     }
 
+    // ============================================================
+    // 📍 GET END LOCATION
+    // ============================================================
+
     const { latitude, longitude } = req.body;
+
+    const endLatitude = Number(latitude);
+    const endLongitude = Number(longitude);
+
+    if (
+      !Number.isFinite(endLatitude) ||
+      !Number.isFinite(endLongitude)
+    ) {
+      return res.status(400).json({
+        message:
+          "Valid latitude and longitude are required to end the day and calculate final distance.",
+      });
+    }
+
     const endTimeDate = new Date();
 
-    // 🌟 FIX: Strictly fetch logs between Start Day timestamp and End Day timestamp
-    const routeLogs = await LocationLog.find({
-  salespersonId: req.user.userId,
-  date: today,
-  timestamp: {
-    $gte: new Date(session.startTime),
-    $lte: endTimeDate,
-  },
-}).sort({ timestamp: 1 });
+    // ============================================================
+    // 📍 MAKE SURE DISTANCE POINTS EXISTS
+    // ============================================================
 
-// Build complete route starting from Day Start location
-const routePoints = [];
+    if (!Array.isArray(session.distancePoints)) {
+      session.distancePoints = [];
+    }
 
-if (
-  session.startLocation &&
-  Number.isFinite(Number(session.startLocation.latitude)) &&
-  Number.isFinite(Number(session.startLocation.longitude))
-) {
-  routePoints.push({
-    latitude: Number(session.startLocation.latitude),
-    longitude: Number(session.startLocation.longitude),
-    timestamp: new Date(session.startTime),
-  });
-}
+    // ============================================================
+    // 📍 GET LAST ACTIVITY POINT
+    // ============================================================
 
-// Add all GPS tracking points
-routePoints.push(...routeLogs);
+    const lastPoint =
+      session.distancePoints[
+        session.distancePoints.length - 1
+      ];
 
-// Add Day End location as the final point
-if (
-  Number.isFinite(Number(latitude)) &&
-  Number.isFinite(Number(longitude))
-) {
-  routePoints.push({
-    latitude: Number(latitude),
-    longitude: Number(longitude),
-    timestamp: endTimeDate,
-  });
-}
+    let distanceFromPreviousKm = 0;
 
-const computedDistance = calculateValidDistance(routePoints);
+    // ============================================================
+    // 📏 LAST ACTIVITY → DAY END
+    // ============================================================
 
+    if (lastPoint) {
+      const previousLatitude = Number(
+        lastPoint.latitude
+      );
+
+      const previousLongitude = Number(
+        lastPoint.longitude
+      );
+
+      if (
+        Number.isFinite(previousLatitude) &&
+        Number.isFinite(previousLongitude)
+      ) {
+        distanceFromPreviousKm = calculateDistance(
+          previousLatitude,
+          previousLongitude,
+          endLatitude,
+          endLongitude
+        );
+      }
+    }
+
+    // ============================================================
+    // 📊 EXISTING TOTAL
+    // ============================================================
+
+    const previousTotalDistance =
+      Number(session.totalDistanceKm) || 0;
+
+    // ============================================================
+    // 📊 FINAL TOTAL
+    // ============================================================
+
+    const finalTotalDistance =
+      previousTotalDistance + distanceFromPreviousKm;
+
+    // ============================================================
+    // 📍 SAVE DAY END AS FINAL DISTANCE POINT
+    // ============================================================
+
+    session.distancePoints.push({
+      type: "END",
+
+      referenceId: null,
+
+      latitude: endLatitude,
+
+      longitude: endLongitude,
+
+      timestamp: endTimeDate,
+
+      // Last activity → Day End
+      distanceFromPreviousKm: Number(
+        distanceFromPreviousKm.toFixed(3)
+      ),
+
+      // Complete distance till Day End
+      totalDistanceKm: Number(
+        finalTotalDistance.toFixed(3)
+      ),
+    });
+
+    // ============================================================
+    // 🔒 END SESSION
+    // ============================================================
 
     session.status = "ENDED";
+
     session.endTime = endTimeDate;
-    session.endLocation = { latitude: Number(latitude) || 0, longitude: Number(longitude) || 0 };
-    session.totalDistanceKm = computedDistance;
+
+    session.endLocation = {
+      latitude: endLatitude,
+      longitude: endLongitude,
+    };
+
+    session.totalDistanceKm = Number(
+      finalTotalDistance.toFixed(3)
+    );
+
     await session.save();
 
-    const totalVisitsToday = await Lead.countDocuments({ salespersonId: req.user.userId, leadDate: today });
-    const approvedInvoicesToday = await Invoice.find({ salespersonId: req.user.userId, status: "approved" });
+    // ============================================================
+    // 📊 TODAY'S VISITS
+    // ============================================================
 
-    const totalCollectedToday = approvedInvoicesToday.reduce((acc, inv) => acc + (inv.paidAmount || 0), 0);
-    const workingMilliseconds = endTimeDate - new Date(session.startTime);
-    const workingHours = (workingMilliseconds / (1000 * 60 * 60)).toFixed(1);
+    const totalVisitsToday =
+      await Lead.countDocuments({
+        salespersonId: req.user.userId,
+        leadDate: today,
+      });
+
+    // ============================================================
+    // 💰 TODAY'S APPROVED INVOICES
+    // ============================================================
+
+    const approvedInvoicesToday =
+      await Invoice.find({
+        salespersonId: req.user.userId,
+        status: "approved",
+      });
+
+    const totalCollectedToday =
+      approvedInvoicesToday.reduce(
+        (acc, inv) =>
+          acc + (Number(inv.paidAmount) || 0),
+        0
+      );
+
+    // ============================================================
+    // ⏱️ WORKING HOURS
+    // ============================================================
+
+    const workingMilliseconds =
+      endTimeDate -
+      new Date(session.startTime);
+
+    const workingHours = (
+      workingMilliseconds /
+      (1000 * 60 * 60)
+    ).toFixed(1);
+
+    // ============================================================
+    // 🕐 FORMAT IST TIME
+    // ============================================================
 
     const formatISTTime = (dateValue) => {
       const d = new Date(dateValue);
-      return d.toLocaleTimeString('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
+
+      return d.toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
       });
     };
 
-    res.json({
+    // ============================================================
+    // ✅ RESPONSE
+    // ============================================================
+
+    return res.json({
       success: true,
-      message: "Day ended successfully. Entries are now locked for today.",
+
+      message:
+        "Day ended successfully. Entries are now locked for today.",
+
       summary: {
-        startTime: formatISTTime(session.startTime),
-        endTime: formatISTTime(session.endTime),
+        startTime: formatISTTime(
+          session.startTime
+        ),
+
+        endTime: formatISTTime(
+          session.endTime
+        ),
+
         workingHours: `${workingHours} hrs`,
+
         totalVisits: totalVisitsToday,
-        totalCollected: totalCollectedToday,
-        totalDistanceKm: computedDistance
-      }
+
+        totalCollected:
+          totalCollectedToday,
+
+        // 📏 Final complete distance
+        totalDistanceKm:
+          Number(
+            session.totalDistanceKm.toFixed(3)
+          ),
+
+        // 📏 Only last segment
+        distanceAddedKm:
+          Number(
+            distanceFromPreviousKm.toFixed(3)
+          ),
+      },
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to end day", error: err.message });
+    console.error(
+      "❌ End Day Error:",
+      err
+    );
+
+    return res.status(500).json({
+      message: "Failed to end day",
+      error: err.message,
+    });
   }
 });
 
@@ -3264,10 +4032,22 @@ app.post(
   upload.single("meetingPhoto"),
   async (req, res) => {
     try {
-      const today = new Date().toISOString().split("T")[0];
-      const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+      // 🇮🇳 Today's date in IST
+      const today = new Date().toLocaleDateString("en-CA", {
+        timeZone: "Asia/Kolkata",
+      });
+
+      // 🔐 Get today's active Day Session
+      const session = await DaySession.findOne({
+        salespersonId: req.user.userId,
+        date: today,
+      });
+
       if (!session || session.status !== "STARTED") {
-        return res.status(403).json({ message: "Action Blocked: You must start your working day first before recording visits or leads!" });
+        return res.status(403).json({
+          message:
+            "Action Blocked: You must start your working day first before recording visits or leads!",
+        });
       }
 
       const {
@@ -3287,139 +4067,417 @@ app.post(
         followUpAction,
       } = req.body;
 
+      // 🔴 Mandatory fields
       if (!mobileNo || !city || !state) {
-        return res
-          .status(400)
-          .json({
-            message: "Mandatory fields (Mobile No, City, State) are missing!",
-          });
+        return res.status(400).json({
+          message:
+            "Mandatory fields (Mobile No, City, State) are missing!",
+        });
+      }
+
+      // ============================================================
+      // 📍 VALIDATE LOCATION
+      // ============================================================
+
+      const leadLatitude = Number(latitude);
+      const leadLongitude = Number(longitude);
+
+      if (
+        latitude === undefined ||
+        longitude === undefined ||
+        latitude === null ||
+        longitude === null ||
+        !Number.isFinite(leadLatitude) ||
+        !Number.isFinite(leadLongitude)
+      ) {
+        return res.status(400).json({
+          message:
+            "Valid latitude and longitude are required to calculate travel distance.",
+        });
       }
 
       const now = new Date();
-      const currentDate = now.toISOString().split("T")[0];
-      const currentTime = now.toTimeString().substring(0, 5);
 
-      // 🌟 Cloudinary Direct Secure URL
+      // 🇮🇳 Current date/time in IST
+      const currentDate = now.toLocaleDateString("en-CA", {
+        timeZone: "Asia/Kolkata",
+      });
+
+      const currentTime = now.toLocaleTimeString("en-GB", {
+        timeZone: "Asia/Kolkata",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+
+      // ☁️ Cloudinary image
       const normalizedPath = req.file ? req.file.path : "";
+
+      // ============================================================
+      // 🔎 CHECK EXISTING LEAD
+      // ============================================================
 
       const existingLead = await Lead.findOne({
         salespersonId: req.user.userId,
         mobileNo: mobileNo.trim(),
       });
 
+      // ============================================================
+      // 🔄 EXISTING LEAD = REVISIT
+      // ============================================================
+
       if (existingLead) {
-        existingLead.visitCount = (existingLead.visitCount || 1) + 1;
+        existingLead.visitCount =
+          (existingLead.visitCount || 1) + 1;
+
         existingLead.leadDate = currentDate;
         existingLead.leadTime = currentTime;
-        if (instituteName) existingLead.instituteName = instituteName;
-        if (contactPerson) existingLead.contactPerson = contactPerson;
+
+        if (instituteName) {
+          existingLead.instituteName = instituteName;
+        }
+
+        if (contactPerson) {
+          existingLead.contactPerson = contactPerson;
+        }
+
         if (notes) {
           existingLead.notes = existingLead.notes
             ? `${existingLead.notes}\n[Visit #${existingLead.visitCount} - ${currentDate} ${currentTime}]: ${notes}`
             : `[Visit #${existingLead.visitCount} - ${currentDate} ${currentTime}]: ${notes}`;
         }
-        if (normalizedPath) existingLead.meetingPhoto = normalizedPath;
+
+        if (normalizedPath) {
+          existingLead.meetingPhoto = normalizedPath;
+        }
+
         if (followUpDate) {
           existingLead.followUpDate = followUpDate;
           existingLead.followUpTime = followUpTime || "";
-          existingLead.followUpAction = followUpAction || "Call";
+          existingLead.followUpAction =
+            followUpAction || "Call";
         }
 
         await existingLead.save();
 
+        // ⭐ Existing points/reward system
         await addSalespersonPoints(
-  req.user.userId,
-  "REVISIT"
-);
+          req.user.userId,
+          "REVISIT"
+        );
+
+        // ============================================================
+        // 📍 REVISIT DISTANCE CALCULATION
+        // ============================================================
+
+        // Make sure distancePoints exists
+        if (!Array.isArray(session.distancePoints)) {
+          session.distancePoints = [];
+        }
+
+        // Previous activity point
+        const previousPoint =
+          session.distancePoints[
+            session.distancePoints.length - 1
+          ];
+
+        let distanceFromPreviousKm = 0;
+
+        // Calculate previous activity → Revisit
+        if (previousPoint) {
+          distanceFromPreviousKm = calculateDistance(
+            Number(previousPoint.latitude),
+            Number(previousPoint.longitude),
+            leadLatitude,
+            leadLongitude
+          );
+        }
+
+        // Existing total distance
+        const previousTotal =
+          Number(session.totalDistanceKm) || 0;
+
+        // New total distance
+        const newTotalDistance =
+          previousTotal + distanceFromPreviousKm;
+
+        // ============================================================
+        // 📍 SAVE REVISIT AS DISTANCE POINT
+        // ============================================================
+
+        session.distancePoints.push({
+          type: "REVISIT",
+
+          // Link point to existing Lead
+          referenceId: existingLead._id.toString(),
+
+          latitude: leadLatitude,
+          longitude: leadLongitude,
+
+          timestamp: now,
+
+          // Previous activity → Revisit
+          distanceFromPreviousKm: Number(
+            distanceFromPreviousKm.toFixed(3)
+          ),
+
+          // Total distance till Revisit
+          totalDistanceKm: Number(
+            newTotalDistance.toFixed(3)
+          ),
+        });
+
+        // Update total distance
+        session.totalDistanceKm = Number(
+          newTotalDistance.toFixed(3)
+        );
+
+        await session.save();
+
+        // ============================================================
+        // 📅 FOLLOW-UP TASK
+        // ============================================================
 
         if (followUpDate) {
-          // 🌟 FIX: Existing pending task ko update karein, duplicate task mat banayein
           await Task.findOneAndUpdate(
             {
               salespersonId: req.user.userId,
               instituteName: existingLead.instituteName,
-              status: "pending"
+              status: "pending",
             },
             {
               $set: {
                 dueDate: followUpDate,
-                notes: notes || `Follow-up scheduled (Visit #${existingLead.visitCount})`,
-                taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call"
-              }
+                notes:
+                  notes ||
+                  `Follow-up scheduled (Visit #${existingLead.visitCount})`,
+                taskType: followUpAction
+                  ?.toLowerCase()
+                  .includes("demo")
+                  ? "demo"
+                  : "call",
+              },
             },
-            { upsert: true, sort: { createdAt: -1 } }
+            {
+              upsert: true,
+              sort: { createdAt: -1 },
+            }
           );
         }
 
+        // ============================================================
+        // ✅ REVISIT RESPONSE
+        // ============================================================
+
         return res.status(200).json({
           success: true,
+
           message: `Visit #${existingLead.visitCount} logged successfully for existing lead!`,
+
           lead: existingLead,
+
+          // Distance added by this Revisit
+          distanceAddedKm: Number(
+            distanceFromPreviousKm.toFixed(3)
+          ),
+
+          // Total distance today
+          totalDistanceKm: Number(
+            session.totalDistanceKm.toFixed(3)
+          ),
         });
       }
 
+      // ============================================================
+      // 🆕 CREATE NEW LEAD
+      // ============================================================
+
       const newLead = new Lead({
-        instituteName: instituteName || "Unknown Institute",
-        contactPerson: contactPerson || "N/A",
+        instituteName:
+          instituteName || "Unknown Institute",
+
+        contactPerson:
+          contactPerson || "N/A",
+
         mobileNo: mobileNo.trim(),
+
         email: email || "",
+
         address: address || "",
+
         pincode: pincode || "",
+
         city,
+
         state,
+
         notes: notes || "",
+
         meetingPhoto: normalizedPath,
-        latitude: latitude ? Number(latitude) : null,
-        longitude: longitude ? Number(longitude) : null,
+
+        // 📍 Lead location
+        latitude: leadLatitude,
+        longitude: leadLongitude,
+
         leadDate: currentDate,
         leadTime: currentTime,
+
         visitCount: 1,
+
         followUpDate: followUpDate || null,
-        followUpTime: followUpTime || "",
-        followUpAction: followUpAction || "Call",
+
+        followUpTime:
+          followUpTime || "",
+
+        followUpAction:
+          followUpAction || "Call",
+
         salespersonId: req.user.userId,
       });
 
       await newLead.save();
 
+      // ============================================================
+      // 📍 NEW LEAD DISTANCE CALCULATION
+      // ============================================================
+
+      // Make sure distancePoints exists
+      if (!Array.isArray(session.distancePoints)) {
+        session.distancePoints = [];
+      }
+
+      // Previous activity point
+      const previousPoint =
+        session.distancePoints[
+          session.distancePoints.length - 1
+        ];
+
+      let distanceFromPreviousKm = 0;
+
+      // Calculate previous activity → New Lead
+      if (previousPoint) {
+        distanceFromPreviousKm = calculateDistance(
+          Number(previousPoint.latitude),
+          Number(previousPoint.longitude),
+          leadLatitude,
+          leadLongitude
+        );
+      }
+
+      // Existing total
+      const previousTotal =
+        Number(session.totalDistanceKm) || 0;
+
+      // New total
+      const newTotalDistance =
+        previousTotal + distanceFromPreviousKm;
+
+      // ============================================================
+      // 📍 SAVE NEW LEAD AS DISTANCE POINT
+      // ============================================================
+
+      session.distancePoints.push({
+        type: "LEAD",
+
+        // Link point to Lead
+        referenceId: newLead._id.toString(),
+
+        latitude: leadLatitude,
+        longitude: leadLongitude,
+
+        timestamp: now,
+
+        // Previous activity → Lead
+        distanceFromPreviousKm: Number(
+          distanceFromPreviousKm.toFixed(3)
+        ),
+
+        // Total distance till Lead
+        totalDistanceKm: Number(
+          newTotalDistance.toFixed(3)
+        ),
+      });
+
+      // Update session total
+      session.totalDistanceKm = Number(
+        newTotalDistance.toFixed(3)
+      );
+
+      await session.save();
+
+      // ⭐ Existing points/reward system
       await addSalespersonPoints(
-  req.user.userId,
-  "LEAD_CREATED"
-);
+        req.user.userId,
+        "LEAD_CREATED"
+      );
+
+      // ============================================================
+      // 📅 FOLLOW-UP TASK
+      // ============================================================
 
       if (followUpDate) {
-        // 🌟 FIX: New lead ke case mein bhi check karein ki agar koi purana pending task ho toh wahi update ho jaye
         await Task.findOneAndUpdate(
           {
             salespersonId: req.user.userId,
             instituteName: newLead.instituteName,
-            status: "pending"
+            status: "pending",
           },
           {
             $set: {
               dueDate: followUpDate,
-              notes: notes || `Follow-up scheduled: ${followUpAction}`,
-              taskType: followUpAction?.toLowerCase().includes("demo") ? "demo" : "call"
-            }
+
+              notes:
+                notes ||
+                `Follow-up scheduled: ${followUpAction}`,
+
+              taskType: followUpAction
+                ?.toLowerCase()
+                .includes("demo")
+                ? "demo"
+                : "call",
+            },
           },
-          { upsert: true, sort: { createdAt: -1 } }
+          {
+            upsert: true,
+            sort: { createdAt: -1 },
+          }
         );
       }
 
-      res
-        .status(201)
-        .json({
-          success: true,
-          message: "New lead and visit recorded successfully!",
-          lead: newLead,
-        });
+      // ============================================================
+      // ✅ NEW LEAD RESPONSE
+      // ============================================================
+
+      return res.status(201).json({
+        success: true,
+
+        message:
+          "New lead and visit recorded successfully!",
+
+        lead: newLead,
+
+        // Distance added by this Lead
+        distanceAddedKm: Number(
+          distanceFromPreviousKm.toFixed(3)
+        ),
+
+        // Total distance today
+        totalDistanceKm: Number(
+          session.totalDistanceKm.toFixed(3)
+        ),
+      });
     } catch (err) {
-      console.error("Lead submission error:", err);
-      res
-        .status(500)
-        .json({ message: "Failed to save lead", error: err.message });
+      console.error(
+        "Lead submission error:",
+        err
+      );
+
+      return res.status(500).json({
+        message: "Failed to save lead",
+        error: err.message,
+      });
     }
-  },
+  }
 );
 
 app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto"), async (req, res) => {
