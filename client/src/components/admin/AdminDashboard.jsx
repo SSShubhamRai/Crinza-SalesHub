@@ -20,6 +20,7 @@ import { SecurityAlertsTab } from "./tabs/SecurityAlertsTab";
 import { TechnicalProjectsTab } from "./tabs/TechnicalProjectsTab";
 import { CallMonitoringTab } from "./tabs/CallMonitoringTab";
 import SalespersonPointsTab from "./tabs/SalespersonPointsTab";
+import TelecallerActivityTab from "./tabs/TelecallerActivityTab";
 
 const AdminDashboard = ({ userId, onLogout }) => {
   const API_BASE = import.meta.env.PROD
@@ -790,6 +791,17 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
           <button onClick={() => setActiveTab("broadcast")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${activeTab === "broadcast" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             📢 Team Broadcast
           </button>
+          <button 
+  onClick={() => setActiveTab("telecaller-activity")} 
+  className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+    activeTab === "telecaller-activity" 
+      ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" 
+      : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+  }`}
+>
+  📞 Telecaller Activity
+</button>
+
           <button
   onClick={() => setActiveTab("call-monitoring")}
   className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
@@ -800,6 +812,8 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
 >
   📞 Call Monitoring
 </button>
+
+
 
 <button
   onClick={() => setActiveTab("salesperson-points")}
@@ -837,6 +851,7 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
             <option value="transfer">🔄 Transfer Leads</option>
 
             <option value="broadcast">📢 Team Broadcast</option>
+            <option value="telecaller-activity">📞 Telecaller Activity</option>
                 <option value="call-monitoring">
   📞 Call Monitoring
 </option>
@@ -955,6 +970,10 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
                 isBroadcasting={isBroadcasting}
               />
             )}
+
+            {activeTab === "telecaller-activity" && (
+  <TelecallerActivityTab />
+)}
 
             {activeTab === "call-monitoring" && (
   <CallMonitoringTab

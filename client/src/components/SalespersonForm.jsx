@@ -1601,6 +1601,14 @@ const [showPointsPopup, setShowPointsPopup] = useState(false);
         lead.leadStatus !== "Not Interested" && lead.leadStatus !== "Deal Close"
       );
     }
+    // 🌟 Naya Filter for Telecaller Assigned Leads
+if (leadFilter === "telecaller-assigned") {
+  return (
+    lead.assignedBy &&
+    lead.leadStatus !== "Not Interested" &&
+    lead.leadStatus !== "Deal Close"
+  );
+}
 
     if (leadFilter === "not-interested") {
       return lead.leadStatus === "Not Interested";
@@ -3947,6 +3955,11 @@ const [showPointsPopup, setShowPointsPopup] = useState(false);
                 (lead) => lead.leadStatus === "Not Interested"
               ).length;
 
+              // 📞 Count for Telecaller Assigned Leads
+  const countTelecallerAssigned = myLeads.filter(
+    (lead) => lead.assignedBy && lead.leadStatus !== "Not Interested" && lead.leadStatus !== "Deal Close"
+  ).length;
+
               return (
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
@@ -3989,68 +4002,81 @@ const [showPointsPopup, setShowPointsPopup] = useState(false);
                       )}
                     </div>
 
-                    <div className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
-                      <button
-                        onClick={() => setLeadFilter("all")}
-                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                          leadFilter === "all"
-                            ? "bg-[var(--color-primary)] text-white border-transparent"
-                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                        }`}
-                      >
-                        All Active ({countAllActive})
-                      </button>
-                      <button
-                        onClick={() => setLeadFilter("call")}
-                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                          leadFilter === "call"
-                            ? "bg-[var(--color-primary)] text-white border-transparent"
-                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                        }`}
-                      >
-                        📞 To Call / Call Back ({countCall})
-                      </button>
-                      <button
-                        onClick={() => setLeadFilter("meeting")}
-                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                          leadFilter === "meeting"
-                            ? "bg-[var(--color-primary)] text-white border-transparent"
-                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                        }`}
-                      >
-                        🤝 Meetings ({countMeeting})
-                      </button>
-                      <button
-                        onClick={() => setLeadFilter("demo-done")}
-                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                          leadFilter === "demo-done"
-                            ? "bg-[var(--color-primary)] text-white border-transparent"
-                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                        }`}
-                      >
-                        ✅ Demo Done ({countDemoDone})
-                      </button>
-                      <button
-                        onClick={() => setLeadFilter("demo-pending")}
-                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                          leadFilter === "demo-pending"
-                            ? "bg-[var(--color-primary)] text-white border-transparent"
-                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                        }`}
-                      >
-                        ⏳ Demo Pending ({countDemoPending})
-                      </button>
-                      <button
-                        onClick={() => setLeadFilter("not-interested")}
-                        className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-                          leadFilter === "not-interested"
-                            ? "bg-red-600 text-white border-transparent"
-                            : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-                        }`}
-                      >
-                        ❌ Not Interested ({countNotInterested})
-                      </button>
-                    </div>
+<div className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
+  <button
+    onClick={() => setLeadFilter("all")}
+    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+      leadFilter === "all"
+        ? "bg-[var(--color-primary)] text-white border-transparent"
+        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+    }`}
+  >
+    All Active ({countAllActive})
+  </button>
+  
+  {/* 🌟 NAYA TELECALLER ASSIGNED TAB */}
+  <button
+    onClick={() => setLeadFilter("telecaller-assigned")}
+    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+      leadFilter === "telecaller-assigned"
+        ? "bg-purple-600 text-white border-transparent"
+        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+    }`}
+  >
+    📞 Telecaller Assigned ({countTelecallerAssigned})
+  </button>
+
+  <button
+    onClick={() => setLeadFilter("call")}
+    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+      leadFilter === "call"
+        ? "bg-[var(--color-primary)] text-white border-transparent"
+        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+    }`}
+  >
+    📞 To Call / Call Back ({countCall})
+  </button>
+  <button
+    onClick={() => setLeadFilter("meeting")}
+    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+      leadFilter === "meeting"
+        ? "bg-[var(--color-primary)] text-white border-transparent"
+        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+    }`}
+  >
+    🤝 Meetings ({countMeeting})
+  </button>
+  <button
+    onClick={() => setLeadFilter("demo-done")}
+    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+      leadFilter === "demo-done"
+        ? "bg-[var(--color-primary)] text-white border-transparent"
+        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+    }`}
+  >
+    ✅ Demo Done ({countDemoDone})
+  </button>
+  <button
+    onClick={() => setLeadFilter("demo-pending")}
+    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+      leadFilter === "demo-pending"
+        ? "bg-[var(--color-primary)] text-white border-transparent"
+        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+    }`}
+  >
+    ⏳ Demo Pending ({countDemoPending})
+  </button>
+  <button
+    onClick={() => setLeadFilter("not-interested")}
+    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+      leadFilter === "not-interested"
+        ? "bg-red-600 text-white border-transparent"
+        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+    }`}
+  >
+    ❌ Not Interested ({countNotInterested})
+  </button>
+</div>
                   </div>
 
                   {loadingLeads ? (
@@ -4069,96 +4095,125 @@ const [showPointsPopup, setShowPointsPopup] = useState(false);
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3.5">
-                      {filteredLeads.map((lead) => (
-                        <div
-                          key={lead._id}
-                          className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-4 sm:p-5 rounded-2xl space-y-3 text-xs sm:text-sm transition shadow-sm"
-                        >
-                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <strong
-                                onClick={() => setSelectedLead(lead)}
-                                className="text-sm sm:text-base text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)] break-words"
-                              >
-                                {lead.instituteName}
-                              </strong>
-                              {lead.visitCount > 1 && (
-                                <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-full font-bold text-[11px]">
-                                  🔄 {lead.visitCount} Visits
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() =>
-                                  handleWhatsAppReminder(lead, "followup")
-                                }
-                                className="bg-[#25D366] text-white px-3.5 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
-                              >
-                                <WhatsAppIcon /> WhatsApp
-                              </button>
-                              <span
-                                className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${
-                                  lead.leadStatus === "Not Interested"
-                                    ? "bg-red-500/10 text-red-600 border border-red-500/20"
-                                    : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
-                                }`}
-                              >
-                                {lead.leadStatus || "Active Lead"}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[var(--color-heading)]">
-                            <div className="break-words">
-                              👤 <strong>Contact:</strong> {lead.contactPerson} |
-                              📞{" "}
-                              <button
-  type="button"
-  onClick={() => handleTrackedCall(lead)}
-  className="text-[var(--color-primary)] font-bold hover:underline cursor-pointer"
->
-  {lead.mobileNo}
-</button>
+<div className="space-y-3.5">
+                    {filteredLeads.map((lead) => (
+                      <div
+                        key={lead._id}
+                        className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-4 sm:p-5 rounded-2xl space-y-3 text-xs sm:text-sm transition shadow-sm"
+                      >
+                        {/* 🌟 NAYA PURPLE BADGE: Yahan telecaller ka naam aur requirement dikhegi */}
+                         {/* 🌟 Telecaller Assignment, Requirement & Schedule Badge */}
+{/* 🌟 Telecaller Assignment, Requirement & Schedule Badge */}
+{lead.assignedBy && (
+  <div className="bg-purple-600/15 border-2 border-purple-500/40 text-purple-950 dark:text-purple-100 px-4 py-3 rounded-2xl text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm mb-3">
+    
+    <div className="flex flex-col space-y-1">
+      <span className="flex items-center gap-1.5 text-purple-950 dark:text-purple-700">
+        📞 Assigned by Telecaller: <strong className="underline decoration-purple-600 font-extrabold text-[var(--color-heading)]">{lead.assignedBy}</strong>
+      </span>
+      
+      {/* ⏰ Scheduled Date & Time (Agar database mein hoga tabhi dikhega) */}
+      {lead.followUpDate ? (
+        <span className="text-xs font-semibold text-purple-800 dark:text-purple-900 flex items-center gap-1">
+          📅 Scheduled For: <strong>{new Date(lead.followUpDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' })}</strong> {lead.followUpTime && `at ${lead.followUpTime}`}
+        </span>
+      ) : (
+        <span className="text-[11px] font-medium text-purple-700 dark:text-purple-800 italic">
+          📅 Schedule: Not specified
+        </span>
+      )}
+    </div>
 
-                            </div>
-                            <div
+    <span className="bg-purple-700 text-white px-3.5 py-1.5 rounded-xl text-[11px] uppercase font-black tracking-wider shadow whitespace-nowrap">
+      Requirement: {lead.requirementType || 'Demo'}
+    </span>
+  </div>
+)}
+
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <strong
                               onClick={() => setSelectedLead(lead)}
-                              className="cursor-pointer break-words"
+                              className="text-sm sm:text-base text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)] break-words"
                             >
-                              📍 <strong>Location:</strong>{" "}
-                              {lead.address || "N/A"}, {lead.city}, {lead.state}
-                            </div>
-                            <div
-                              onClick={() => setSelectedLead(lead)}
-                              className="cursor-pointer"
-                            >
-                              🎯 <strong>Demo Status:</strong>{" "}
-                              <span className="text-amber-600 font-semibold">
-                                {lead.demoStatus || "Not Given"}
+                              {lead.instituteName}
+                            </strong>
+                            {lead.visitCount > 1 && (
+                              <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-full font-bold text-[11px]">
+                                🔄 {lead.visitCount} Visits
                               </span>
-                            </div>
-                            {lead.followUpDate && (
-                              <div
-                                onClick={() => setSelectedLead(lead)}
-                                className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
-                              >
-                                <span className="break-words">
-                                  🔔 <strong>Follow-up Reminder:</strong>{" "}
-                                  {lead.followUpAction} on{" "}
-                                  {new Date(lead.followUpDate).toLocaleDateString(
-                                    "en-IN",
-                                  )}{" "}
-                                  {lead.followUpTime
-                                    ? `at ${lead.followUpTime}`
-                                    : ""}
-                                </span>
-                              </div>
                             )}
                           </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() =>
+                                handleWhatsAppReminder(lead, "followup")
+                              }
+                              className="bg-[#25D366] text-white px-3.5 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                            >
+                              <WhatsAppIcon /> WhatsApp
+                            </button>
+                            <span
+                              className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${
+                                lead.leadStatus === "Not Interested"
+                                  ? "bg-red-500/10 text-red-600 border border-red-500/20"
+                                  : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                              }`}
+                            >
+                              {lead.leadStatus || "Active Lead"}
+                            </span>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[var(--color-heading)]">
+                          <div className="break-words">
+                            👤 <strong>Contact:</strong> {lead.contactPerson} |
+                            📞{" "}
+                            <button
+                              type="button"
+                              onClick={() => handleTrackedCall(lead)}
+                              className="text-[var(--color-primary)] font-bold hover:underline cursor-pointer"
+                            >
+                              {lead.mobileNo}
+                            </button>
+                          </div>
+                          <div
+                            onClick={() => setSelectedLead(lead)}
+                            className="cursor-pointer break-words"
+                          >
+                            📍 <strong>Location:</strong>{" "}
+                            {lead.address || "N/A"}, {lead.city}, {lead.state}
+                          </div>
+                          <div
+                            onClick={() => setSelectedLead(lead)}
+                            className="cursor-pointer"
+                          >
+                            🎯 <strong>Demo Status:</strong>{" "}
+                            <span className="text-amber-600 font-semibold">
+                              {lead.demoStatus || "Not Given"}
+                            </span>
+                          </div>
+                          {lead.followUpDate && (
+                            <div
+                              onClick={() => setSelectedLead(lead)}
+                              className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
+                            >
+                              <span className="break-words">
+                                🔔 <strong>Follow-up Reminder:</strong>{" "}
+                                {lead.followUpAction} on{" "}
+                                {new Date(lead.followUpDate).toLocaleDateString(
+                                  "en-IN",
+                                )}{" "}
+                                {lead.followUpTime
+                                  ? `at ${lead.followUpTime}`
+                                  : ""}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
                   )}
 
                   {/* 🌟 ENHANCED LEAD DETAILS & STATUS UPDATE MODAL */}

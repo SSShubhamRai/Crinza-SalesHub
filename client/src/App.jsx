@@ -6,6 +6,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 
 import Login from './components/Login';
 import SalespersonForm from './components/SalespersonForm';
+import TelecallerForm from './components/TelecallerForm'; // 👈 TelecallerForm component import kiya gaya
 import TechnicalDashboard from './components/TechnicalDashboard';
 import AccountantPanel from './components/accountant/AccountantPanel';
 import AdminDashboard from './components/admin/AdminDashboard';
@@ -131,6 +132,13 @@ function App() {
               ? 'https://crinza-saleshub.onrender.com'
               : 'http://localhost:5000'
           }
+        />
+      ) : role === 'telecaller' ? (
+        // 👈 Telecaller role ke liye TelecallerForm render kiya gaya hai
+        <TelecallerForm
+          userId={userId}
+          username={userId}
+          onLogout={handleLogout}
         />
       ) : (
         <SalespersonForm

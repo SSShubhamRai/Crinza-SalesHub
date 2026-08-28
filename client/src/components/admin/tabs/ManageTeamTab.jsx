@@ -80,6 +80,7 @@ export const ManageTeamTab = ({
               <option value="salesperson">👤 Salesperson</option>
               <option value="accountant">📑 Accountant</option>
               <option value="technical">🛠️ Technical / Developer</option>
+              <option value="telecaller">📞 Telecaller</option> {/* 👈 Naya Telecaller role add kiya gaya */}
             </select>
           </div>
           <div>
@@ -121,7 +122,7 @@ export const ManageTeamTab = ({
             <input
               type="text"
               required
-              placeholder="e.g. TECH101 or EMP105"
+              placeholder="e.g. TEL101 or EMP105"
               value={newEmp.userId}
               onChange={(e) => setNewEmp({ ...newEmp, userId: e.target.value })}
               className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] transition"
@@ -163,6 +164,7 @@ export const ManageTeamTab = ({
               <option value="salesperson">Salesperson Only</option>
               <option value="accountant">Accountant Only</option>
               <option value="technical">Technical Only</option>
+              <option value="telecaller">Telecaller Only</option> {/* 👈 Filter mein bhi telecaller joda gaya */}
             </select>
 
             <input
@@ -200,6 +202,8 @@ export const ManageTeamTab = ({
                           ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
                           : emp.role === "technical"
                           ? "bg-purple-500/10 text-purple-600 border border-purple-500/20"
+                          : emp.role === "telecaller"
+                          ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" // 👈 Telecaller badge style
                           : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
                       }`}
                     >
@@ -238,3 +242,5 @@ export const ManageTeamTab = ({
     </div>
   );
 };
+
+export default ManageTeamTab;
