@@ -18,18 +18,22 @@ export const LiveTrackingTab = ({
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
+  // Selected employee ka object dhoondhein taaki role pata chal sake
+  const selectedEmpObj = employees.find((emp) => emp.userId === selectedTrackerEmp);
+  const isTelecaller = selectedEmpObj?.role === "telecaller";
+
   // 🌟 Fallback logic: Live socket data ya phir database ka latest route point
-const livePt = liveLocations[selectedTrackerEmp];
+  const livePt = liveLocations[selectedTrackerEmp];
 
-const latestDbPt =
-  travelData?.routePoints?.length > 0
-    ? travelData.routePoints[travelData.routePoints.length - 1]
-    : null;
+  const latestDbPt =
+    travelData?.routePoints?.length > 0
+      ? travelData.routePoints[travelData.routePoints.length - 1]
+      : null;
 
-const activePt =
-  livePt ||
-  travelData?.lastLiveLocation ||
-  latestDbPt;
+  const activePt =
+    livePt ||
+    travelData?.lastLiveLocation ||
+    latestDbPt;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -37,10 +41,10 @@ const activePt =
       <div className="flex flex-col xl:flex-row justify-between items-center bg-[var(--color-card)] p-5 rounded-3xl border border-[var(--color-border)] shadow-sm gap-3 transition-all">
         <div>
           <h3 className="text-sm font-bold text-[var(--color-heading)]">
-            🛰️ Salesperson Live Location & Travel History
+            🛰️ Employee Live Location & Shift Tracking
           </h3>
           <p className="text-xs text-[var(--color-body)] mt-0.5">
-            View live position, custom date range distance, and exact place names.
+            View salesperson live travel history or telecaller shift start and end details.
           </p>
         </div>
 
@@ -83,7 +87,7 @@ const activePt =
             />
           </div>
 
-          {/* Salesperson Dropdown */}
+          {/* Employee Dropdown (Salesperson & Telecaller) */}
           <select
             value={selectedTrackerEmp}
             onChange={(e) => {
@@ -96,12 +100,12 @@ const activePt =
             }}
             className="bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-1.5 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
           >
-            <option value="">-- Choose Salesperson --</option>
+            <option value="">-- Choose Employee --</option>
             {employees
-              .filter((emp) => emp.role === "salesperson")
+              .filter((emp) => emp.role === "salesperson" || emp.role === "telecaller")
               .map((emp) => (
                 <option key={emp.userId} value={emp.userId}>
-                  {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                  {emp.name ? `${emp.name} (${emp.userId}) [${emp.role.toUpperCase()}]` : emp.userId}
                 </option>
               ))}
           </select>
@@ -111,10 +115,76 @@ const activePt =
       {!selectedTrackerEmp ? (
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-16 text-center space-y-3 shadow-sm">
           <span className="text-3xl animate-bounce">📍</span>
-          <h3 className="text-sm font-bold text-[var(--color-heading)]">No Salesperson Selected</h3>
-          <p className="text-xs text-[var(--color-body)]">Please choose a salesperson from the dropdown above to view their live GPS status and travel report.</p>
+          <h3 className="text-sm font-bold text-[var(--color-heading)]">No Employee Selected</h3>
+          <p className="text-xs text-[var(--color-body)]">Please choose an employee from the dropdown above to view their tracking details.</p>
+        </div>
+      ) : isTelecaller ? (
+        /* 🌟 TELECALLER VIEW: Start/End Time aur Start/End Location dikhayega */
+        <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-5 max-w-xl mx-auto">
+          <div className="flex items-center gap-3 border-b border-[var(--color-border)] pb-4">
+            <span className="text-3xl p-3 bg-purple-500/10 rounded-2xl">📞</span>
+            <div>
+              <h4 className="text-sm font-bold text-[var(--color-heading)]">Telecaller Shift Attendance & Location</h4>
+              <p className="text-xs text-[var(--color-body)]">Showing shift start and end timing along with recorded locations.</p>
+            </div>
+          </div>
+
+          {shiftData ? (
+            <div className="space-y-4 text-xs sm:text-sm text-[var(--color-heading)] bg-[var(--color-surface)] p-5 rounded-2xl border border-[var(--color-border)]">
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--color-body)]">Shift Status:</span>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold ${shiftData.status === 'STARTED' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'}`}>
+                  {shiftData.status}
+                </span>
+              </div>
+
+              {/* Start Details */}
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-[var(--color-border)]">
+                <div>
+                  <span className="text-[var(--color-body)] block font-semibold">🕒 Start Time:</span>
+                  <strong className="text-[var(--color-heading)]">
+                    {shiftData.startTime ? new Date(shiftData.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : 'N/A'}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-[var(--color-body)] block font-semibold">🏁 End Time:</span>
+                  <strong className={shiftData.endTime ? 'text-[var(--color-heading)]' : 'text-amber-600'}>
+                    {shiftData.endTime ? new Date(shiftData.endTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : 'Still Active'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Start Location */}
+              <div className="space-y-1 pt-2 border-t border-[var(--color-border)]">
+                <span className="text-[var(--color-body)] block font-semibold">📍 Start Location / Address:</span>
+                <p className="font-bold text-[var(--color-primary)] bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)]">
+                  {shiftData.startAddress || shiftData.locationName || "Location coordinates recorded without text address."}
+                </p>
+                {shiftData.startLocation && (
+                  <p className="text-[10px] text-[var(--color-body)] font-mono pt-1">
+                    Lat/Lng: {shiftData.startLocation.latitude}, {shiftData.startLocation.longitude}
+                  </p>
+                )}
+              </div>
+
+              {/* End Location */}
+              {shiftData.endLocation && (
+                <div className="space-y-1 pt-2 border-t border-[var(--color-border)]">
+                  <span className="text-[var(--color-body)] block font-semibold">🛑 End Location Coordinates:</span>
+                  <p className="font-bold text-red-600 bg-[var(--color-card)] p-3 rounded-xl border border-[var(--color-border)] font-mono">
+                    Lat: {shiftData.endLocation.latitude}, Lng: {shiftData.endLocation.longitude}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-12 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
+              No shift started by this telecaller on {trackerDate}.
+            </div>
+          )}
         </div>
       ) : (
+        /* 🌟 SALESPERSON VIEW: Pura Live Map, Live GPS & Travel History */
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-6">
             {/* Live GPS Status with Resolved Address */}

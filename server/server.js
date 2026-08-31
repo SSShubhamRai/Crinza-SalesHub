@@ -671,22 +671,34 @@ socket.on("update_location", async (data) => {
     }
 
     // ============================================================
-    // 💾 7. SAVE LOCATION
+    // 📏 7. LIVE DISTANCE INCREMENT CALCULATION
     // ============================================================
-    //
-    // IMPORTANT:
-    // LocationLog is ONLY for GPS/live-location history.
-    //
-    // It is NOT used for your business-distance calculation.
-    //
-    // Business distance remains:
-    //
-    // START → LEAD → INVOICE → LEAD → END
-    //
-    // and is stored in:
-    //
-    // DaySession.totalDistanceKm
-    //
+    let incrementalDistance = 0;
+
+    if (lastLog && !isMockedByTeleport) {
+      const rawDist = calculateDistance(
+        Number(lastLog.latitude),
+        Number(lastLog.longitude),
+        lat,
+        lng
+      );
+
+      // 🛡️ DRIFT FILTER: Agar movement 20 meters (0.02 km) se zyada hai, tabhi distance mein count karein
+      const MIN_GPS_JUMP_THRESHOLD = 0.02; // 20 meters
+      const ROAD_FACTOR = 1.3; // Raste ke turn/curves ke liye optional multiplication factor (optional, chahe toh 1 rakh sakte hain)
+
+      if (rawDist >= MIN_GPS_JUMP_THRESHOLD) {
+        incrementalDistance = rawDist * ROAD_FACTOR;
+      }
+    }
+
+    // Session ka total distance update karein
+    const updatedTotalDistance = (Number(activeSession.totalDistanceKm) || 0) + incrementalDistance;
+    activeSession.totalDistanceKm = Number(updatedTotalDistance.toFixed(3));
+    await activeSession.save();
+
+    // ============================================================
+    // 💾 8. SAVE LOCATION
     // ============================================================
 
     const newLocationLog = await LocationLog.create({
@@ -699,20 +711,16 @@ socket.on("update_location", async (data) => {
     });
 
     // ============================================================
-    // 📡 8. BROADCAST LIVE LOCATION
+    // 📡 9. BROADCAST LIVE LOCATION & TOTAL DISTANCE
     // ============================================================
 
     io.emit("live_location_broadcast", {
       salespersonId,
-
       latitude: lat,
       longitude: lng,
-
       isMocked: isMockedByTeleport,
-
       timestamp: currentTime,
-
-      // Useful for frontend debugging/display
+      totalDistanceKm: activeSession.totalDistanceKm, // 🌟 Live distance bhi frontend par bhej diya
       locationLogId: newLocationLog._id,
     });
 
@@ -1905,11 +1913,11 @@ app.get("/api/boss/reverse-geocode", verifyToken, async (req, res) => {
 
 app.get("/api/boss/employees", verifyToken, async (req, res) => {
   try {
-    if (req.user.role !== "boss" && req.user.role !== "admin") {
+    if (req.user.role !== "boss" && req.user.role !== "admin" && req.user.role !== "telecaller") {
       return res.status(403).json({ message: "Access denied!" });
     }
     const employees = await User.find({
-      role: { $in: ["salesperson", "accountant", "technical"] }, // 👈 'technical' yahan add kar dein
+      role: { $in: ["salesperson", "accountant", "technical", "telecaller"] },
     }).select("-password");
     res.json(employees);
   } catch (err) {
@@ -5368,6 +5376,294 @@ async function generatePerformanceData(startDateStr, endDateStr) {
 
   return reportSummary;
 }
+
+// =========================================================================
+// --- ☎️ TELECALLER API ROUTES ---
+// =========================================================================
+
+
+app.get("/api/telecaller/leads", verifyToken, async (req, res) => {
+  try {
+    const leads = await Lead.find({
+      $or: [
+        { telecallerId: req.user.userId },
+        { createdBy: req.user.userId }
+      ]
+    }).sort({ createdAt: -1 });
+    res.json(leads);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch leads", error: err.message });
+  }
+});
+
+// 2. Create a new lead from Telecaller Portal (Guarded by active shift check)
+app.post("/api/telecaller/leads", verifyToken, async (req, res) => {
+  try {
+    // 🌟 Shift enforcement check
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today, status: "STARTED" });
+    
+    if (!session) {
+      return res.status(403).json({ message: "Action Blocked: You must start your working day first!" });
+    }
+
+    const { instituteName, contactPerson, mobileNo, email, address, city, state, pincode, notes } = req.body;
+    
+    if (!mobileNo || !instituteName || !city || !state) {
+      return res.status(400).json({ message: "Required fields are missing!" });
+    }
+
+    const timeStr = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: '2-digit', minute: '2-digit' });
+
+    const newLead = new Lead({
+      instituteName,
+      contactPerson: contactPerson || "N/A",
+      mobileNo: mobileNo.trim(),
+      email: email || "",
+      address: address || "",
+      city,
+      state,
+      pincode: pincode || "",
+      notes: `[Telecaller Entry - ${req.user.userId}]: ${notes || 'New Lead Created'}`,
+      leadDate: today,
+      leadTime: timeStr,
+      telecallerId: req.user.userId,
+      createdBy: req.user.userId,
+      salespersonId: null,
+      leadStatus: "Active",
+      demoStatus: "Not Given",
+      latitude: 0,
+      longitude: 0
+    });
+
+    const savedLead = await newLead.save();
+    return res.status(201).json({ success: true, message: "Lead created successfully!", lead: savedLead });
+  } catch (err) {
+    console.error("🔥 Telecaller Lead Creation Error:", err);
+    return res.status(500).json({ message: "Failed to create lead", error: err.message });
+  }
+});
+
+// 3. Assign Lead to Specific Salesperson (Guarded by active shift check)
+app.put("/api/telecaller/leads/:id/assign", verifyToken, async (req, res) => {
+  try {
+    // 🌟 Shift enforcement check
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today, status: "STARTED" });
+    
+    if (!session) {
+      return res.status(403).json({ message: "Action Blocked: You must start your working day first!" });
+    }
+
+    const { salespersonId, requirementType, followUpDate, followUpTime, followUpAction } = req.body;
+    if (!salespersonId) {
+      return res.status(400).json({ message: "Salesperson ID is required!" });
+    }
+
+    const updateFields = { 
+      salespersonId: salespersonId,
+      assignedBy: req.user.name || req.user.userId, 
+      requirementType: requirementType || "Demo"
+    };
+
+    if (followUpDate) updateFields.followUpDate = followUpDate;
+    if (followUpTime) updateFields.followUpTime = followUpTime;
+    if (followUpAction) updateFields.followUpAction = followUpAction;
+
+    const updatedLead = await Lead.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateFields },
+      { returnDocument: "after" }
+    );
+
+    if (!updatedLead) {
+      return res.status(404).json({ message: "Lead not found" });
+    }
+
+    res.json({ success: true, message: `Lead successfully assigned!`, lead: updatedLead });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to assign lead", error: err.message });
+  }
+});
+
+
+// 🌟 Admin/Boss Route: Track all telecaller activities and metrics
+app.get("/api/admin/telecaller-activity", verifyToken, async (req, res) => {
+  try {
+    // Fetch all leads from the database
+    const allLeads = await Lead.find({});
+
+    // Group or map activities per telecaller
+    const telecallerMap = {};
+
+    allLeads.forEach(lead => {
+      // 🌟 Check if lead was explicitly created by a telecaller
+      const isTelecallerLead = lead.createdBy || lead.telecallerId || (lead.notes && lead.notes.includes("[Telecaller Entry"));
+
+      // Agar yeh telecaller ki banayi hui lead nahi hai, toh ise skip kar dein
+      if (!isTelecallerLead) return;
+
+      // Extract accurate telecaller identifier
+      let telecallerKey = lead.createdBy || lead.telecallerId;
+      if (!telecallerKey && lead.notes) {
+        const match = lead.notes.match(/\[Telecaller Entry - (.*?)\]/);
+        if (match && match[1]) telecallerKey = match[1];
+      }
+
+      const finalTelecallerId = telecallerKey || "Unknown Telecaller";
+      
+      if (!telecallerMap[finalTelecallerId]) {
+        telecallerMap[finalTelecallerId] = {
+          telecallerId: finalTelecallerId,
+          totalCreated: 0,
+          totalAssigned: 0,
+          totalPending: 0,
+          assignedDetails: []
+        };
+      }
+
+      telecallerMap[finalTelecallerId].totalCreated += 1;
+
+      if (lead.salespersonId) {
+        telecallerMap[finalTelecallerId].totalAssigned += 1;
+        telecallerMap[finalTelecallerId].assignedDetails.push({
+          leadId: lead._id,
+          instituteName: lead.instituteName,
+          salespersonId: lead.salespersonId,
+          assignedBy: lead.assignedBy,
+          requirementType: lead.requirementType,
+          followUpDate: lead.followUpDate,
+          followUpTime: lead.followUpTime,
+          updatedAt: lead.updatedAt
+        });
+      } else {
+        telecallerMap[finalTelecallerId].totalPending += 1;
+      }
+    });
+
+    const activityReport = Object.values(telecallerMap);
+
+    res.json({
+      success: true,
+      totalLeadsCount: allLeads.length,
+      telecallerActivity: activityReport
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch telecaller activity logs", 
+      error: err.message 
+    });
+  }
+});
+
+
+app.get("/api/telecaller/day-status", verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+
+    if (!session) {
+      return res.json({ status: "NOT_STARTED", session: null });
+    }
+    res.json({
+      status: session.status,
+      startAddress: session.startAddress || "",
+      session
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch day status", error: err.message });
+  }
+});
+
+
+// --- ⏱️ TELECALLER START DAY ROUTE ---
+app.post("/api/telecaller/start-day", verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    const existing = await DaySession.findOne({ salespersonId: req.user.userId, date: today });
+
+    if (existing && existing.status === "STARTED") {
+      return res.status(400).json({ message: "Working day has already been started today!" });
+    }
+    if (existing && existing.status === "ENDED") {
+      return res.status(400).json({ message: "You have already ended your day today. Cannot restart." });
+    }
+
+    const { latitude, longitude, startAddress } = req.body;
+
+    const newSession = new DaySession({
+      salespersonId: req.user.userId,
+      date: today,
+      status: "STARTED",
+      startTime: new Date(),
+      startLocation: {
+        latitude: Number(latitude) || 0,
+        longitude: Number(longitude) || 0
+      },
+      startAddress: startAddress || "",
+      distancePoints: [
+        {
+          type: "START",
+          referenceId: null,
+          latitude: Number(latitude) || 0,
+          longitude: Number(longitude) || 0,
+          timestamp: new Date(),
+          distanceFromPreviousKm: 0,
+          totalDistanceKm: 0
+        }
+      ],
+      totalDistanceKm: 0
+    });
+
+    await newSession.save();
+    res.status(201).json({ success: true, message: "Day started successfully!", startAddress: newSession.startAddress, session: newSession });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to start day", error: err.message });
+  }
+});
+
+// --- ⏱️ TELECALLER END DAY ROUTE ---
+app.post("/api/telecaller/end-day", verifyToken, async (req, res) => {
+  try {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const session = await DaySession.findOne({ salespersonId: req.user.userId, date: today, status: "STARTED" });
+
+    if (!session) {
+      return res.status(400).json({ message: "No active day session found to end!" });
+    }
+
+    const { latitude, longitude } = req.body;
+    const endTimeDate = new Date();
+
+    session.status = "ENDED";
+    session.endTime = endTimeDate;
+    session.endLocation = {
+      latitude: Number(latitude) || 0,
+      longitude: Number(longitude) || 0,
+    };
+    await session.save();
+
+    const workingMilliseconds = endTimeDate - new Date(session.startTime);
+    const workingHours = (workingMilliseconds / (1000 * 60 * 60)).toFixed(1);
+
+    res.json({
+      success: true,
+      message: "Day ended successfully.",
+      summary: {
+        startTime: new Date(session.startTime).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: '2-digit', minute: '2-digit', hour12: true }),
+        endTime: endTimeDate.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: '2-digit', minute: '2-digit', hour12: true }),
+        workingHours: `${workingHours} hrs`,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to end day", error: err.message });
+  }
+});
+
+
+
+
 
 // =========================================================================
 // --- 🌐 SERVER LISTENER ---

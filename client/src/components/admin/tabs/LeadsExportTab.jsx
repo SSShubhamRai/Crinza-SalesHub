@@ -71,19 +71,20 @@ export const LeadsExportTab = ({
               👤 Employee:
             </span>
             <select
-              value={selectedLeadEmpFilter}
-              onChange={(e) => setSelectedLeadEmpFilter(e.target.value)}
-              className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
-            >
-              <option value="all">All Employees</option>
-              {employees
-                .filter((emp) => emp.role === "salesperson")
-                .map((emp) => (
-                  <option key={emp.userId} value={emp.userId}>
-                    {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
-                  </option>
-                ))}
-            </select>
+  value={selectedLeadEmpFilter}
+  onChange={(e) => setSelectedLeadEmpFilter(e.target.value)}
+  className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+>
+  <option value="all">All Employees (Sales & Telecallers)</option>
+  {employees
+    .filter((emp) => emp.role === "salesperson" || emp.role === "telecaller") // 👈 Yahan salesperson ke sath telecaller bhi add kar diya gaya hai
+    .map((emp) => (
+      <option key={emp.userId} value={emp.userId}>
+        {emp.name ? `${emp.name} (${emp.userId}) [${emp.role.toUpperCase()}]` : emp.userId}
+      </option>
+    ))}
+</select>
+
           </div>
         </div>
 

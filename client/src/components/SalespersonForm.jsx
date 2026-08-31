@@ -4105,20 +4105,20 @@ if (leadFilter === "telecaller-assigned") {
                          {/* 🌟 Telecaller Assignment, Requirement & Schedule Badge */}
 {/* 🌟 Telecaller Assignment, Requirement & Schedule Badge */}
 {lead.assignedBy && (
-  <div className="bg-purple-600/15 border-2 border-purple-500/40 text-purple-950 dark:text-purple-100 px-4 py-3 rounded-2xl text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm mb-3">
+  <div className="bg-purple-600/15 border-2 border-purple-700 text-purple-950 dark:text-purple-100 px-4 py-3 rounded-2xl text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm mb-3">
     
     <div className="flex flex-col space-y-1">
-      <span className="flex items-center gap-1.5 text-purple-950 dark:text-purple-700">
-        📞 Assigned by Telecaller: <strong className="underline decoration-purple-600 font-extrabold text-[var(--color-heading)]">{lead.assignedBy}</strong>
+      <span className="flex items-center gap-1.5 text-white dark:text-black">
+        📞 Assigned by Telecaller: <strong className=" font-extrabold text-black">{lead.assignedBy}</strong>
       </span>
       
       {/* ⏰ Scheduled Date & Time (Agar database mein hoga tabhi dikhega) */}
       {lead.followUpDate ? (
-        <span className="text-xs font-semibold text-purple-800 dark:text-purple-900 flex items-center gap-1">
+        <span className="text-xs font-semibold text-black dark:text-black flex items-center gap-1">
           📅 Scheduled For: <strong>{new Date(lead.followUpDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' })}</strong> {lead.followUpTime && `at ${lead.followUpTime}`}
         </span>
       ) : (
-        <span className="text-[11px] font-medium text-purple-700 dark:text-purple-800 italic">
+        <span className="text-[11px] font-medium text-black dark:text-black italic">
           📅 Schedule: Not specified
         </span>
       )}

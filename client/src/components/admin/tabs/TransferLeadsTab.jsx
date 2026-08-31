@@ -21,7 +21,7 @@ export const TransferLeadsTab = ({
             🔄 Transfer Leads
           </h3>
           <p className="text-xs text-[var(--color-body)] mt-1">
-            Select a source salesperson to view their active leads, choose specific leads using checkboxes, and reassign them to another salesperson.
+            Select a source employee (salesperson or telecaller) to view their active leads, choose specific leads using checkboxes, and reassign them to another employee.
           </p>
         </div>
 
@@ -38,9 +38,10 @@ export const TransferLeadsTab = ({
 
         <form onSubmit={handleExecuteGranularTransfer} className="space-y-4 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Source Employee (From) Dropdown */}
             <div>
               <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
-                Source Salesperson (From) *
+                Source Employee (From) *
               </label>
               <select
                 required
@@ -48,28 +49,29 @@ export const TransferLeadsTab = ({
                 onChange={(e) => {
                   const val = e.target.value;
                   setTransferData({ ...transferData, fromSalesperson: val });
-                  console.log("Selected Source Salesperson:", val);
+                  console.log("Selected Source Employee:", val);
                   if (val && typeof fetchSalespersonLeadsForTransfer === "function") {
                     fetchSalespersonLeadsForTransfer(val);
                   }
                 }}
                 className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
               >
-                <option value="">Select Salesperson to pick leads from</option>
+                <option value="">Select Employee to pick leads from</option>
                 <option value="null">Unassigned / Deleted (null)</option>
                 {employees
-                  .filter((emp) => emp.role === "salesperson")
+                  .filter((emp) => emp.role === "salesperson" || emp.role === "telecaller") // 👈 Salesperson + Telecaller allowed
                   .map((emp) => (
                     <option key={emp.userId} value={emp.userId}>
-                      {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                      {emp.name ? `${emp.name} (${emp.userId}) [${emp.role.toUpperCase()}]` : emp.userId}
                     </option>
                   ))}
               </select>
             </div>
 
+            {/* Target Employee (To) Dropdown */}
             <div>
               <label className="block font-medium mb-1.5 text-[var(--color-heading)]">
-                Target Salesperson (To) *
+                Target Employee (To) *
               </label>
               <select
                 required
@@ -77,12 +79,12 @@ export const TransferLeadsTab = ({
                 onChange={(e) => setTransferData({ ...transferData, toSalesperson: e.target.value })}
                 className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3 text-xs text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium cursor-pointer"
               >
-                <option value="">Select Salesperson to assign leads to</option>
+                <option value="">Select Employee to assign leads to</option>
                 {employees
-                  .filter((emp) => emp.role === "salesperson")
+                  .filter((emp) => emp.role === "salesperson" || emp.role === "telecaller") // 👈 Salesperson + Telecaller allowed
                   .map((emp) => (
                     <option key={emp.userId} value={emp.userId}>
-                      {emp.name ? `${emp.name} (${emp.userId})` : emp.userId}
+                      {emp.name ? `${emp.name} (${emp.userId}) [${emp.role.toUpperCase()}]` : emp.userId}
                     </option>
                   ))}
               </select>
@@ -110,7 +112,7 @@ export const TransferLeadsTab = ({
                 <div className="py-8 text-center text-xs text-[var(--color-body)] animate-pulse">Loading leads...</div>
               ) : sourceLeads.length === 0 ? (
                 <div className="py-8 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
-                  No active leads found for this salesperson.
+                  No active leads found for this employee.
                 </div>
               ) : (
                 <div className="max-h-60 overflow-y-auto space-y-2 border border-[var(--color-border)] p-3 rounded-2xl bg-[var(--color-surface)]">
