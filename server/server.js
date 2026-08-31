@@ -671,34 +671,7 @@ socket.on("update_location", async (data) => {
     }
 
     // ============================================================
-    // 📏 7. LIVE DISTANCE INCREMENT CALCULATION
-    // ============================================================
-    let incrementalDistance = 0;
-
-    if (lastLog && !isMockedByTeleport) {
-      const rawDist = calculateDistance(
-        Number(lastLog.latitude),
-        Number(lastLog.longitude),
-        lat,
-        lng
-      );
-
-      // 🛡️ DRIFT FILTER: Agar movement 20 meters (0.02 km) se zyada hai, tabhi distance mein count karein
-      const MIN_GPS_JUMP_THRESHOLD = 0.02; // 20 meters
-      const ROAD_FACTOR = 1.3; // Raste ke turn/curves ke liye optional multiplication factor (optional, chahe toh 1 rakh sakte hain)
-
-      if (rawDist >= MIN_GPS_JUMP_THRESHOLD) {
-        incrementalDistance = rawDist * ROAD_FACTOR;
-      }
-    }
-
-    // Session ka total distance update karein
-    const updatedTotalDistance = (Number(activeSession.totalDistanceKm) || 0) + incrementalDistance;
-    activeSession.totalDistanceKm = Number(updatedTotalDistance.toFixed(3));
-    await activeSession.save();
-
-    // ============================================================
-    // 💾 8. SAVE LOCATION
+    // 💾 7. SAVE LOCATION (No live distance increments here)
     // ============================================================
 
     const newLocationLog = await LocationLog.create({
@@ -711,7 +684,7 @@ socket.on("update_location", async (data) => {
     });
 
     // ============================================================
-    // 📡 9. BROADCAST LIVE LOCATION & TOTAL DISTANCE
+    // 📡 8. BROADCAST LIVE LOCATION & CURRENT SESSION DISTANCE
     // ============================================================
 
     io.emit("live_location_broadcast", {
@@ -720,7 +693,7 @@ socket.on("update_location", async (data) => {
       longitude: lng,
       isMocked: isMockedByTeleport,
       timestamp: currentTime,
-      totalDistanceKm: activeSession.totalDistanceKm, // 🌟 Live distance bhi frontend par bhej diya
+      totalDistanceKm: activeSession.totalDistanceKm, // 🌟 Sirf actual session total distance bhejega
       locationLogId: newLocationLog._id,
     });
 
