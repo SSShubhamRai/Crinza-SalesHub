@@ -671,7 +671,59 @@ socket.on("update_location", async (data) => {
     }
 
     // ============================================================
-    // 💾 7. SAVE LOCATION (No live distance increments here)
+    // ⏰ 7. 20-MINUTE INTERVAL DISTANCE CALCULATION
+    // ============================================================
+    if (!Array.isArray(activeSession.distancePoints)) {
+      activeSession.distancePoints = [];
+    }
+
+    const lastPoint = activeSession.distancePoints[activeSession.distancePoints.length - 1];
+    let shouldAddDistance = false;
+    let incrementalDist = 0;
+
+    if (!isMockedByTeleport) {
+      if (lastPoint) {
+        const timeDiffMinutes = (currentTime - new Date(lastPoint.timestamp)) / (1000 * 60);
+
+        // Check if 20 minutes have elapsed since the last recorded checkpoint
+        if (timeDiffMinutes >= 20) {
+          const rawDist = calculateDistance(
+            Number(lastPoint.latitude),
+            Number(lastPoint.longitude),
+            lat,
+            lng
+          );
+
+          // Minimum 50 meters movement threshold to avoid stationary noise
+          if (rawDist >= 0.05) {
+            incrementalDist = rawDist * 1.3; // Road factor adjustment
+            shouldAddDistance = true;
+          }
+        }
+      } else {
+        // First checkpoint after starting the day
+        shouldAddDistance = true;
+      }
+    }
+
+    if (shouldAddDistance && incrementalDist > 0) {
+      const newTotal = (Number(activeSession.totalDistanceKm) || 0) + incrementalDist;
+      activeSession.totalDistanceKm = Number(newTotal.toFixed(3));
+
+      activeSession.distancePoints.push({
+        type: "INTERVAL_CHECKPOINT",
+        latitude: lat,
+        longitude: lng,
+        timestamp: currentTime,
+        distanceFromPreviousKm: Number(incrementalDist.toFixed(3)),
+        totalDistanceKm: activeSession.totalDistanceKm,
+      });
+
+      await activeSession.save();
+    }
+
+    // ============================================================
+    // 💾 8. SAVE LOCATION LOG
     // ============================================================
 
     const newLocationLog = await LocationLog.create({
@@ -684,7 +736,7 @@ socket.on("update_location", async (data) => {
     });
 
     // ============================================================
-    // 📡 8. BROADCAST LIVE LOCATION & CURRENT SESSION DISTANCE
+    // 📡 9. BROADCAST LIVE LOCATION & CURRENT SESSION DISTANCE
     // ============================================================
 
     io.emit("live_location_broadcast", {
@@ -693,7 +745,7 @@ socket.on("update_location", async (data) => {
       longitude: lng,
       isMocked: isMockedByTeleport,
       timestamp: currentTime,
-      totalDistanceKm: activeSession.totalDistanceKm, // 🌟 Sirf actual session total distance bhejega
+      totalDistanceKm: activeSession.totalDistanceKm,
       locationLogId: newLocationLog._id,
     });
 
