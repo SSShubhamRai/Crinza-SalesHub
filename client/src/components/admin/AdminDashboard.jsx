@@ -204,7 +204,7 @@ const fetchSalespersonTravelHistory = useCallback(
     }
   }, [API_BASE, trackerDate]);
 
-  const fetchAllSystemLeads = useCallback(async () => {
+const fetchAllSystemLeads = useCallback(async () => {
     setLoadingSystemLeads(true);
     try {
       const token = localStorage.getItem("token");
@@ -214,10 +214,37 @@ const fetchSalespersonTravelHistory = useCallback(
       
       let collectedLeads = [];
       for (let emp of empList.filter(e => e.role === 'salesperson')) {
+        // 1. Fetch regular leads
         const leadRes = await fetch(`${API_BASE}/api/boss/employee-leads/${emp.userId}`, { headers });
         if (leadRes.ok) {
           const lData = await leadRes.json();
           collectedLeads = [...collectedLeads, ...lData.map(l => ({ ...l, salespersonId: emp.userId, salespersonName: emp.name || emp.userId }))];
+        }
+
+        // 2. 🌟 Fetch Invoices & Treat them as Closed Deals immediately upon creation!
+        const invRes = await fetch(`${API_BASE}/api/boss/employee-details/${emp.userId}`, { headers });
+        if (invRes.ok) {
+          const invData = await invRes.json();
+          const invoiceDeals = invData
+            .filter(inv => inv.status !== "rejected") // Rejected chhod kar baaki pending/approved sab dikhegi
+            .map(inv => ({
+              _id: inv._id,
+              instituteName: inv.instituteName,
+              contactPerson: inv.ownerName || "N/A",
+              mobileNo: inv.mobileNo,
+              email: inv.email,
+              city: inv.city,
+              state: inv.state,
+              // 🌟 Jaise hi invoice bani, leadStatus ko "Deal Closed" set kar diya
+              leadStatus: "Deal Closed", 
+              demoStatus: "Completed",
+              followUpAction: `Invoice Created (#${inv.invoiceId})`,
+              leadDate: inv.createdAt ? inv.createdAt.split('T')[0] : "",
+              salespersonId: emp.userId,
+              salespersonName: emp.name || emp.userId
+            }));
+          
+          collectedLeads = [...collectedLeads, ...invoiceDeals];
         }
       }
       setAllSystemLeads(collectedLeads);
@@ -663,7 +690,12 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
     } else if (adminLeadFilter === "demo-done") {
       matchesStatus = dStatus === "completed";
     } else if (adminLeadFilter === "demo-pending") {
-      matchesStatus = !lead.demoStatus || dStatus === "not given" || dStatus === "scheduled";
+      const isNotInterestedOrClosed = 
+        lStatus.includes("not interested") || 
+        lStatus.includes("closed") || 
+        lStatus.includes("deal close");
+
+      matchesStatus = !isNotInterestedOrClosed && (!lead.demoStatus || dStatus === "not given" || dStatus === "scheduled");
     } else if (adminLeadFilter === "not-interested") {
       matchesStatus = lStatus.includes("not interested");
     } else if (adminLeadFilter === "deal-closed") {

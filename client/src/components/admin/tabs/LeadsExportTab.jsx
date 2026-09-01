@@ -17,7 +17,7 @@ export const LeadsExportTab = ({
   API_BASE,
 }) => {
   return (
-    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-6 md:p-8 shadow-sm space-y-6 animate-fade-in">
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-6 md:p-8 shadow-sm space-y-6 animate-fade-in w-full max-w-full overflow-hidden">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
         <div>
           <h3 className="text-base font-bold text-[var(--color-heading)]">
@@ -43,52 +43,53 @@ export const LeadsExportTab = ({
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] text-xs">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium text-[var(--color-heading)]">
+      {/* 🌟 Filter Container with overflow protection */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] text-xs w-full max-w-full overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full min-w-0">
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <span className="font-medium text-[var(--color-heading)] flex-shrink-0">
               📅 Date:
             </span>
             <input
               type="date"
               value={selectedLeadDateFilter}
               onChange={(e) => setSelectedLeadDateFilter(e.target.value)}
-              className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
+              className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold w-full sm:w-auto"
             />
             {selectedLeadDateFilter && (
               <button
                 type="button"
                 onClick={() => setSelectedLeadDateFilter("")}
-                className="text-red-500 font-bold hover:underline cursor-pointer"
+                className="text-red-500 font-bold hover:underline cursor-pointer flex-shrink-0"
               >
                 ✕
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium text-[var(--color-heading)]">
+          <div className="flex items-center gap-1.5 w-full sm:w-auto min-w-0">
+            <span className="font-medium text-[var(--color-heading)] flex-shrink-0">
               👤 Employee:
             </span>
+            {/* 🌟 Fixed Select Width and Truncate */}
             <select
-  value={selectedLeadEmpFilter}
-  onChange={(e) => setSelectedLeadEmpFilter(e.target.value)}
-  className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold"
->
-  <option value="all">All Employees (Sales & Telecallers)</option>
-  {employees
-    .filter((emp) => emp.role === "salesperson" || emp.role === "telecaller") // 👈 Yahan salesperson ke sath telecaller bhi add kar diya gaya hai
-    .map((emp) => (
-      <option key={emp.userId} value={emp.userId}>
-        {emp.name ? `${emp.name} (${emp.userId}) [${emp.role.toUpperCase()}]` : emp.userId}
-      </option>
-    ))}
-</select>
-
+              value={selectedLeadEmpFilter}
+              onChange={(e) => setSelectedLeadEmpFilter(e.target.value)}
+              className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold w-full sm:max-w-[220px] md:max-w-[260px] truncate"
+            >
+              <option value="all">All Employees (Sales & Telecallers)</option>
+              {employees
+                .filter((emp) => emp.role === "salesperson" || emp.role === "telecaller")
+                .map((emp) => (
+                  <option key={emp.userId} value={emp.userId}>
+                    {emp.name ? `${emp.name} (${emp.userId}) [${emp.role.toUpperCase()}]` : emp.userId}
+                  </option>
+                ))}
+            </select>
           </div>
         </div>
 
-        <div className="bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 px-4 py-2 rounded-xl font-extrabold text-xs">
+        <div className="bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 px-4 py-2 rounded-xl font-extrabold text-xs flex-shrink-0 text-center">
           📊 Total Leads Found: {filteredSystemLeads.length}
         </div>
       </div>
@@ -142,7 +143,6 @@ export const LeadsExportTab = ({
           )
         </button>
         
-        {/* 🌟 1. DEMO DONE FILTER BUTTON */}
         <button
           onClick={() => setAdminLeadFilter("demo-done")}
           className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${
@@ -160,26 +160,27 @@ export const LeadsExportTab = ({
           )
         </button>
 
-        {/* 🌟 2. DEMO PENDING FILTER BUTTON */}
         <button
-          onClick={() => setAdminLeadFilter("demo-pending")}
-          className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${
-            adminLeadFilter === "demo-pending"
-              ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm"
-              : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-          }`}
-        >
-          ⏳ Demo Pending (
-          {
-            allSystemLeads.filter(
-              (l) =>
-                !l.demoStatus ||
-                l.demoStatus?.toLowerCase() === "not given" ||
-                l.demoStatus?.toLowerCase() === "scheduled"
-            ).length
-          }
-          )
-        </button>
+            onClick={() => setAdminLeadFilter("demo-pending")}
+            className={`text-xs px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition active:scale-95 ${
+              adminLeadFilter === "demo-pending"
+                ? "bg-[var(--color-primary)] text-white border-transparent shadow-sm"
+                : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+            }`}
+          >
+            ⏳ Demo Pending (
+            {
+              allSystemLeads.filter(
+                (l) =>
+                  !l.leadStatus?.toLowerCase().includes("not interested") &&
+                  !l.leadStatus?.toLowerCase().includes("closed") &&
+                  (!l.demoStatus ||
+                    l.demoStatus?.toLowerCase() === "not given" ||
+                    l.demoStatus?.toLowerCase() === "scheduled")
+              ).length
+            }
+            )
+          </button>
 
         <button
           onClick={() => setAdminLeadFilter("not-interested")}

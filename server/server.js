@@ -4544,72 +4544,82 @@ app.put("/api/salesperson/leads/:id", verifyToken, upload.single("meetingPhoto")
       followUpAction,
     };
 
+    // 🌟 AUTOMATIC FIX: Agar lead ko "Not Interested" ya "Closed" mark kiya gaya hai,
+    // toh demoStatus ko automatically "Not Required" kar dein taaki woh Demo Pending list mein na dikhe.
+    if (leadStatus) {
+      const lowerLeadStatus = leadStatus.toLowerCase();
+      if (
+        lowerLeadStatus.includes("not interested") ||
+        lowerLeadStatus.includes("closed") ||
+        lowerLeadStatus.includes("deal close")
+      ) {
+        updateFields.demoStatus = "Not Required";
+      }
+    }
+
     if (req.file) {
       updateFields.meetingPhoto = req.file.path;
     }
 
-const existingLead = await Lead.findById(req.params.id);
+    const existingLead = await Lead.findById(req.params.id);
 
-if (!existingLead) {
-  return res.status(404).json({ message: "Lead not found" });
-}
-
-// Check whether demo was already completed
-const oldDemoStatus = String(
-  existingLead.demoStatus || ""
-).trim().toLowerCase();
-
-const incomingDemoStatus = String(
-  updateFields.demoStatus || ""
-).trim().toLowerCase();
-
-console.log("🎯 DEMO STATUS CHECK:", {
-  leadId: req.params.id,
-  oldDemoStatus,
-  incomingDemoStatus,
-  rawOldStatus: existingLead.demoStatus,
-  rawIncomingStatus: updateFields.demoStatus,
-});
-
-const updatedLead = await Lead.findByIdAndUpdate(
-  req.params.id,
-  { $set: updateFields },
-  { returnDocument: "after" }
-);
-
-if (!updatedLead) {
-  return res.status(404).json({
-    message: "Lead not found",
-  });
-}
-
-const newDemoStatus = String(
-  updatedLead.demoStatus || ""
-).trim().toLowerCase();
-
-console.log("🎯 DEMO STATUS AFTER UPDATE:", {
-  oldDemoStatus,
-  newDemoStatus,
-  rawNewStatus: updatedLead.demoStatus,
-});
-
-// ⭐ First time demo becomes Completed → +25
-if (
-  oldDemoStatus !== "completed" &&
-  newDemoStatus === "completed"
-) {
-  console.log("🏆 ADDING DEMO POINTS +25");
-
-  await addSalespersonPoints(
-    req.user.userId,
-    "DEMO_DONE"
-  );
-
-  console.log("✅ DEMO POINTS +25 ADDED");
-}
-
-    if (!updatedLead)
+    if (!existingLead) {
       return res.status(404).json({ message: "Lead not found" });
+    }
+
+    // Check whether demo was already completed
+    const oldDemoStatus = String(
+      existingLead.demoStatus || ""
+    ).trim().toLowerCase();
+
+    const incomingDemoStatus = String(
+      updateFields.demoStatus || ""
+    ).trim().toLowerCase();
+
+    console.log("🎯 DEMO STATUS CHECK:", {
+      leadId: req.params.id,
+      oldDemoStatus,
+      incomingDemoStatus,
+      rawOldStatus: existingLead.demoStatus,
+      rawIncomingStatus: updateFields.demoStatus,
+    });
+
+    const updatedLead = await Lead.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateFields },
+      { returnDocument: "after" }
+    );
+
+    if (!updatedLead) {
+      return res.status(404).json({
+        message: "Lead not found",
+      });
+    }
+
+    const newDemoStatus = String(
+      updatedLead.demoStatus || ""
+    ).trim().toLowerCase();
+
+    console.log("🎯 DEMO STATUS AFTER UPDATE:", {
+      oldDemoStatus,
+      newDemoStatus,
+      rawNewStatus: updatedLead.demoStatus,
+    });
+
+    // ⭐ First time demo becomes Completed → +25
+    if (
+      oldDemoStatus !== "completed" &&
+      newDemoStatus === "completed"
+    ) {
+      console.log("🏆 ADDING DEMO POINTS +25");
+
+      await addSalespersonPoints(
+        req.user.userId,
+        "DEMO_DONE"
+      );
+
+      console.log("✅ DEMO POINTS +25 ADDED");
+    }
 
     if (followUpDate) {
       // 🌟 FIX: Purana pending task update karein, naya task create mat karein
