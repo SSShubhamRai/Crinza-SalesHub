@@ -7,15 +7,37 @@ export const LeadsExportTab = ({
   setAdminLeadFilter,
   downloadCSV,
   exportStartDate,
+  setExportStartDate,
   exportEndDate,
-  selectedLeadDateFilter,
-  setSelectedLeadDateFilter,
+  setExportEndDate,
   selectedLeadEmpFilter,
   setSelectedLeadEmpFilter,
   employees,
   loadingSystemLeads,
   API_BASE,
 }) => {
+  
+  // 🌟 Helper: Filters master leads by Date Range and Employee
+  const getMasterExportLeads = () => {
+    return allSystemLeads.filter((lead) => {
+      const leadDateStr = lead.leadDate || (lead.createdAt ? new Date(lead.createdAt).toISOString().split('T')[0] : "");
+      
+      // 1. Date Range Filter Check
+      if (exportStartDate && leadDateStr && leadDateStr < exportStartDate) return false;
+      if (exportEndDate && leadDateStr && leadDateStr > exportEndDate) return false;
+
+      // 2. Employee Filter Check
+      if (selectedLeadEmpFilter && selectedLeadEmpFilter !== "all") {
+        if (lead.salespersonId !== selectedLeadEmpFilter && lead.userId !== selectedLeadEmpFilter) {
+          return false;
+        }
+      }
+      return true;
+    });
+  };
+
+  const masterLeads = getMasterExportLeads();
+
   return (
     <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-6 md:p-8 shadow-sm space-y-6 animate-fade-in w-full max-w-full overflow-hidden">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-4">
@@ -24,43 +46,76 @@ export const LeadsExportTab = ({
             📊 Leads Report & Excel Export
           </h3>
           <p className="text-xs text-[var(--color-body)] mt-0.5">
-            Filter team leads by status, specific employee & date and download
-            spreadsheet reports.
+            Filter team leads by status, specific employee & date range and download spreadsheet reports.
           </p>
         </div>
-        <button
-          onClick={() =>
-            downloadCSV(
-              filteredSystemLeads,
-              `Leads_Report_${adminLeadFilter}_${exportStartDate || "all"}_to_${
-                exportEndDate || "all"
-              }.csv`,
-            )
-          }
-          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-5 py-3 rounded-2xl font-semibold transition cursor-pointer shadow-sm flex items-center gap-2 active:scale-95 hover:shadow-md"
-        >
-          📥 Download Excel (.CSV) Report ({filteredSystemLeads.length})
-        </button>
+        
+        {/* 🌟 Dual Export Buttons: Current Tab vs Master Report */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() =>
+              downloadCSV(
+                filteredSystemLeads,
+                `Leads_Report_${adminLeadFilter}_${exportStartDate || "all"}_to_${
+                  exportEndDate || "all"
+                }.csv`,
+              )
+            }
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-4 py-2.5 rounded-2xl font-semibold transition cursor-pointer shadow-sm flex items-center gap-2 active:scale-95 hover:shadow-md"
+          >
+            📥 Current Tab ({filteredSystemLeads.length})
+          </button>
+
+          <button
+            onClick={() =>
+              downloadCSV(
+                masterLeads,
+                `Master_Report_Date_Range_${exportStartDate || "all"}_to_${
+                  exportEndDate || "all"
+                }.csv`,
+              )
+            }
+            className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2.5 rounded-2xl font-semibold transition cursor-pointer shadow-sm flex items-center gap-2 active:scale-95 hover:shadow-md"
+          >
+            📊 Master Report - Date Range ({masterLeads.length})
+          </button>
+        </div>
       </div>
 
-      {/* 🌟 Filter Container with overflow protection */}
+      {/* 🌟 Date Range & Employee Filter Container */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 bg-[var(--color-surface)] p-4 rounded-2xl border border-[var(--color-border)] text-xs w-full max-w-full overflow-hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full min-w-0">
+          
+          {/* Start Date */}
           <div className="flex items-center gap-1.5 w-full sm:w-auto">
             <span className="font-medium text-[var(--color-heading)] flex-shrink-0">
-              📅 Date:
+              📅 From:
             </span>
             <input
               type="date"
-              value={selectedLeadDateFilter}
-              onChange={(e) => setSelectedLeadDateFilter(e.target.value)}
+              value={exportStartDate}
+              onChange={(e) => setExportStartDate(e.target.value)}
               className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold w-full sm:w-auto"
             />
-            {selectedLeadDateFilter && (
+          </div>
+
+          {/* End Date */}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <span className="font-medium text-[var(--color-heading)] flex-shrink-0">
+              To:
+            </span>
+            <input
+              type="date"
+              value={exportEndDate}
+              onChange={(e) => setExportEndDate(e.target.value)}
+              className="bg-[var(--color-card)] border border-[var(--color-border)] px-3 py-2 rounded-xl text-xs text-[var(--color-heading)] focus:outline-none cursor-pointer font-semibold w-full sm:w-auto"
+            />
+            {(exportStartDate || exportEndDate) && (
               <button
                 type="button"
-                onClick={() => setSelectedLeadDateFilter("")}
-                className="text-red-500 font-bold hover:underline cursor-pointer flex-shrink-0"
+                onClick={() => { setExportStartDate(""); setExportEndDate(""); }}
+                className="text-red-500 font-bold hover:underline cursor-pointer flex-shrink-0 ml-1"
+                title="Clear Dates"
               >
                 ✕
               </button>
@@ -71,7 +126,6 @@ export const LeadsExportTab = ({
             <span className="font-medium text-[var(--color-heading)] flex-shrink-0">
               👤 Employee:
             </span>
-            {/* 🌟 Fixed Select Width and Truncate */}
             <select
               value={selectedLeadEmpFilter}
               onChange={(e) => setSelectedLeadEmpFilter(e.target.value)}
@@ -180,7 +234,7 @@ export const LeadsExportTab = ({
               ).length
             }
             )
-          </button>
+        </button>
 
         <button
           onClick={() => setAdminLeadFilter("not-interested")}
@@ -224,7 +278,7 @@ export const LeadsExportTab = ({
         </div>
       ) : filteredSystemLeads.length === 0 ? (
         <div className="py-16 text-center text-xs text-[var(--color-body)] bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)]">
-          No leads found for this specific date and employee combination.
+          No leads found for this specific date range and employee combination.
         </div>
       ) : (
         <div className="space-y-3">

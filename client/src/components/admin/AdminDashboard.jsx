@@ -337,25 +337,75 @@ const fetchAllSystemLeads = useCallback(async () => {
     fetchData();
   }, [fetchData]);
 
+  // const downloadCSV = (dataToExport, filename = "Leads_Report.csv") => {
+  //   if (!dataToExport || dataToExport.length === 0) {
+  //     toast.error("No data available to export!");
+  //     return;
+  //   }
+
+  //   const headers = ["Institute Name", "Contact Person", "Mobile No", "Email", "City", "State", "Lead Status", "Demo Status", "Follow-up Action", "Salesperson"];
+  //   const rows = dataToExport.map(l => [
+  //     `"${l.instituteName || ''}"`,
+  //     `"${l.contactPerson || ''}"`,
+  //     `"${l.mobileNo || ''}"`,
+  //     `"${l.email || ''}"`,
+  //     `"${l.city || ''}"`,
+  //     `"${l.state || ''}"`,
+  //     `"${l.leadStatus || 'Active'}"`,
+  //     `"${l.demoStatus || 'Not Given'}"`,
+  //     `"${l.followUpAction || 'N/A'}"`,
+  //     `"${l.salespersonName || l.salespersonId || ''}"`
+  //   ]);
+
+  //   const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+  //   const encodedUri = encodeURI(csvContent);
+  //   const link = document.createElement("a");
+  //   link.setAttribute("href", encodedUri);
+  //   link.setAttribute("download", filename);
+  //   document.body.appendChild(link);
+  //   link.click();
+  //   document.body.removeChild(link);
+  //   toast.success("Excel/CSV Report downloaded successfully!");
+  // };
+
+
+
+
   const downloadCSV = (dataToExport, filename = "Leads_Report.csv") => {
     if (!dataToExport || dataToExport.length === 0) {
       toast.error("No data available to export!");
       return;
     }
 
-    const headers = ["Institute Name", "Contact Person", "Mobile No", "Email", "City", "State", "Lead Status", "Demo Status", "Follow-up Action", "Salesperson"];
-    const rows = dataToExport.map(l => [
-      `"${l.instituteName || ''}"`,
-      `"${l.contactPerson || ''}"`,
-      `"${l.mobileNo || ''}"`,
-      `"${l.email || ''}"`,
-      `"${l.city || ''}"`,
-      `"${l.state || ''}"`,
-      `"${l.leadStatus || 'Active'}"`,
-      `"${l.demoStatus || 'Not Given'}"`,
-      `"${l.followUpAction || 'N/A'}"`,
-      `"${l.salespersonName || l.salespersonId || ''}"`
-    ]);
+    // 🌟 Employee Name ko sabse pehle rakha gaya hai headers mein
+    const headers = [
+      "Employee Name",
+      "Institute Name",
+      "Generated Date",
+      "Contact Person",
+      "Contact Number",
+      "Lead Status",
+      "Demo Status",
+      "City",
+      "State"
+    ];
+
+    const rows = dataToExport.map(l => {
+      const generatedDate = l.leadDate || 
+        (l.createdAt ? new Date(l.createdAt).toLocaleDateString("en-IN") : "N/A");
+
+      return [
+        `"${(l.salespersonName || l.salespersonId || '').replace(/"/g, '""')}"`, // 1st Column: Employee Name
+        `"${(l.instituteName || '').replace(/"/g, '""')}"`,                 // 2nd Column: Institute Name
+        `"${generatedDate}"`,                                             // 3rd Column: Generated Date
+        `"${(l.contactPerson || '').replace(/"/g, '""')}"`,                 // 4th Column: Contact Person
+        `"${l.mobileNo || ''}"`,                                          // 5th Column: Contact Number
+        `"${(l.leadStatus || 'Active').replace(/"/g, '""')}"`,              // 6th Column: Lead Status
+        `"${(l.demoStatus || 'Not Given').replace(/"/g, '""')}"`,           // 7th Column: Demo Status
+        `"${(l.city || '').replace(/"/g, '""')}"`,                          // 8th Column: City
+        `"${(l.state || '').replace(/"/g, '""')}"`                          // 9th Column: State
+      ];
+    });
 
     const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
@@ -367,6 +417,7 @@ const fetchAllSystemLeads = useCallback(async () => {
     document.body.removeChild(link);
     toast.success("Excel/CSV Report downloaded successfully!");
   };
+
 
   const handleViewEmployeeDetails = async (empUserId) => {
     setLoadingLogs(true);
@@ -702,6 +753,7 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
       matchesStatus = lStatus.includes("deal close") || lStatus.includes("closed");
     }
 
+    // 🌟 Date Range Filter Check (From Start Date to End Date)
     let matchesDateRange = true;
     const leadDateStr = lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : "");
     
@@ -712,17 +764,12 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
       matchesDateRange = matchesDateRange && (leadDateStr <= exportEndDate);
     }
 
-    let matchesSpecificDate = true;
-    if (selectedLeadDateFilter && leadDateStr) {
-      matchesSpecificDate = leadDateStr === selectedLeadDateFilter;
-    }
-
     let matchesSpecificEmployee = true;
     if (selectedLeadEmpFilter !== "all") {
       matchesSpecificEmployee = lead.salespersonId === selectedLeadEmpFilter;
     }
 
-    return matchesStatus && matchesDateRange && matchesSpecificDate && matchesSpecificEmployee;
+    return matchesStatus && matchesDateRange && matchesSpecificEmployee;
   });
 
   return (
@@ -936,7 +983,7 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
               />
             )}
 
-            {activeTab === "leads-export" && (
+{activeTab === "leads-export" && (
               <LeadsExportTab
                 filteredSystemLeads={filteredSystemLeads}
                 allSystemLeads={allSystemLeads}
@@ -944,9 +991,9 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
                 setAdminLeadFilter={setAdminLeadFilter}
                 downloadCSV={downloadCSV}
                 exportStartDate={exportStartDate}
+                setExportStartDate={setExportStartDate} // 🌟 Yeh add karein
                 exportEndDate={exportEndDate}
-                selectedLeadDateFilter={selectedLeadDateFilter}
-                setSelectedLeadDateFilter={setSelectedLeadDateFilter}
+                setExportEndDate={setExportEndDate}       // 🌟 Yeh add karein
                 selectedLeadEmpFilter={selectedLeadEmpFilter}
                 setSelectedLeadEmpFilter={setSelectedLeadEmpFilter}
                 employees={employees}

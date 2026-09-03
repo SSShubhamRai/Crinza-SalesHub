@@ -489,6 +489,31 @@ function deg2rad(deg) {
   return deg * (Math.PI / 180);
 }
 
+// =========================================================================
+// --- 🚗 OSRM ACTUAL ROAD DISTANCE HELPER (Replaces Straight-Line) ---
+// =========================================================================
+async function getActualRoadDistance(lat1, lon1, lat2, lon2) {
+  try {
+    // OSRM public routing server (or use your own OSRM server endpoint)
+    const url = `http://router.project-osrm.org/route/v1/driving/${lon1},${lat1};${lon2},${lat2}?overview=false`;
+    
+    const response = await axios.get(url, { timeout: 3000 });
+    
+    if (response.data && response.data.routes && response.data.routes.length > 0) {
+      // OSRM returns distance in meters, convert to kilometers
+      const distanceMeters = response.data.routes[0].distance;
+      return Number((distanceMeters / 1000).toFixed(3));
+    }
+  } catch (err) {
+    console.warn("⚠️ OSRM API failed, falling back to Haversine with Road Factor:", err.message);
+  }
+
+  // Fallback: Haversine multiplied by a standard 1.35 road winding factor
+  const straightDist = calculateDistance(lat1, lon1, lat2, lon2);
+  return Number((straightDist * 1.35).toFixed(3));
+}
+
+
 // 🌟 Local Distance Calculation with 200 Meters Threshold & Road Factor
 function calculateValidDistance(coordinatesList) {
   let straightDistance = 0;
@@ -565,51 +590,13 @@ io.on("connection", (socket) => {
 socket.on("update_location", async (data) => {
   try {
     const { salespersonId, latitude, longitude } = data;
-
-    // ============================================================
-    // 📍 1. VALIDATE LOCATION
-    // ============================================================
-
     const lat = Number(latitude);
     const lng = Number(longitude);
 
-    if (
-      !salespersonId ||
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng) ||
-      lat < -90 ||
-      lat > 90 ||
-      lng < -180 ||
-      lng > 180
-    ) {
-      return;
-    }
+    if (!salespersonId || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-    // ============================================================
-    // 🔐 2. AUTHORIZATION
-    // ============================================================
-
-    if (
-      socket.user.userId !== salespersonId &&
-      socket.user.role !== "admin" &&
-      socket.user.role !== "boss"
-    ) {
-      return;
-    }
-
-    // ============================================================
-    // 🇮🇳 3. CURRENT IST DATE
-    // ============================================================
-
-    const currentDate = new Date().toLocaleDateString("en-CA", {
-      timeZone: "Asia/Kolkata",
-    });
-
+    const currentDate = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
     const currentTime = new Date();
-
-    // ============================================================
-    // 🟢 4. ONLY TRACK DURING ACTIVE DAY
-    // ============================================================
 
     const activeSession = await DaySession.findOne({
       salespersonId,
@@ -617,143 +604,69 @@ socket.on("update_location", async (data) => {
       status: "STARTED",
     });
 
-    if (!activeSession) {
-      return;
-    }
+    if (!activeSession) return;
 
-    // ============================================================
-    // 📍 5. GET LAST SAVED GPS LOCATION
-    // ============================================================
-
-    const lastLog = await LocationLog.findOne({
+    // Get the last recorded GPS checkpoint or session start location
+    const lastLocationLog = await LocationLog.findOne({
       salespersonId,
       date: currentDate,
-      timestamp: {
-        $gte: new Date(activeSession.startTime),
-      },
-    }).sort({
-      timestamp: -1,
-    });
+    }).sort({ timestamp: -1 });
 
-    let isMockedByTeleport = false;
-    let distanceKm = 0;
-    let timeDiffHours = 0;
-
-    // ============================================================
-    // 🚨 6. TELEPORT / FAKE GPS DETECTION
-    // ============================================================
-
-    if (lastLog) {
-      distanceKm = calculateDistance(
-        Number(lastLog.latitude),
-        Number(lastLog.longitude),
-        lat,
-        lng
-      );
-
-      timeDiffHours =
-        (currentTime - new Date(lastLog.timestamp)) /
-        (1000 * 60 * 60);
-
-      if (timeDiffHours > 0) {
-        const speedKmh = distanceKm / timeDiffHours;
-
-        if (speedKmh > 150) {
-          isMockedByTeleport = true;
-
-          console.warn(
-            `🚨 SECURITY ALERT: Possible Fake GPS / Teleportation detected for ${salespersonId}! Speed: ${speedKmh.toFixed(
-              2
-            )} km/h`
-          );
-        }
-      }
-    }
-
-    // ============================================================
-    // ⏰ 7. 20-MINUTE INTERVAL DISTANCE CALCULATION
-    // ============================================================
-    if (!Array.isArray(activeSession.distancePoints)) {
-      activeSession.distancePoints = [];
-    }
-
-    const lastPoint = activeSession.distancePoints[activeSession.distancePoints.length - 1];
-    let shouldAddDistance = false;
     let incrementalDist = 0;
+    const MIN_MOVEMENT_THRESHOLD = 0.02; // Ignore micro-jitters under 20 meters
 
-    if (!isMockedByTeleport) {
-      if (lastPoint) {
-        const timeDiffMinutes = (currentTime - new Date(lastPoint.timestamp)) / (1000 * 60);
+    if (lastLocationLog) {
+      const prevLat = Number(lastLocationLog.latitude);
+      const prevLng = Number(lastLocationLog.longitude);
 
-        // Check if 20 minutes have elapsed since the last recorded checkpoint
-        if (timeDiffMinutes >= 20) {
-          const rawDist = calculateDistance(
-            Number(lastPoint.latitude),
-            Number(lastPoint.longitude),
-            lat,
-            lng
-          );
+      const straightLineDist = calculateDistance(prevLat, prevLng, lat, lng);
 
-          // Minimum 50 meters movement threshold to avoid stationary noise
-          if (rawDist >= 0.05) {
-            incrementalDist = rawDist * 1.3; // Road factor adjustment
-            shouldAddDistance = true;
-          }
-        }
-      } else {
-        // First checkpoint after starting the day
-        shouldAddDistance = true;
+      if (straightLineDist >= MIN_MOVEMENT_THRESHOLD) {
+        // 🌟 Use OSRM for actual road distance calculation between pings
+        incrementalDist = await getActualRoadDistance(prevLat, prevLng, lat, lng);
       }
     }
 
-    if (shouldAddDistance && incrementalDist > 0) {
-      const newTotal = (Number(activeSession.totalDistanceKm) || 0) + incrementalDist;
-      activeSession.totalDistanceKm = Number(newTotal.toFixed(3));
+    // Update session total distance safely
+    if (incrementalDist > 0 && incrementalDist < 50) { // Filter out impossible teleports (>50km in a single ping)
+      activeSession.totalDistanceKm = Number(((activeSession.totalDistanceKm || 0) + incrementalDist).toFixed(3));
+      
+      if (!Array.isArray(activeSession.distancePoints)) {
+        activeSession.distancePoints = [];
+      }
 
       activeSession.distancePoints.push({
-        type: "INTERVAL_CHECKPOINT",
+        type: "GPS_PING",
         latitude: lat,
         longitude: lng,
         timestamp: currentTime,
-        distanceFromPreviousKm: Number(incrementalDist.toFixed(3)),
-        totalDistanceKm: activeSession.totalDistanceKm,
+        distanceFromPreviousKm: incrementalDist,
+        totalDistanceKm: activeSession.totalDistanceKm
       });
 
       await activeSession.save();
     }
 
-    // ============================================================
-    // 💾 8. SAVE LOCATION LOG
-    // ============================================================
-
-    const newLocationLog = await LocationLog.create({
+    // Save location log
+    await LocationLog.create({
       salespersonId,
       latitude: lat,
       longitude: lng,
       date: currentDate,
       timestamp: currentTime,
-      isMocked: isMockedByTeleport,
     });
 
-    // ============================================================
-    // 📡 9. BROADCAST LIVE LOCATION & CURRENT SESSION DISTANCE
-    // ============================================================
-
+    // Broadcast live location to admin dashboard
     io.emit("live_location_broadcast", {
       salespersonId,
       latitude: lat,
       longitude: lng,
-      isMocked: isMockedByTeleport,
-      timestamp: currentTime,
       totalDistanceKm: activeSession.totalDistanceKm,
-      locationLogId: newLocationLog._id,
+      timestamp: currentTime,
     });
 
   } catch (err) {
-    console.error(
-      "🔥 Socket Location Error:",
-      err
-    );
+    console.error("🔥 Socket Location Error:", err);
   }
 });
 
@@ -3722,7 +3635,7 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     let distanceFromPreviousKm = 0;
 
     // ============================================================
-    // 📏 LAST ACTIVITY → DAY END
+    // 🚗 LAST ACTIVITY → DAY END (USING OSRM ACTUAL ROAD DISTANCE)
     // ============================================================
 
     if (lastPoint) {
@@ -3738,7 +3651,8 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
         Number.isFinite(previousLatitude) &&
         Number.isFinite(previousLongitude)
       ) {
-        distanceFromPreviousKm = calculateDistance(
+        // 🌟 Haversine ki jagah OSRM Actual Road Distance call kiya
+        distanceFromPreviousKm = await getActualRoadDistance(
           previousLatitude,
           previousLongitude,
           endLatitude,
@@ -3776,7 +3690,7 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
 
       timestamp: endTimeDate,
 
-      // Last activity → Day End
+      // Last activity → Day End (Actual Road Distance)
       distanceFromPreviousKm: Number(
         distanceFromPreviousKm.toFixed(3)
       ),
@@ -3887,13 +3801,13 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
         totalCollected:
           totalCollectedToday,
 
-        // 📏 Final complete distance
+        // 📏 Final complete road distance
         totalDistanceKm:
           Number(
             session.totalDistanceKm.toFixed(3)
           ),
 
-        // 📏 Only last segment
+        // 📏 Only last road segment distance
         distanceAddedKm:
           Number(
             distanceFromPreviousKm.toFixed(3)
