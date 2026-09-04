@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.MediaRecorder;
+import android.os.Build;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
@@ -51,10 +52,7 @@ public class CallRecordingPlugin extends Plugin {
     // SEND CALL STATE TO REACT
     // =========================================================
 
-    public static void notifyCallState(
-            Context context,
-            String state
-    ) {
+    public static void notifyCallState(String state) {
         if (instance == null) {
             return;
         }
@@ -73,7 +71,6 @@ public class CallRecordingPlugin extends Plugin {
     // =========================================================
 
     public static void notifyCallStateWithDuration(
-            Context context,
             String state,
             long durationSeconds
     ) {
@@ -186,7 +183,12 @@ public class CallRecordingPlugin extends Plugin {
             File audioFile = File.createTempFile("call_" + callId + "_", ".m4a", outputDir);
             audioFilePath = audioFile.getAbsolutePath();
 
-            mediaRecorder = new MediaRecorder();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                mediaRecorder = new MediaRecorder(getContext());
+            } else {
+                mediaRecorder = new MediaRecorder();
+            }
+
             // VOICE_COMMUNICATION source tries to capture call audio stream where supported
             mediaRecorder.setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION);
             mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);

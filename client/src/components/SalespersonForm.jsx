@@ -290,6 +290,8 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
     };
   }, [showNotifications]);
 
+
+
   // --- Add-on Package Pricing Constants ---
   const ADDON_PRICES = {
     testModule: 5000,
@@ -1058,6 +1060,37 @@ useEffect(() => {
 
   fetchCallAnalytics();
 }, [callDateFilter, fetchCallAnalytics]);
+
+// 🌟 Android Hardware Back Button Handler for App Navigation
+useEffect(() => {
+  let backButtonListener;
+  
+  const setupBackButton = async () => {
+    try {
+      const { App } = await import("@capacitor/app");
+      backButtonListener = await App.addListener("backButton", () => {
+        if (activeView !== "dashboard") {
+          setActiveView("dashboard");
+        } else {
+          const confirmExit = window.confirm("Do you want to exit the app?");
+          if (confirmExit) {
+            App.exitApp();
+          }
+        }
+      });
+    } catch (e) {
+      console.warn("Capacitor App plugin not available in browser mode.");
+    }
+  };
+
+  setupBackButton();
+
+  return () => {
+    if (backButtonListener) {
+      backButtonListener.remove();
+    }
+  };
+}, [activeView]);
 
 // =========================================================================
 // --- 📞 FETCH CALL HISTORY ---
@@ -2212,6 +2245,7 @@ if (leadFilter === "telecaller-assigned") {
       const data = await res.json();
       if (res.ok) {
         fetchMyLeads();
+        fetchTodayPoints();
         if (selectedLead) setSelectedLead(null);
         setActiveModalAction(null);
         setFollowUpModalAction(null);
@@ -2304,6 +2338,7 @@ if (leadFilter === "telecaller-assigned") {
         setMeetingPhotoFile(null);
         setMeetingPhotoPreview(null);
         fetchMyLeads();
+        fetchTodayPoints();
 
         setTimeout(() => {
           setActiveView("leads");
@@ -2400,6 +2435,7 @@ if (leadFilter === "telecaller-assigned") {
         setCouponDetails(null);
         setInvoiceStep(1);
         fetchMyDeals();
+        fetchTodayPoints();
 
         setTimeout(() => {
           if (dueAmount > 0) {
@@ -2507,343 +2543,325 @@ if (leadFilter === "telecaller-assigned") {
         )}
 
         {/* Header Section */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-6 rounded-3xl shadow-sm gap-4 transition-all duration-300 hover:shadow-md">
-          <div className="space-y-1 min-w-0 w-full sm:w-auto">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-              SALESPERSON PORTAL
+
+<div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-6 rounded-3xl shadow-sm gap-4 transition-all duration-300 hover:shadow-md">
+  <div className="space-y-1 min-w-0 w-full sm:w-auto">
+    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+      SALESPERSON PORTAL
+    </span>
+    <h1 className="text-xl sm:text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1 truncate">
+      {activeView === "dashboard" && "My Dashboard"}
+      {activeView === "leads" && "My Generated Leads"}
+      {activeView === "kanban" && "📌 Manage Lead"}
+      {activeView === "calendar" && "📅 Follow-up & Meeting Calendar"}
+      {activeView === "lead-form" && "New Lead & Client Visit"}
+      {activeView === "invoice-form" && "Invoices & Installments"}
+    </h1>
+    <p className="text-[var(--color-body)] text-xs truncate">
+      Signed in as{" "}
+      <strong className="text-[var(--color-primary)]">
+        {username || userId}
+      </strong>
+    </p>
+  </div>
+
+  <div className="flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto justify-end">
+    
+    {/* 🌟 Naya Back Button (Jab user dashboard par na ho, tab Notification bell ki jagah ya uske paas yeh dikhega) */}
+    {activeView !== "dashboard" ? (
+      <button
+        onClick={() => setActiveView("dashboard")}
+        className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold bg-blue-500/15 hover:bg-blue-500/25 text-blue-600 border border-blue-500/20 transition-all duration-200 cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95 min-h-[46px]"
+        title="Go to Dashboard"
+      >
+        <span>⬅️</span>
+        <span>Back</span>
+      </button>
+    ) : (
+      /* 🔔 Notification Button (Sirf Dashboard par dikhega) */
+      <div className="relative">
+        <button
+          onClick={() => setShowNotifications(!showNotifications)}
+          className="p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] relative cursor-pointer hover:bg-[var(--color-border)]/50 transition flex items-center justify-center text-base shadow-sm active:scale-95 min-h-[46px] min-w-[46px]"
+          aria-label="View Follow-up & Demo Alerts"
+        >
+          🔔
+          {totalUnreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center animate-pulse">
+              {totalUnreadCount}
             </span>
-            <h1 className="text-xl sm:text-2xl font-extrabold text-[var(--color-heading)] tracking-tight mt-1 truncate">
-              {activeView === "dashboard" && "My Dashboard"}
-              {activeView === "leads" && "My Generated Leads"}
-              {activeView === "kanban" && "📌 Manage Lead"}
-              {activeView === "calendar" && "📅 Follow-up & Meeting Calendar"}
-              {activeView === "lead-form" && "New Lead & Client Visit"}
-              {activeView === "invoice-form" && "Invoices & Installments"}
-            </h1>
-            <p className="text-[var(--color-body)] text-xs truncate">
-              Signed in as{" "}
-              <strong className="text-[var(--color-primary)]">
-                {username || userId}
-              </strong>
-            </p>
-          </div>
+          )}
+        </button>
 
-          <div className="flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto justify-end">
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="p-3 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] relative cursor-pointer hover:bg-[var(--color-border)]/50 transition flex items-center justify-center text-base shadow-sm active:scale-95 min-h-[46px] min-w-[46px]"
-                aria-label="View Follow-up & Demo Alerts"
-              >
-                🔔
-                {totalUnreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-extrabold w-5 h-5 rounded-full flex items-center justify-center animate-pulse">
-                    {totalUnreadCount}
-                  </span>
-                )}
-              </button>
-
-              <AnimatePresence>
-                {showNotifications && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="fixed top-20 right-2 w-80 max-w-[calc(100vw-16px)] sm:absolute sm:top-auto sm:right-0 sm:left-auto sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-[99999] max-h-[75vh] overflow-y-auto text-xs"
-                  >
-                    <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2.5">
-                      <strong className="text-[var(--color-heading)] font-bold">
-                        🔔 Notifications & Broadcasts
-                      </strong>
-                      <button
-                        onClick={() => setShowNotifications(false)}
-                        className="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-heading)] hover:bg-[var(--color-border)] transition cursor-pointer"
-                        title="Hide notifications"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    {broadcastNotifications.length > 0 && (
-                      <div className="space-y-2 mt-3">
-                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-600 block px-1">
-                          📢 Admin Announcements (
-                          {broadcastNotifications.length})
-                        </span>
-                        {broadcastNotifications.map((b) => (
-                          <div
-                            key={b._id}
-                            className={`p-3.5 rounded-2xl border space-y-1.5 transition ${
-                              b.priority === "urgent"
-                                ? "bg-red-500/10 border-red-500/30 text-red-600"
-                                : b.priority === "important"
-                                ? "bg-amber-500/10 border-amber-500/30 text-amber-600"
-                                : "bg-purple-500/10 border-purple-500/20 text-[var(--color-heading)]"
-                            }`}
-                          >
-                            <div className="flex justify-between items-center gap-2">
-                              <strong className="font-bold">
-                                📢 {b.title}
-                              </strong>
-                              <button
-                                onClick={(e) => handleClearBroadcast(b._id, e)}
-                                className="bg-[var(--color-card)] hover:bg-red-500 hover:text-white text-[var(--color-body)] border px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition shrink-0"
-                                title="Clear Announcement"
-                              >
-                                ✕ Clear
-                              </button>
-                            </div>
-                            <p className="text-[var(--color-body)] leading-relaxed">
-                              {b.message}
-                            </p>
-                            <span className="text-[9px] text-[var(--color-body)] block pt-0.5">
-                              {new Date(
-                                b.createdAt || Date.now(),
-                              ).toLocaleTimeString("en-IN", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* --- SECTION 2: TASK REMINDERS --- */}
-                    <div className="space-y-2 mt-3">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 block px-1">
-                        📋 Task Reminders ({notifications.length})
-                      </span>
-                      {notifications.length === 0 &&
-                      broadcastNotifications.length === 0 ? (
-                        <div className="py-8 text-center text-[var(--color-body)] space-y-1">
-                          <p className="text-sm">☕ All caught up!</p>
-                        </div>
-                      ) : (
-                        notifications.map((n) => {
-                          const targetLead = myLeads.find((l) =>
-                            n.message?.includes(l.instituteName),
-                          );
-
-                          const isPastDate =
-                            n.dueDate &&
-                            new Date(n.dueDate) <
-                              new Date().setHours(0, 0, 0, 0);
-
-                          return (
-                            <div
-                              key={n._id || Math.random()}
-                              
-                              className={`p-3.5 rounded-2xl border transition ${
-                                isPastDate
-                                  ? "bg-red-100 border-red-500 text-red-900"
-                                  : "bg-emerald-500/10 border-emerald-500/30 text-[var(--color-heading)]"
-                              }`}
-                            >
-                              <div className="flex justify-between items-center gap-2 mb-2">
-                                <strong className="font-bold text-sm truncate">
-                                  {n.title} {isPastDate && " (OVERDUE!)"}
-                                </strong>
-                                <span className="text-[10px] shrink-0">
-                                  {new Date(n.createdAt).toLocaleTimeString(
-                                    "en-IN",
-                                    { hour: "2-digit", minute: "2-digit" },
-                                  )}
-                                </span>
-                              </div>
-
-                              <p className="font-medium break-words leading-relaxed text-xs mb-3">
-                                {n.message}
-                              </p>
-
-                              {/* बटन सेक्शन में भी टेक्स्ट कलर का ध्यान रखें */}
-                              <div className="flex gap-2 border-t border-black/10 pt-2">
-                                {/* Call Now Button */}
-                                {targetLead && (
-                                  <button
-  type="button"
-  onClick={() => handleTrackedCall(targetLead)}
-  className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition"
->
-  📞 Call
-</button>
-                                  
-
-                                )}
-                                {/* Dismiss Button */}
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    try {
-                                      const token =
-                                        localStorage.getItem("token");
-                                      await fetch(
-                                        `${API_BASE}/api/salesperson/notifications/${n._id}/dismiss`,
-                                        {
-                                          method: "PUT",
-                                          headers: {
-                                            Authorization: `Bearer ${token}`,
-                                          },
-                                        },
-                                      );
-                                      setNotifications((prev) =>
-                                        prev.filter(
-                                          (item) => item._id !== n._id,
-                                        ),
-                                      );
-                                      toast.success("Dismissed");
-                                    } catch (err) {
-                                      toast.error("Error dismissing");
-                                    }
-                                  }}
-                                  className="text-[10px] bg-white/50 border border-black/10 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/80 transition"
-                                >
-                                  ✕ Dismiss
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-            {/* 🏆 POINTS BUTTON */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowPointsPopup((prev) => !prev)}
-                className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-600 border border-purple-500/20 transition-all duration-200 cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95 min-h-[46px]"
-              >
-                <span>🏆</span>
-
-                <span className="hidden sm:inline">
-                  Points
-                </span>
-
-                <span className="bg-purple-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
-                  {todayPoints.totalPoints}
-                </span>
-              </button>
-
-              {/* 🏆 POINTS POPUP */}
-              <AnimatePresence>
-                {showPointsPopup && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute top-full right-0 mt-2 w-80 max-w-[calc(100vw-20px)] bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-[99999]"
-                  >
-                    {/* Header */}
-                    <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
-                      <div>
-                        <h3 className="font-bold text-[var(--color-heading)]">
-                          🏆 Today's Points
-                        </h3>
-
-                        <p className="text-[10px] text-[var(--color-body)]">
-                          Daily Target: 100 Points
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowPointsPopup(false)}
-                        className="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-heading)] hover:bg-[var(--color-border)] transition"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    {/* Total Points */}
-                    <div className="mt-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 p-4 text-center">
-                      <div className="text-3xl font-extrabold text-purple-600">
-                        {todayPoints.totalPoints}
-                        <span className="text-sm text-[var(--color-body)]">
-                          {" "} / 100
-                        </span>
-                      </div>
-
-                      {todayPoints.targetAchieved ? (
-                        <p className="mt-1 text-xs font-bold text-emerald-600">
-                          ✅ Daily target achieved!
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-[var(--color-body)]">
-                          🎯{" "}
-                          {Math.max(
-                            100 - todayPoints.totalPoints,
-                            0
-                          )}{" "}
-                          points remaining
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Breakdown */}
-                    <div className="mt-4 space-y-2 text-xs text-[var(--color-heading)]">
-
-                      <div className="flex justify-between">
-                        <span>🆕 Leads Created</span>
-                        <strong>
-                          {todayPoints.breakdown?.leadsCreated || 0}
-                        </strong>
-                      </div>
-
-                      <div className="flex justify-between">
-                        <span>🔄 Revisits</span>
-                        <strong>
-                          {todayPoints.breakdown?.revisits || 0}
-                        </strong>
-                      </div>
-
-                      <div className="flex justify-between">
-                        <span>🎥 Demos Done</span>
-                        <strong>
-                          {todayPoints.breakdown?.demosDone || 0}
-                        </strong>
-                      </div>
-
-                      <div className="flex justify-between">
-                        <span>🤝 Deals Closed</span>
-                        <strong>
-                          {todayPoints.breakdown?.dealsClosed || 0}
-                        </strong>
-                      </div>
-
-                      <div className="flex justify-between">
-                        <span>📞 Calls Connected</span>
-                        <strong>
-                          {todayPoints.breakdown?.callsConnected || 0}
-                        </strong>
-                      </div>
-
-                      <div className="flex justify-between">
-                        <span>📲 Dial Calls</span>
-                        <strong>
-                          {todayPoints.breakdown?.dialCalls || 0}
-                        </strong>
-                      </div>
-
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-
-            <button
-              onClick={() => setShowLogoutModal(true)}
-              className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold bg-red-500/15 hover:bg-red-500/25 text-red-600 border border-red-500/20 transition-all duration-200 cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95 min-h-[46px]"
+        <AnimatePresence>
+          {showNotifications && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className="fixed top-20 right-2 w-80 max-w-[calc(100vw-16px)] sm:absolute sm:top-auto sm:right-0 sm:left-auto sm:w-96 bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-4 z-[99999] max-h-[75vh] overflow-y-auto text-xs"
             >
-              Logout
-            </button>
-          </div>
-        </div>
+              <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-2.5">
+                <strong className="text-[var(--color-heading)] font-bold">
+                  🔔 Notifications & Broadcasts
+                </strong>
+                <button
+                  onClick={() => setShowNotifications(false)}
+                  className="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-heading)] hover:bg-[var(--color-border)] transition cursor-pointer"
+                  title="Hide notifications"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {broadcastNotifications.length > 0 && (
+                <div className="space-y-2 mt-3">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-600 block px-1">
+                    📢 Admin Announcements ({broadcastNotifications.length})
+                  </span>
+                  {broadcastNotifications.map((b) => (
+                    <div
+                      key={b._id}
+                      className={`p-3.5 rounded-2xl border space-y-1.5 transition ${
+                        b.priority === "urgent"
+                          ? "bg-red-500/10 border-red-500/30 text-red-600"
+                          : b.priority === "important"
+                          ? "bg-amber-500/10 border-amber-500/30 text-amber-600"
+                          : "bg-purple-500/10 border-purple-500/20 text-[var(--color-heading)]"
+                      }`}
+                    >
+                      <div className="flex justify-between items-center gap-2">
+                        <strong className="font-bold">📢 {b.title}</strong>
+                        <button
+                          onClick={(e) => handleClearBroadcast(b._id, e)}
+                          className="bg-[var(--color-card)] hover:bg-red-500 hover:text-white text-[var(--color-body)] border px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition shrink-0"
+                          title="Clear Announcement"
+                        >
+                          ✕ Clear
+                        </button>
+                      </div>
+                      <p className="text-[var(--color-body)] leading-relaxed">
+                        {b.message}
+                      </p>
+                      <span className="text-[9px] text-[var(--color-body)] block pt-0.5">
+                        {new Date(
+                          b.createdAt || Date.now(),
+                        ).toLocaleTimeString("en-IN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* --- SECTION 2: TASK REMINDERS --- */}
+              <div className="space-y-2 mt-3">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 block px-1">
+                  📋 Task Reminders ({notifications.length})
+                </span>
+                {notifications.length === 0 &&
+                broadcastNotifications.length === 0 ? (
+                  <div className="py-8 text-center text-[var(--color-body)] space-y-1">
+                    <p className="text-sm">☕ All caught up!</p>
+                  </div>
+                ) : (
+                  notifications.map((n) => {
+                    const targetLead = myLeads.find((l) =>
+                      n.message?.includes(l.instituteName),
+                    );
+
+                    const isPastDate =
+                      n.dueDate &&
+                      new Date(n.dueDate) <
+                        new Date().setHours(0, 0, 0, 0);
+
+                    return (
+                      <div
+                        key={n._id || Math.random()}
+                        className={`p-3.5 rounded-2xl border transition ${
+                          isPastDate
+                            ? "bg-red-100 border-red-500 text-red-900"
+                            : "bg-emerald-500/10 border-emerald-500/30 text-[var(--color-heading)]"
+                        }`}
+                      >
+                        <div className="flex justify-between items-center gap-2 mb-2">
+                          <strong className="font-bold text-sm truncate">
+                            {n.title} {isPastDate && " (OVERDUE!)"}
+                          </strong>
+                          <span className="text-[10px] shrink-0">
+                            {new Date(n.createdAt).toLocaleTimeString(
+                              "en-IN",
+                              { hour: "2-digit", minute: "2-digit" },
+                            )}
+                          </span>
+                        </div>
+
+                        <p className="font-medium break-words leading-relaxed text-xs mb-3">
+                          {n.message}
+                        </p>
+
+                        <div className="flex gap-2 border-t border-black/10 pt-2">
+                          {targetLead && (
+                            <button
+                              type="button"
+                              onClick={() => handleTrackedCall(targetLead)}
+                              className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition"
+                            >
+                              📞 Call
+                            </button>
+                          )}
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                const token =
+                                  localStorage.getItem("token");
+                                await fetch(
+                                  `${API_BASE}/api/salesperson/notifications/${n._id}/dismiss`,
+                                  {
+                                    method: "PUT",
+                                    headers: {
+                                      Authorization: `Bearer ${token}`,
+                                    },
+                                  },
+                                );
+                                setNotifications((prev) =>
+                                  prev.filter(
+                                    (item) => item._id !== n._id,
+                                  ),
+                                );
+                                toast.success("Dismissed");
+                              } catch (err) {
+                                toast.error("Error dismissing");
+                              }
+                            }}
+                            className="text-[10px] bg-white/50 border border-black/10 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/80 transition"
+                          >
+                            ✕ Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    )}
+
+    {/* 🏆 POINTS BUTTON */}
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setShowPointsPopup((prev) => !prev)}
+        className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold bg-purple-500/15 hover:bg-purple-500/25 text-purple-600 border border-purple-500/20 transition-all duration-200 cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95 min-h-[46px]"
+      >
+        <span>🏆</span>
+        <span className="hidden sm:inline">Points</span>
+        <span className="bg-purple-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">
+          {todayPoints.totalPoints}
+        </span>
+      </button>
+
+      {/* 🏆 POINTS POPUP */}
+      <AnimatePresence>
+        {showPointsPopup && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          >
+            <div 
+              className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl shadow-2xl p-5 w-full max-w-sm space-y-4 relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-[var(--color-border)] pb-3">
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base text-[var(--color-heading)]">
+                    🏆 Today's Points
+                  </h3>
+                  <p className="text-[10px] text-[var(--color-body)]">
+                    Daily Target: 100 Points
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPointsPopup(false)}
+                  className="w-7 h-7 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-xs text-[var(--color-heading)] hover:bg-[var(--color-border)] transition cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Total Points */}
+              <div className="rounded-2xl bg-purple-500/10 border border-purple-500/20 p-4 text-center">
+                <div className="text-3xl font-extrabold text-purple-600">
+                  {todayPoints.totalPoints}
+                  <span className="text-sm text-[var(--color-body)]"> / 100</span>
+                </div>
+
+                {todayPoints.targetAchieved ? (
+                  <p className="mt-1 text-xs font-bold text-emerald-600">
+                    ✅ Daily target inspired!
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-[var(--color-body)]">
+                    🎯 {Math.max(100 - todayPoints.totalPoints, 0)} points remaining
+                  </p>
+                )}
+              </div>
+
+              {/* Breakdown */}
+              <div className="space-y-2 text-xs text-[var(--color-heading)]">
+                <div className="flex justify-between">
+                  <span>🆕 Leads Created</span>
+                  <strong>{todayPoints.breakdown?.leadsCreated || 0}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>🔄 Revisits</span>
+                  <strong>{todayPoints.breakdown?.revisits || 0}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>🎥 Demos Done</span>
+                  <strong>{todayPoints.breakdown?.demosDone || 0}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>🤝 Deals Closed</span>
+                  <strong>{todayPoints.breakdown?.dealsClosed || 0}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>📞 Calls Connected</span>
+                  <strong>{todayPoints.breakdown?.callsConnected || 0}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>📲 Dial Calls</span>
+                  <strong>{todayPoints.breakdown?.dialCalls || 0}</strong>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+
+    <button
+      onClick={() => setShowLogoutModal(true)}
+      className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold bg-red-500/15 hover:bg-red-500/25 text-red-600 border border-red-500/20 transition-all duration-200 cursor-pointer flex items-center gap-2 shadow-sm shrink-0 active:scale-95 min-h-[46px]"
+    >
+      Logout
+    </button>
+  </div>
+</div>
+
 
         {/* --- ⏱️ DAY START / END ATTENDANCE & SHIFT CONTROL BAR --- */}
         <div className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 sm:p-6 md:p-7 rounded-3xl shadow-sm flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
@@ -5181,7 +5199,7 @@ if (leadFilter === "telecaller-assigned") {
                     <div>
                       <div className="flex justify-between items-center mb-2">
                         <label className="font-medium text-[var(--color-heading)]">
-                          Pincode (Type or Search) *
+                          Pincode (Type or Search) 
                         </label>
                         {fetchingDetails && (
                           <span className="text-xs text-[var(--color-primary)] animate-pulse">
@@ -5194,7 +5212,7 @@ if (leadFilter === "telecaller-assigned") {
                         name="pincode"
                         list="leadPincodeList"
                         maxLength={6}
-                        required
+                        // required
                         value={leadFormData.pincode}
                         onChange={handleLeadChange}
                         className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3.5 text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
@@ -5608,14 +5626,14 @@ if (leadFilter === "telecaller-assigned") {
                         </div>
                         <div>
                           <label className="block font-medium mb-2 text-[var(--color-heading)]">
-                            Pincode *
+                            Pincode 
                           </label>
                           <input
                             type="text"
                             name="pincode"
                             list="invoicePincodeList"
                             maxLength={6}
-                            required
+              
                             value={formData.pincode}
                             onChange={handleChange}
                             className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-3.5 text-[var(--color-heading)]"
