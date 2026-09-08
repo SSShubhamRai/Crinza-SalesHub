@@ -7,13 +7,16 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { 
     type: String, 
-    enum: ['salesperson', 'accountant', 'boss', 'admin', 'technical', 'telecaller'], // 👈 Yahan 'telecaller' add kar diya gaya hai
+    enum: ['salesperson', 'accountant', 'boss', 'admin', 'technical', 'telecaller'],
     default: 'salesperson',
     index: true
   },
   resetPasswordToken: { type: String },
   resetPasswordExpires: { type: Date },
   
+  // 🔔 Push Notifications ke liye FCM Token field added
+  fcmToken: { type: String, default: null },
+
   // 🌟 Biometric / WebAuthn Devices Array for Fingerprint & Face ID
   devices: [{
     credentialID: Buffer,

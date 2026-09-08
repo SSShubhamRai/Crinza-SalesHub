@@ -1,12 +1,14 @@
-// src/App.jsx
+
 import React, { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { App as CapacitorApp } from '@capacitor/app';
+import { PushNotifications } from '@capacitor/push-notifications'; // 👈 Push notifications plugin import kiya gaya
+import axios from 'axios'; // Backend par token bhejne ke liye
 
 import Login from './components/Login';
 import SalespersonForm from './components/SalespersonForm';
-import TelecallerForm from './components/TelecallerForm'; // 👈 TelecallerForm component import kiya gaya
+import TelecallerForm from './components/TelecallerForm'; 
 import TechnicalDashboard from './components/TechnicalDashboard';
 import AccountantPanel from './components/accountant/AccountantPanel';
 import AdminDashboard from './components/admin/AdminDashboard';
@@ -18,6 +20,11 @@ function App() {
 
   const navigate = useNavigate();
   const location = useLocation();
+
+  // API Base URL config
+  const API_BASE = import.meta.env.PROD
+    ? 'https://crinza-saleshub.onrender.com'
+    : 'http://localhost:5000';
 
   // 🌟 Global Dark / Light Theme State Management
   const [isDark, setIsDark] = useState(() => {
@@ -51,19 +58,75 @@ function App() {
     }
   }, []);
 
+  // 🌟 Capacitor Push Notifications Setup (Jab user logged in ho)
+  useEffect(() => {
+    if (!token) return;
+
+    // Push notification permissions request karein aur listeners setup karein
+    const setupPushNotifications = async () => {
+      let permStatus = await PushNotifications.checkPermissions();
+
+      if (permStatus.receive === 'prompt') {
+        permStatus = await PushNotifications.requestPermissions();
+      }
+
+      if (permStatus.receive !== 'granted') {
+        console.log('Push notification permission not granted!');
+        return;
+      }
+
+      // FCM registration
+      await PushNotifications.register();
+
+      // Jab token successfully mil jaye
+      PushNotifications.addListener('registration', async (fcmToken) => {
+        console.log('FCM Token received: ', fcmToken.value);
+        try {
+          // Token ko apne backend par save karwayein taaki notifications target ki ja sakein
+          await axios.put(
+            `${API_BASE}/api/auth/update-fcm-token`, // Ensure your backend has this route, or save it accordingly
+            { fcmToken: fcmToken.value },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+        } catch (err) {
+          console.error('Failed to sync FCM token to backend:', err);
+        }
+      });
+
+      PushNotifications.addListener('registrationError', (error) => {
+        console.error('Error on push registration: ', JSON.stringify(error));
+      });
+
+      // App jab foreground mein ho tab notification receive ho
+      PushNotifications.addListener('pushNotificationReceived', (notification) => {
+        console.log('Push received in foreground: ', JSON.stringify(notification));
+      });
+
+      // Jab user notification par click kare
+      PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
+        console.log('Push action performed: ', JSON.stringify(notification));
+        // Aap yahan data ke mutabiq navigation handle kar sakte hain
+      });
+    };
+
+    setupPushNotifications();
+
+    // Cleanup listeners on unmount / logout
+    return () => {
+      PushNotifications.removeAllListeners();
+    };
+  }, [token, API_BASE]);
+
   // 🌟 Capacitor Hardware Back Button Handler
   useEffect(() => {
     const handleBackButton = CapacitorApp.addListener(
       'backButton',
       ({ canGoBack }) => {
-        // Login/root page → exit app
         if (!token || location.pathname === '/') {
           CapacitorApp.exitApp();
         } else if (canGoBack) {
-          // Go to previous route
           navigate(-1);
         } else {
-          // No previous route → exit app
           CapacitorApp.exitApp();
         }
       }
@@ -127,14 +190,9 @@ function App() {
         <TechnicalDashboard
           userId={userId}
           onLogout={handleLogout}
-          API_BASE={
-            import.meta.env.PROD
-              ? 'https://crinza-saleshub.onrender.com'
-              : 'http://localhost:5000'
-          }
+          API_BASE={API_BASE}
         />
       ) : role === 'telecaller' ? (
-        // 👈 Telecaller role ke liye TelecallerForm render kiya gaya hai
         <TelecallerForm
           userId={userId}
           username={userId}
