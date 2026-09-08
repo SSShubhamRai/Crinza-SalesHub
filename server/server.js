@@ -586,7 +586,6 @@ io.on("connection", (socket) => {
     activeUserSessions[userId] = socket.id;
     console.log(`👤 Active Session Registered for: ${userId} (${socket.id})`);
   });
-
 socket.on("update_location", async (data) => {
   try {
     const { salespersonId, latitude, longitude } = data;
@@ -606,14 +605,14 @@ socket.on("update_location", async (data) => {
 
     if (!activeSession) return;
 
-    // Get the last recorded GPS checkpoint or session start location
     const lastLocationLog = await LocationLog.findOne({
       salespersonId,
       date: currentDate,
     }).sort({ timestamp: -1 });
 
     let incrementalDist = 0;
-    const MIN_MOVEMENT_THRESHOLD = 0.02; // Ignore micro-jitters under 20 meters
+    const MIN_MOVEMENT_THRESHOLD = 0.015; // 15 meters threshold (chote moves capture karne ke liye)
+    const MAX_JUMP_THRESHOLD = 3.0;       // Max 3 km per ping limit (teleportation block)
 
     if (lastLocationLog) {
       const prevLat = Number(lastLocationLog.latitude);
@@ -622,15 +621,14 @@ socket.on("update_location", async (data) => {
       const straightLineDist = calculateDistance(prevLat, prevLng, lat, lng);
 
       if (straightLineDist >= MIN_MOVEMENT_THRESHOLD) {
-        // 🌟 Use OSRM for actual road distance calculation between pings
         incrementalDist = await getActualRoadDistance(prevLat, prevLng, lat, lng);
       }
     }
 
-    // Update session total distance safely
-    if (incrementalDist > 0 && incrementalDist < 50) { // Filter out impossible teleports (>50km in a single ping)
+    // Safe increment check
+    if (incrementalDist > 0 && incrementalDist <= MAX_JUMP_THRESHOLD) {
       activeSession.totalDistanceKm = Number(((activeSession.totalDistanceKm || 0) + incrementalDist).toFixed(3));
-      
+
       if (!Array.isArray(activeSession.distancePoints)) {
         activeSession.distancePoints = [];
       }
@@ -2541,7 +2539,7 @@ const handleInvoiceSubmission = async (req, res) => {
     await newInvoice.save();
 
     // ============================================================
-    // 📍 INVOICE DISTANCE CALCULATION
+    // 📍 INVOICE DISTANCE CALCULATION (SAFE & SECURE)
     // ============================================================
 
     // Make sure distancePoints exists
@@ -2565,12 +2563,17 @@ const handleInvoiceSubmission = async (req, res) => {
     // ------------------------------------------------------------
 
     if (previousPoint) {
-      distanceFromPreviousKm = calculateDistance(
+      const rawDist = calculateDistance(
         Number(previousPoint.latitude),
         Number(previousPoint.longitude),
         invoiceLatitude,
         invoiceLongitude
       );
+
+      // 🛡️ Guardrail: Ignore micro-drifts under 20 meters and block fake jumps over 50 km
+      if (rawDist >= 0.02 && rawDist <= 50) {
+        distanceFromPreviousKm = rawDist;
+      }
     }
 
     // ------------------------------------------------------------
@@ -3635,29 +3638,28 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
     let distanceFromPreviousKm = 0;
 
     // ============================================================
-    // 🚗 LAST ACTIVITY → DAY END (USING OSRM ACTUAL ROAD DISTANCE)
+    // 🚗 LAST ACTIVITY → DAY END (WITH GUARDRAIL)
     // ============================================================
 
     if (lastPoint) {
-      const previousLatitude = Number(
-        lastPoint.latitude
-      );
-
-      const previousLongitude = Number(
-        lastPoint.longitude
-      );
+      const previousLatitude = Number(lastPoint.latitude);
+      const previousLongitude = Number(lastPoint.longitude);
 
       if (
         Number.isFinite(previousLatitude) &&
         Number.isFinite(previousLongitude)
       ) {
-        // 🌟 Haversine ki jagah OSRM Actual Road Distance call kiya
-        distanceFromPreviousKm = await getActualRoadDistance(
+        const rawDist = await getActualRoadDistance(
           previousLatitude,
           previousLongitude,
           endLatitude,
           endLongitude
         );
+
+        // 🛡️ Guardrail: Ignore micro-drifts under 20 meters and block fake jumps over 50 km
+        if (rawDist >= 0.02 && rawDist <= 50) {
+          distanceFromPreviousKm = rawDist;
+        }
       }
     }
 
@@ -3690,12 +3692,10 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
 
       timestamp: endTimeDate,
 
-      // Last activity → Day End (Actual Road Distance)
       distanceFromPreviousKm: Number(
         distanceFromPreviousKm.toFixed(3)
       ),
 
-      // Complete distance till Day End
       totalDistanceKm: Number(
         finalTotalDistance.toFixed(3)
       ),
@@ -3801,13 +3801,11 @@ app.post("/api/salesperson/end-day", verifyToken, async (req, res) => {
         totalCollected:
           totalCollectedToday,
 
-        // 📏 Final complete road distance
         totalDistanceKm:
           Number(
             session.totalDistanceKm.toFixed(3)
           ),
 
-        // 📏 Only last road segment distance
         distanceAddedKm:
           Number(
             distanceFromPreviousKm.toFixed(3)
@@ -4119,15 +4117,13 @@ app.post(
         );
 
         // ============================================================
-        // 📍 REVISIT DISTANCE CALCULATION
+        // 📍 REVISIT CHECKPOINT & SAFE DISTANCE SANITIZATION
         // ============================================================
 
-        // Make sure distancePoints exists
         if (!Array.isArray(session.distancePoints)) {
           session.distancePoints = [];
         }
 
-        // Previous activity point
         const previousPoint =
           session.distancePoints[
             session.distancePoints.length - 1
@@ -4135,51 +4131,42 @@ app.post(
 
         let distanceFromPreviousKm = 0;
 
-        // Calculate previous activity → Revisit
         if (previousPoint) {
-          distanceFromPreviousKm = calculateDistance(
+          const rawDist = calculateDistance(
             Number(previousPoint.latitude),
             Number(previousPoint.longitude),
             leadLatitude,
             leadLongitude
           );
+
+          // 🛡️ Guardrail: Ignore micro-drifts under 20 meters and block fake jumps over 50 km
+          if (rawDist >= 0.02 && rawDist <= 50) {
+            distanceFromPreviousKm = rawDist;
+          }
         }
 
-        // Existing total distance
         const previousTotal =
           Number(session.totalDistanceKm) || 0;
 
-        // New total distance
-        const newTotalDistance =
-          previousTotal + distanceFromPreviousKm;
-
-        // ============================================================
-        // 📍 SAVE REVISIT AS DISTANCE POINT
-        // ============================================================
+        // Agar socket ne already distance track kar liya hai, toh sirf check karo ki 
+        // agar extra segment banta hai toh hi judega, warna double count rokne ke liye 
+        // hum session.totalDistanceKm ko as-is ya safe increment ke sath rakhenge.
+        const newTotalDistance = previousTotal + distanceFromPreviousKm;
 
         session.distancePoints.push({
           type: "REVISIT",
-
-          // Link point to existing Lead
           referenceId: existingLead._id.toString(),
-
           latitude: leadLatitude,
           longitude: leadLongitude,
-
           timestamp: now,
-
-          // Previous activity → Revisit
           distanceFromPreviousKm: Number(
             distanceFromPreviousKm.toFixed(3)
           ),
-
-          // Total distance till Revisit
           totalDistanceKm: Number(
             newTotalDistance.toFixed(3)
           ),
         });
 
-        // Update total distance
         session.totalDistanceKm = Number(
           newTotalDistance.toFixed(3)
         );
@@ -4217,23 +4204,13 @@ app.post(
           );
         }
 
-        // ============================================================
-        // ✅ REVISIT RESPONSE
-        // ============================================================
-
         return res.status(200).json({
           success: true,
-
           message: `Visit #${existingLead.visitCount} logged successfully for existing lead!`,
-
           lead: existingLead,
-
-          // Distance added by this Revisit
           distanceAddedKm: Number(
             distanceFromPreviousKm.toFixed(3)
           ),
-
-          // Total distance today
           totalDistanceKm: Number(
             session.totalDistanceKm.toFixed(3)
           ),
@@ -4247,58 +4224,39 @@ app.post(
       const newLead = new Lead({
         instituteName:
           instituteName || "Unknown Institute",
-
         contactPerson:
           contactPerson || "N/A",
-
         mobileNo: mobileNo.trim(),
-
         email: email || "",
-
         address: address || "",
-
         pincode: pincode || "",
-
         city,
-
         state,
-
         notes: notes || "",
-
         meetingPhoto: normalizedPath,
-
-        // 📍 Lead location
         latitude: leadLatitude,
         longitude: leadLongitude,
-
         leadDate: currentDate,
         leadTime: currentTime,
-
         visitCount: 1,
-
         followUpDate: followUpDate || null,
-
         followUpTime:
           followUpTime || "",
-
         followUpAction:
           followUpAction || "Call",
-
         salespersonId: req.user.userId,
       });
 
       await newLead.save();
 
       // ============================================================
-      // 📍 NEW LEAD DISTANCE CALCULATION
+      // 📍 NEW LEAD CHECKPOINT & SAFE DISTANCE SANITIZATION
       // ============================================================
 
-      // Make sure distancePoints exists
       if (!Array.isArray(session.distancePoints)) {
         session.distancePoints = [];
       }
 
-      // Previous activity point
       const previousPoint =
         session.distancePoints[
           session.distancePoints.length - 1
@@ -4306,51 +4264,39 @@ app.post(
 
       let distanceFromPreviousKm = 0;
 
-      // Calculate previous activity → New Lead
       if (previousPoint) {
-        distanceFromPreviousKm = calculateDistance(
+        const rawDist = calculateDistance(
           Number(previousPoint.latitude),
           Number(previousPoint.longitude),
           leadLatitude,
           leadLongitude
         );
+
+        if (rawDist >= 0.02 && rawDist <= 50) {
+          distanceFromPreviousKm = rawDist;
+        }
       }
 
-      // Existing total
       const previousTotal =
         Number(session.totalDistanceKm) || 0;
 
-      // New total
       const newTotalDistance =
         previousTotal + distanceFromPreviousKm;
 
-      // ============================================================
-      // 📍 SAVE NEW LEAD AS DISTANCE POINT
-      // ============================================================
-
       session.distancePoints.push({
         type: "LEAD",
-
-        // Link point to Lead
         referenceId: newLead._id.toString(),
-
         latitude: leadLatitude,
         longitude: leadLongitude,
-
         timestamp: now,
-
-        // Previous activity → Lead
         distanceFromPreviousKm: Number(
           distanceFromPreviousKm.toFixed(3)
         ),
-
-        // Total distance till Lead
         totalDistanceKm: Number(
           newTotalDistance.toFixed(3)
         ),
       });
 
-      // Update session total
       session.totalDistanceKm = Number(
         newTotalDistance.toFixed(3)
       );
@@ -4377,11 +4323,9 @@ app.post(
           {
             $set: {
               dueDate: followUpDate,
-
               notes:
                 notes ||
                 `Follow-up scheduled: ${followUpAction}`,
-
               taskType: followUpAction
                 ?.toLowerCase()
                 .includes("demo")
@@ -4396,24 +4340,14 @@ app.post(
         );
       }
 
-      // ============================================================
-      // ✅ NEW LEAD RESPONSE
-      // ============================================================
-
       return res.status(201).json({
         success: true,
-
         message:
           "New lead and visit recorded successfully!",
-
         lead: newLead,
-
-        // Distance added by this Lead
         distanceAddedKm: Number(
           distanceFromPreviousKm.toFixed(3)
         ),
-
-        // Total distance today
         totalDistanceKm: Number(
           session.totalDistanceKm.toFixed(3)
         ),
@@ -4813,7 +4747,6 @@ app.post("/api/auth/webauthn/login-verify", async (req, res) => {
 // =========================================================================
 const cron = require('node-cron'); // Optional: Agar node-cron package use karna chahein, ya phir simple setInterval
 
-// Simple & Reliable Hourly/Minute Checker for 11:00 PM IST
 setInterval(async () => {
   try {
     const now = new Date();
@@ -4821,45 +4754,77 @@ setInterval(async () => {
     const istTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
     const [currentHour, currentMinute] = istTimeStr.split(':').map(Number);
 
-    // Agar raat ke 11:00 PM (23:00) se lekar 11:05 PM ke beech ka samay hai
-    if (currentHour === 23 && currentMinute <= 5) {
+    // 🌟 FIX: Agar raat ke 11:00 PM (23:00) ya uske baad ka koi bhi samay hai (e.g. 23:00, 23:05, 23:10...)
+    if (currentHour >= 23) {
       const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 
-      // Sare active STARTED sessions dhoondho jo aaj ya usse pehle ke hain
+      // Aaj ke saare active STARTED sessions dhoondho
       const activeSessions = await DaySession.find({
         status: "STARTED",
-        date: { $lte: today }
+        date: today
       });
 
       for (const session of activeSessions) {
-        const endTimeDate = new Date(); // Auto end time (11:00 PM approx)
+        const endTimeDate = new Date(); // Auto end time
 
-        // Session ke start hone se lekar 11:00 PM tak ke logs fetch karein
-        const routeLogs = await LocationLog.find({
-          salespersonId: session.salespersonId,
-          date: session.date,
-          timestamp: {
-            $gte: new Date(session.startTime),
-            $lte: endTimeDate
+        let finalSegmentDist = 0;
+        if (session.distancePoints && session.distancePoints.length > 0) {
+          const lastPoint = session.distancePoints[session.distancePoints.length - 1];
+          
+          const lastLog = await LocationLog.findOne({
+            salespersonId: session.salespersonId,
+            date: session.date,
+          }).sort({ timestamp: -1 });
+
+          if (lastLog) {
+            const rawDist = await getActualRoadDistance(
+              Number(lastPoint.latitude),
+              Number(lastPoint.longitude),
+              Number(lastLog.latitude),
+              Number(lastLog.longitude)
+            );
+
+            if (rawDist >= 0.02 && rawDist <= 50) {
+              finalSegmentDist = rawDist;
+            }
           }
-        }).sort({ timestamp: 1 });
+        }
 
-        // Distance calculate karein
-        const computedDistance = calculateValidDistance(routeLogs);
+        const previousTotal = Number(session.totalDistanceKm) || 0;
+        const autoEndedTotalDistance = previousTotal + finalSegmentDist;
+
+        if (!Array.isArray(session.distancePoints)) {
+          session.distancePoints = [];
+        }
+
+        const lastKnownLat = session.distancePoints.length > 0 ? session.distancePoints[session.distancePoints.length - 1].latitude : 0;
+        const lastKnownLng = session.distancePoints.length > 0 ? session.distancePoints[session.distancePoints.length - 1].longitude : 0;
+
+        session.distancePoints.push({
+          type: "END",
+          referenceId: null,
+          latitude: lastKnownLat,
+          longitude: lastKnownLng,
+          timestamp: endTimeDate,
+          distanceFromPreviousKm: Number(finalSegmentDist.toFixed(3)),
+          totalDistanceKm: Number(autoEndedTotalDistance.toFixed(3))
+        });
 
         // Session ko ENDED mark kar do
         session.status = "ENDED";
         session.endTime = endTimeDate;
-        session.totalDistanceKm = computedDistance;
+        session.totalDistanceKm = Number(autoEndedTotalDistance.toFixed(3));
+        
         await session.save();
 
-        console.log(`🌙 Auto-Ended Shift at 11:00 PM for Salesperson: ${session.salespersonId} | Total Distance: ${computedDistance} km`);
+        console.log(`🌙 Auto-Ended Shift (Night Job) for Salesperson: ${session.salespersonId} | Total Distance: ${session.totalDistanceKm} km`);
       }
     }
   } catch (err) {
     console.error("🔥 Auto-End Day Job Error:", err.message);
   }
-}, 5 * 60 * 1000); // Har 5 minute mein ek baar check karega taaki 11:00 PM miss na ho
+}, 5 * 60 * 1000); // Har 5 minute mein check karega
+
 
 
 // =========================================================================

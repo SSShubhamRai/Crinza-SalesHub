@@ -56,8 +56,8 @@ public class CallStateReceiver extends BroadcastReceiver {
             wasCalling = true;
             callStartTime = System.currentTimeMillis();
 
+            // 🌟 Context hata diya gaya hai
             CallRecordingPlugin.notifyCallState(
-                    context,
                     "connected"
             );
 
@@ -80,9 +80,8 @@ public class CallStateReceiver extends BroadcastReceiver {
                 callStartTime = 0;
             }
 
-            // Notify plugin with exact duration
+            // 🌟 Context hata diya gaya hai, ab sirf state aur duration pass ho raha hai
             CallRecordingPlugin.notifyCallStateWithDuration(
-                    context,
                     "ended",
                     durationSeconds
             );
