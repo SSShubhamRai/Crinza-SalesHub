@@ -345,14 +345,15 @@ router.put("/leads/:id", verifyToken, upload.single("meetingPhoto"), async (req,
   try {
     const { leadStatus, demoStatus, demoCompletedAt, demoDoneDate, notes, followUpDate, followUpTime, followUpAction } = req.body;
     
-    // 1. Existing lead ko find karein
+    // 1. Find existing lead
     const lead = await Lead.findById(req.params.id);
     if (!lead) return res.status(404).json({ message: "Lead not found" });
 
-    // 🌟 2. Check karein ki kya pehle se demo completed tha ya abhi naya complete hua hai
-    const wasAlreadyCompleted = lead.demoStatus === "Completed";
+    // 🌟 2. Normalize and check if it's newly completed (case-insensitive)
+    const isNewDemoCompleted = demoStatus && demoStatus.toLowerCase() === "completed";
+    const wasAlreadyCompleted = lead.demoStatus && lead.demoStatus.toLowerCase() === "completed";
 
-    // 3. Update fields map karein
+    // 3. Map update fields
     const updateFields = {};
     if (leadStatus) updateFields.leadStatus = leadStatus;
     if (demoStatus) updateFields.demoStatus = demoStatus;
@@ -361,25 +362,25 @@ router.put("/leads/:id", verifyToken, upload.single("meetingPhoto"), async (req,
     if (followUpTime) updateFields.followUpTime = followUpTime;
     if (followUpAction) updateFields.followUpAction = followUpAction;
 
-    // 4. Agar Demo Completed hai, toh user ki select ki hui date save karein
-    if (demoStatus === "Completed") {
+    // 4. If Demo Completed, save the selected date
+    if (isNewDemoCompleted) {
       updateFields.demoCompletedAt = demoCompletedAt || demoDoneDate || new Date();
     }
 
-    // 5. Agar meeting photo upload hui hai
+    // 5. If a meeting photo was uploaded
     if (req.file) {
       updateFields.meetingPhoto = req.file.path;
     }
 
-    // 6. Database update execute karein
+    // 6. Execute database update
     const updatedLead = await Lead.findByIdAndUpdate(
       req.params.id,
       { $set: updateFields },
       { new: true }
     );
 
-    // 🌟 7. Agar pehle completed nahi tha aur ab successfully "Completed" ho gaya, toh points add karein
-    if (demoStatus === "Completed" && !wasAlreadyCompleted) {
+    // 🌟 7. If it wasn't completed before and is now completed, add points!
+    if (isNewDemoCompleted && !wasAlreadyCompleted) {
       const targetDate = updateFields.demoCompletedAt 
         ? new Date(updateFields.demoCompletedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) 
         : undefined;
@@ -392,6 +393,8 @@ router.put("/leads/:id", verifyToken, upload.single("meetingPhoto"), async (req,
     res.status(500).json({ message: "Failed to update lead", error: err.message });
   }
 });
+
+
 router.get("/tasks", verifyToken, async (req, res) => {
   try {
     const tasks = await Task.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 });
