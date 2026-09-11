@@ -3721,19 +3721,33 @@ const handleUpdateLeadStatus = async (
       </div>
 
       {/* DYNAMIC BREAKDOWN CARDS (Incoming, Outgoing, Missed, Rejected etc.) */}
-      {callAnalytics.breakdown && callAnalytics.breakdown.map((item, index) => (
-        <div key={index} className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-          <p className="text-xs text-[var(--color-body)] capitalize">
-            {item._id ? item._id.toLowerCase() : "Unknown"} Calls
-          </p>
-          <p className="text-2xl font-bold mt-1 text-[var(--color-heading)]">
-            {item.count}
-          </p>
-          <p className="text-[11px] text-[var(--color-body)] mt-0.5">
-            {formatCallDuration(item.totalDuration || 0)}
-          </p>
-        </div>
-      ))}
+      {/* DYNAMIC BREAKDOWN CARDS */}
+{callAnalytics.breakdown && callAnalytics.breakdown.map((item, index) => {
+  // 🌟 Status heading ko clean aur user-friendly banane ke liye mapping
+  let displayTitle = item._id ? item._id.toLowerCase() : "unknown";
+  if (displayTitle === "ended" || displayTitle === "connected") {
+    displayTitle = "Connected Calls";
+  } else if (displayTitle === "not_connected" || displayTitle === "not connected") {
+    displayTitle = "Not Connected Calls";
+  } else {
+    displayTitle = `${displayTitle} Calls`;
+  }
+
+  return (
+    <div key={index} className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+      <p className="text-xs text-[var(--color-body)] capitalize font-semibold">
+        {displayTitle}
+      </p>
+      <p className="text-2xl font-bold mt-1 text-[var(--color-heading)]">
+        {item.count}
+      </p>
+      <p className="text-[11px] text-[var(--color-body)] mt-0.5">
+        {formatCallDuration(item.totalDuration || 0)}
+      </p>
+    </div>
+  );
+})}
+
 
     </div>
   </>

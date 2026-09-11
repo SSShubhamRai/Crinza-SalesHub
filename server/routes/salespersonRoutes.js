@@ -855,6 +855,16 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
           recordingConsent: false,
         });
 
+        // 🌟 ADDED: Increment points for synced calls
+        try {
+          await addSalespersonPoints(salespersonId, "DIAL_CALL");
+          if (callStatus === "ENDED" || callStatus === "CONNECTED" || duration > 0) {
+            await addSalespersonPoints(salespersonId, "CALL_CONNECTED");
+          }
+        } catch (pointErr) {
+          console.error("Failed to add points for synced call:", pointErr);
+        }
+
         inserted++;
 
         syncedCalls.push(newCall);
