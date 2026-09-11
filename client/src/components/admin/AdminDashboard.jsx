@@ -753,15 +753,21 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
       matchesStatus = lStatus.includes("deal close") || lStatus.includes("closed");
     }
 
-    // 🌟 Date Range Filter Check (From Start Date to End Date)
+    // 🌟 FIXED Date Range Filter Check: Agar Demo Done tab hai toh demoCompletedAt dekho, warna leadDate
     let matchesDateRange = true;
-    const leadDateStr = lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : "");
-    
-    if (exportStartDate && leadDateStr) {
-      matchesDateRange = matchesDateRange && (leadDateStr >= exportStartDate);
+    let targetDateStr = "";
+
+    if (adminLeadFilter === "demo-done" && lead.demoCompletedAt) {
+      targetDateStr = new Date(lead.demoCompletedAt).toISOString().split('T')[0];
+    } else {
+      targetDateStr = lead.leadDate || (lead.createdAt ? lead.createdAt.split('T')[0] : "");
     }
-    if (exportEndDate && leadDateStr) {
-      matchesDateRange = matchesDateRange && (leadDateStr <= exportEndDate);
+    
+    if (exportStartDate && targetDateStr) {
+      matchesDateRange = matchesDateRange && (targetDateStr >= exportStartDate);
+    }
+    if (exportEndDate && targetDateStr) {
+      matchesDateRange = matchesDateRange && (targetDateStr <= exportEndDate);
     }
 
     let matchesSpecificEmployee = true;

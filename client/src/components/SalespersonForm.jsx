@@ -24,6 +24,8 @@ import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion"; // 🌟 Smooth Layout & View Animations
 import confetti from "canvas-confetti"; // 🌟 Positive Reinforcement Celebration
 
+import { Capacitor } from "@capacitor/core";
+
 
 import { registerPlugin } from "@capacitor/core";
 
@@ -262,6 +264,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   const [modalDate, setModalDate] = useState("");
   const [modalTime, setModalTime] = useState("");
   const [updateDiscussionNotes, setUpdateDiscussionNotes] = useState(""); // 🌟 Required notes for update
+  const [demoDoneDate, setDemoDoneDate] = useState(
+  new Date().toISOString().split("T")[0] 
+);
 
   // --- 🌟 Invoice Multi-Step Wizard State ---
   const [invoiceStep, setInvoiceStep] = useState(1);
@@ -880,6 +885,323 @@ const fetchCallAnalytics = useCallback(async () => {
   callToDate,
 ]);
 
+// ============================================================
+// 📞 SYNC ANDROID DEVICE CALL LOGS
+// ============================================================
+
+const syncDeviceCallLogs = useCallback(async () => {
+  try {
+    const { Capacitor } = await import("@capacitor/core");
+
+    // ---------------------------------------------------------
+    // 1. Only Android / native app
+    // ---------------------------------------------------------
+
+    if (!Capacitor.isNativePlatform()) {
+      console.log(
+        "📞 Device call-log sync skipped: browser platform."
+      );
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      console.warn(
+        "📞 Device call-log sync skipped: authentication token missing."
+      );
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // 2. Check CALL LOG permission
+    // ---------------------------------------------------------
+
+    let permission;
+
+    try {
+      permission =
+        await CallRecording.checkCallLogPermission();
+    } catch (permissionError) {
+      console.error(
+        "❌ Failed to check call-log permission:",
+        permissionError
+      );
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // 3. Request permission if required
+    // ---------------------------------------------------------
+
+    if (!permission?.granted) {
+      try {
+        permission =
+          await CallRecording.requestCallLogPermission();
+      } catch (permissionError) {
+        console.error(
+          "❌ Failed to request call-log permission:",
+          permissionError
+        );
+        return;
+      }
+
+      // Check again after Android permission dialog
+      try {
+        permission =
+          await CallRecording.checkCallLogPermission();
+      } catch (permissionError) {
+        console.error(
+          "❌ Failed to re-check call-log permission:",
+          permissionError
+        );
+        return;
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 4. Permission still not granted
+    // ---------------------------------------------------------
+
+    if (!permission?.granted) {
+      console.warn(
+        "📞 READ_CALL_LOG permission not granted."
+      );
+
+      toast.error(
+        "Call log permission is required to sync phone calls."
+      );
+
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // 5. Read Android call history
+    // ---------------------------------------------------------
+
+    let response;
+
+    try {
+      response =
+        await CallRecording.getCallLogs();
+    } catch (callLogError) {
+      console.error(
+        "❌ Failed to read Android call logs:",
+        callLogError
+      );
+
+      toast.error(
+        "Unable to read phone call history."
+      );
+
+      return;
+    }
+
+    const calls = Array.isArray(response?.calls)
+      ? response.calls
+      : [];
+
+    console.log(
+      `📞 Android call logs found: ${calls.length}`
+    );
+
+    // ---------------------------------------------------------
+    // 6. No calls available
+    // ---------------------------------------------------------
+
+    if (calls.length === 0) {
+      console.log(
+        "📞 No device calls available for sync."
+      );
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // 7. Prepare clean call data
+    // ---------------------------------------------------------
+
+    const validCalls = calls
+      .map((call) => {
+        if (!call) return null;
+
+        const phoneNumber =
+          call.phoneNumber ||
+          call.number ||
+          call.phone ||
+          "";
+
+        const timestamp =
+          call.timestamp ||
+          call.date ||
+          call.callDate ||
+          null;
+
+        const durationSeconds = Math.max(
+          0,
+          Number(
+            call.durationSeconds ??
+              call.duration ??
+              0
+          ) || 0
+        );
+
+        const type = String(
+          call.type ||
+            call.callType ||
+            ""
+        ).toUpperCase();
+
+        const connected =
+          Boolean(call.connected) ||
+          durationSeconds > 0;
+
+        const deviceCallLogId =
+          call.deviceCallLogId ||
+          call.id ||
+          call._id ||
+          `${phoneNumber}_${timestamp}_${type}`;
+
+        if (!phoneNumber || !timestamp) {
+          return null;
+        }
+
+        return {
+          deviceCallLogId: String(
+            deviceCallLogId
+          ),
+
+          phoneNumber: String(
+            phoneNumber
+          ),
+
+          type,
+
+          timestamp: Number(timestamp),
+
+          durationSeconds,
+
+          connected,
+        };
+      })
+      .filter(Boolean);
+
+    if (validCalls.length === 0) {
+      console.log(
+        "📞 No valid device calls found."
+      );
+      return;
+    }
+
+    // ---------------------------------------------------------
+    // 8. Remove duplicates before sending
+    // ---------------------------------------------------------
+
+    const uniqueCalls = Array.from(
+      new Map(
+        validCalls.map((call) => [
+          call.deviceCallLogId,
+          call,
+        ])
+      ).values()
+    );
+
+    console.log(
+      `📞 Valid calls: ${validCalls.length}`
+    );
+
+    console.log(
+      `📞 Unique calls to sync: ${uniqueCalls.length}`
+    );
+
+    // ---------------------------------------------------------
+    // 9. Send calls to backend
+    // ---------------------------------------------------------
+
+    const syncResponse = await fetch(
+      `${API_BASE}/api/salesperson/calls/sync`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+
+        body: JSON.stringify({
+          calls: uniqueCalls,
+        }),
+      }
+    );
+
+    let data = {};
+
+    try {
+      data = await syncResponse.json();
+    } catch {
+      data = {};
+    }
+
+    if (!syncResponse.ok) {
+      throw new Error(
+        data?.message ||
+          "Failed to sync device call logs."
+      );
+    }
+
+    // ---------------------------------------------------------
+    // 10. Sync result
+    // ---------------------------------------------------------
+
+    console.log(
+      "✅ Device call logs sync result:",
+      data
+    );
+
+    console.log(
+      `📞 Received: ${
+        data?.totalReceived ??
+        uniqueCalls.length
+      }`
+    );
+
+    console.log(
+      `📞 Inserted: ${
+        data?.inserted ?? 0
+      }`
+    );
+
+    console.log(
+      `📞 Updated: ${
+        data?.updated ?? 0
+      }`
+    );
+
+    console.log(
+      `📞 Skipped: ${
+        data?.skipped ?? 0
+      }`
+    );
+
+    // ---------------------------------------------------------
+    // 11. Refresh CRM call history
+    // ---------------------------------------------------------
+
+    await fetchCallHistory();
+
+    await fetchCallAnalytics();
+
+  } catch (error) {
+    console.error(
+      "🔥 Device call-log sync error:",
+      error
+    );
+  }
+}, [
+  API_BASE,
+  fetchCallHistory,
+  fetchCallAnalytics,
+]);
+
 const getCallFilterLabel = () => {
   if (callDateFilter === "today") return "Today";
   if (callDateFilter === "week") return "This Week";
@@ -1053,6 +1375,14 @@ useEffect(() => {
     };
   }, [API_BASE, fetchCallHistory, fetchCallAnalytics]);
 
+// ============================================================
+// 📞 INITIAL DEVICE CALL LOG SYNC
+// ============================================================
+
+useEffect(() => {
+  syncDeviceCallLogs();
+}, [syncDeviceCallLogs]);
+
 useEffect(() => {
   if (callDateFilter === "custom") {
     return;
@@ -1091,6 +1421,8 @@ useEffect(() => {
     }
   };
 }, [activeView]);
+
+
 
 // =========================================================================
 // --- 📞 FETCH CALL HISTORY ---
@@ -1200,6 +1532,9 @@ const fetchSalespersonNotifications = useCallback(async () => {
     console.error("Failed to load notifications:", err);
   }
 }, [API_BASE]);
+
+
+
 
   // --- 🌟 WHATSAPP PROFESSIONAL REMINDER HELPER ---
   const handleWhatsAppReminder = (target, type = "followup") => {
@@ -2195,74 +2530,153 @@ if (leadFilter === "telecaller-assigned") {
     }
   };
 
-  const handleUpdateLeadStatus = async (
-    leadId,
-    newLeadStatus,
-    newDemoStatus,
-    extraPayload = {},
-  ) => {
-    if (!updateDiscussionNotes.trim()) {
-      toast.error("Please enter conversation details / discussion notes!");
-      return;
+  // const handleUpdateLeadStatus = async (
+  //   leadId,
+  //   newLeadStatus,
+  //   newDemoStatus,
+  //   extraPayload = {},
+  // ) => {
+  //   if (!updateDiscussionNotes.trim()) {
+  //     toast.error("Please enter conversation details / discussion notes!");
+  //     return;
+  //   }
+
+  //   try {
+  //     const token = localStorage.getItem("token");
+  //     const formDataObj = new FormData();
+
+  //     formDataObj.append(
+  //       "leadStatus",
+  //       newLeadStatus || selectedLead?.leadStatus || "Active",
+  //     );
+  //     formDataObj.append(
+  //       "demoStatus",
+  //       newDemoStatus || selectedLead?.demoStatus || "Not Given",
+  //     );
+
+  //     if (extraPayload.followUpDate) {
+  //       formDataObj.append("followUpDate", extraPayload.followUpDate);
+  //       formDataObj.append("followUpTime", extraPayload.followUpTime || "");
+  //       formDataObj.append("followUpAction", newLeadStatus);
+  //     }
+
+  //     const timeStamp = new Date().toLocaleString("en-IN");
+  //     const noteEntry = `[${timeStamp}]: ${updateDiscussionNotes.trim()}`;
+  //     const finalNotes = selectedLead?.notes
+  //       ? `${selectedLead.notes}\n${noteEntry}`
+  //       : noteEntry;
+
+  //     formDataObj.append("notes", finalNotes);
+
+  //     if (newDemoStatus === "Completed" && extraPayload.proofFile) {
+  //       formDataObj.append("meetingPhoto", extraPayload.proofFile);
+  //     }
+
+  //     const res = await fetch(`${API_BASE}/api/salesperson/leads/${leadId}`, {
+  //       method: "PUT",
+  //       headers: { Authorization: `Bearer ${token}` },
+  //       body: formDataObj,
+  //     });
+  //     const data = await res.json();
+  //     if (res.ok) {
+  //       fetchMyLeads();
+  //       fetchTodayPoints();
+  //       if (selectedLead) setSelectedLead(null);
+  //       setActiveModalAction(null);
+  //       setFollowUpModalAction(null);
+  //       setModalDate("");
+  //       setModalTime("");
+  //       setDemoReviewNotes("");
+  //       setDemoProofFile(null);
+  //       setUpdateDiscussionNotes("");
+  //       toast.success("Lead updated successfully with discussion notes!");
+  //     } else {
+  //       toast.error(data.message || "Failed to update");
+  //     }
+  //   } catch (err) {
+  //     console.error("Error updating lead:", err);
+  //     toast.error("Network error during lead update.");
+  //   }
+  // };
+
+const handleUpdateLeadStatus = async (
+  leadId,
+  newLeadStatus,
+  newDemoStatus,
+  extraPayload = {}
+) => {
+  if (!updateDiscussionNotes.trim()) {
+    toast.error("Please enter conversation details / discussion notes!");
+    return;
+  }
+
+  try {
+    const token = localStorage.getItem("token");
+    const formDataObj = new FormData();
+
+    formDataObj.append(
+      "leadStatus",
+      newLeadStatus || selectedLead?.leadStatus || "Active"
+    );
+    formDataObj.append(
+      "demoStatus",
+      newDemoStatus || selectedLead?.demoStatus || "Not Given"
+    );
+
+    if (extraPayload.followUpDate) {
+      formDataObj.append("followUpDate", extraPayload.followUpDate);
+      formDataObj.append("followUpTime", extraPayload.followUpTime || "");
+      formDataObj.append("followUpAction", newLeadStatus);
     }
 
-    try {
-      const token = localStorage.getItem("token");
-      const formDataObj = new FormData();
-
+    // 🌟 Agar demo status "Completed" hai, toh user ki select ki hui date bhejein
+    if (newDemoStatus === "Completed") {
       formDataObj.append(
-        "leadStatus",
-        newLeadStatus || selectedLead?.leadStatus || "Active",
+        "demoCompletedAt",
+        extraPayload.demoDoneDate || new Date().toISOString().split("T")[0]
       );
-      formDataObj.append(
-        "demoStatus",
-        newDemoStatus || selectedLead?.demoStatus || "Not Given",
-      );
-
-      if (extraPayload.followUpDate) {
-        formDataObj.append("followUpDate", extraPayload.followUpDate);
-        formDataObj.append("followUpTime", extraPayload.followUpTime || "");
-        formDataObj.append("followUpAction", newLeadStatus);
+      if (extraPayload.reviewNotes) {
+        formDataObj.append("demoReviewNotes", extraPayload.reviewNotes);
       }
-
-      const timeStamp = new Date().toLocaleString("en-IN");
-      const noteEntry = `[${timeStamp}]: ${updateDiscussionNotes.trim()}`;
-      const finalNotes = selectedLead?.notes
-        ? `${selectedLead.notes}\n${noteEntry}`
-        : noteEntry;
-
-      formDataObj.append("notes", finalNotes);
-
-      if (newDemoStatus === "Completed" && extraPayload.proofFile) {
+      if (extraPayload.proofFile) {
         formDataObj.append("meetingPhoto", extraPayload.proofFile);
       }
-
-      const res = await fetch(`${API_BASE}/api/salesperson/leads/${leadId}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formDataObj,
-      });
-      const data = await res.json();
-      if (res.ok) {
-        fetchMyLeads();
-        fetchTodayPoints();
-        if (selectedLead) setSelectedLead(null);
-        setActiveModalAction(null);
-        setFollowUpModalAction(null);
-        setModalDate("");
-        setModalTime("");
-        setDemoReviewNotes("");
-        setDemoProofFile(null);
-        setUpdateDiscussionNotes("");
-        toast.success("Lead updated successfully with discussion notes!");
-      } else {
-        toast.error(data.message || "Failed to update");
-      }
-    } catch (err) {
-      console.error("Error updating lead:", err);
-      toast.error("Network error during lead update.");
     }
-  };
+
+    const timeStamp = new Date().toLocaleString("en-IN");
+    const noteEntry = `[${timeStamp}]: ${updateDiscussionNotes.trim()}`;
+    const finalNotes = selectedLead?.notes
+      ? `${selectedLead.notes}\n${noteEntry}`
+      : noteEntry;
+
+    formDataObj.append("notes", finalNotes);
+
+    const res = await fetch(`${API_BASE}/api/salesperson/leads/${leadId}`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formDataObj,
+    });
+    const data = await res.json();
+    if (res.ok) {
+      fetchMyLeads();
+      fetchTodayPoints();
+      if (selectedLead) setSelectedLead(null);
+      setActiveModalAction(null);
+      setFollowUpModalAction(null);
+      setModalDate("");
+      setModalTime("");
+      setDemoReviewNotes("");
+      setDemoProofFile(null);
+      setUpdateDiscussionNotes("");
+      toast.success("Lead updated successfully with discussion notes!");
+    } else {
+      toast.error(data.message || "Failed to update");
+    }
+  } catch (err) {
+    console.error("Error updating lead:", err);
+    toast.error("Network error during lead update.");
+  }
+};
 
   const handleLeadSubmit = async (e) => {
     e.preventDefault();
@@ -3893,36 +4307,36 @@ if (leadFilter === "telecaller-assigned") {
                               </span>
                             </div>
 
-                            {deal.dueAmount > 0 ? (
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() =>
-                                    handleWhatsAppReminder(deal, "due")
-                                  }
-                                  className="bg-[#25D366] hover:opacity-90 text-white px-3.5 py-3 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0 active:scale-95 min-h-[44px] flex items-center gap-1.5"
-                                  title="Send WhatsApp Due Reminder"
-                                >
-                                  <WhatsAppIcon />
-                                  Remind
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (dayStatus !== "ACTIVE") {
-                                      toast.error("Start day first!");
-                                      return;
-                                    }
-                                    handlePayDueFromLedger(deal);
-                                  }}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-bold cursor-pointer transition shadow-sm shrink-0 active:scale-95 min-h-[44px]"
-                                >
-                                  Pay Due ➔
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-4 py-3 rounded-xl font-bold shrink-0">
-                                Fully Settled
-                              </span>
-                            )}
+{deal.dueAmount > 0 ? (
+  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full justify-end">
+    <button
+      onClick={() =>
+        handleWhatsAppReminder(deal, "due")
+      }
+      className="w-full sm:w-auto bg-[#25D366] hover:opacity-90 text-white px-4 py-3 rounded-xl font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[44px] flex items-center justify-center gap-1.5"
+      title="Send WhatsApp Due Reminder"
+    >
+      <WhatsAppIcon />
+      Remind
+    </button>
+    <button
+      onClick={() => {
+        if (dayStatus !== "ACTIVE") {
+          toast.error("Start day first!");
+          return;
+        }
+        handlePayDueFromLedger(deal);
+      }}
+      className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-bold cursor-pointer transition shadow-sm active:scale-95 min-h-[44px] text-center"
+    >
+      Pay Due ➔
+    </button>
+  </div>
+) : (
+  <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-4 py-3 rounded-xl font-bold text-center shrink-0">
+    Fully Settled
+  </span>
+)}
                           </div>
                         </div>
                       ))}
@@ -4434,7 +4848,7 @@ if (leadFilter === "telecaller-assigned") {
                           )}
 
                           {/* 🌟 DEMO COMPLETED SUB-FORM WITH PHOTO & REVIEW */}
-                          {activeModalAction === "completed" && (
+                          {/* {activeModalAction === "completed" && (
                             <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
                               <p className="text-xs sm:text-sm font-bold text-emerald-700">
                                 Demo Completion Details:
@@ -4490,7 +4904,80 @@ if (leadFilter === "telecaller-assigned") {
                                 Save Completed Demo & Upload
                               </button>
                             </div>
-                          )}
+                          )} */}
+
+                          {/* 🌟 DEMO COMPLETED SUB-FORM WITH PHOTO, REVIEW & DATE PICKER */}
+{activeModalAction === "completed" && (
+  <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
+    <p className="text-xs sm:text-sm font-bold text-emerald-700">
+      Demo Completion Details:
+    </p>
+
+    {/* 🌟 Naya Date Input Field */}
+    <div>
+      <label className="block text-xs font-medium mb-1">
+        📅 Select Demo Done Date *
+      </label>
+      <input
+        type="date"
+        value={demoDoneDate}
+        onChange={(e) => setDemoDoneDate(e.target.value)}
+        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
+      />
+    </div>
+
+    <div>
+      <label className="block text-xs font-medium mb-1">
+        Client Feedback / Review Notes:
+      </label>
+      <textarea
+        rows="2"
+        value={demoReviewNotes}
+        onChange={(e) => setDemoReviewNotes(e.target.value)}
+        placeholder="e.g. Client loved the test series feature..."
+        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
+      ></textarea>
+    </div>
+
+    <div>
+      <label className="block text-xs font-medium mb-1">
+        📸 Upload Demo Verification Photo / Screenshot (.jpg, .png):
+      </label>
+      <input
+        type="file"
+        accept="image/jpeg, image/jpg, image/png"
+        onChange={(e) => {
+          const fileItem = e.target.files[0];
+          if (fileItem && validateImageFile(fileItem)) {
+            setDemoProofFile(fileItem);
+          } else {
+            e.target.value = "";
+          }
+        }}
+        className="block w-full text-xs text-[var(--color-body)] cursor-pointer"
+      />
+    </div>
+
+    <button
+      type="button"
+      onClick={() => {
+        handleUpdateLeadStatus(
+          selectedLead._id,
+          selectedLead.leadStatus,
+          "Completed",
+          {
+            reviewNotes: demoReviewNotes,
+            proofFile: demoProofFile,
+            demoDoneDate: demoDoneDate, // 🌟 Yeh date yahan pass ho rahi hai
+          }
+        );
+      }}
+      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
+    >
+      Save Completed Demo & Upload
+    </button>
+  </div>
+)}
 
                           <div>
                             <button
@@ -4663,56 +5150,65 @@ if (leadFilter === "telecaller-assigned") {
                         }
                       </span>
                     </div>
-                    <div className="space-y-3 min-h-[280px]">
-                      {activeLeadsList.filter((l) => l.leadStatus === "Active")
-                        .length === 0 ? (
-                        <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">
-                          No new leads
-                        </p>
-                      ) : (
-                        activeLeadsList
-                          .filter((l) => l.leadStatus === "Active")
-                          .map((lead) => (
-                            <div
-                              key={lead._id}
-                              className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words transition hover:border-[var(--color-primary)]/40"
-                            >
-                              <strong className="text-sm sm:text-base text-[var(--color-heading)] block">
-                                {lead.instituteName}
-                              </strong>
-                              <p className="text-[var(--color-body)]">
-                                👤 {lead.contactPerson} | 📞 {lead.mobileNo}
-                              </p>
-                              <p className="text-[var(--color-body)]">
-                                📍 {lead.city}, {lead.state}
-                              </p>
-                              <div className="pt-2.5 flex justify-between items-center border-t border-[var(--color-border)] gap-2">
-                                <button
-                                  onClick={() =>
-                                    handleWhatsAppReminder(lead, "followup")
-                                  }
-                                  className="text-xs bg-[#25D366]/10 text-[#25D366] px-3.5 py-2 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition active:scale-95 min-h-[40px]"
-                                >
-                                  <WhatsAppIcon />
-                                  WhatsApp
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleUpdateLeadStatus(
-                                      lead._id,
-                                      "Call Back",
-                                      null,
-                                    )
-                                  }
-                                  className="text-xs bg-amber-500/10 text-amber-600 px-3 py-2 rounded-xl font-semibold hover:bg-amber-500/20 cursor-pointer min-h-[40px]"
-                                >
-                                  Move ➔
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                      )}
-                    </div>
+<div className="space-y-3 min-h-[280px]">
+  {activeLeadsList.filter((l) => l.leadStatus === "Active").length === 0 ? (
+    <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">
+      No new leads
+    </p>
+  ) : (
+    activeLeadsList
+      .filter((l) => l.leadStatus === "Active")
+      .map((lead) => (
+        <div
+          key={lead._id}
+          className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words transition hover:border-[var(--color-primary)]/40"
+        >
+          <div className="flex justify-between items-start gap-2">
+            <strong className="text-sm sm:text-base text-[var(--color-heading)] block">
+              {lead.instituteName}
+            </strong>
+            {/* 🌟 Lead Create hone ki date yahan dikhegi (Jaise: 07-09-26) */}
+            {lead.leadDate && (
+              <span className="text-[10px] font-semibold bg-[var(--color-surface)] border border-[var(--color-border)] px-2.5 py-1 rounded-lg shrink-0">
+                📌 Created: {new Date(lead.leadDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' })}
+              </span>
+            )}
+          </div>
+
+          <p className="text-[var(--color-body)]">
+            👤 {lead.contactPerson} | 📞 {lead.mobileNo}
+          </p>
+          <p className="text-[var(--color-body)]">
+            📍 {lead.city}, {lead.state}
+          </p>
+
+          <div className="pt-2.5 flex justify-between items-center border-t border-[var(--color-border)] gap-2">
+            <button
+              type="button"
+              onClick={() => handleWhatsAppReminder(lead, "followup")}
+              className="text-xs bg-[#25D366]/10 text-[#25D366] px-3.5 py-2 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition active:scale-95 min-h-[40px]"
+            >
+              <WhatsAppIcon />
+              WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                handleUpdateLeadStatus(
+                  lead._id,
+                  "Call Back",
+                  null
+                )
+              }
+              className="text-xs bg-amber-500/10 text-amber-600 px-3 py-2 rounded-xl font-semibold hover:bg-amber-500/20 cursor-pointer min-h-[40px]"
+            >
+              Move ➔
+            </button>
+          </div>
+        </div>
+      ))
+  )}
+</div>
                   </div>
 
                   <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
@@ -5402,11 +5898,11 @@ if (leadFilter === "telecaller-assigned") {
                           />
                           <datalist id="existingInstitutes">
                             {myDeals.map((deal) => (
-                              <option key={deal._id} value={deal.instituteName}>
-                                {deal.instituteName} (Pending Due: ₹
-                                {deal.dueAmount})
-                              </option>
-                            ))}
+  <option key={deal._id} value={deal.instituteName}>
+    {deal.instituteName} — Due: Rs. {deal.dueAmount?.toLocaleString("en-IN") || 0}
+  </option>
+))}
+
                           </datalist>
                         </div>
                         <div>

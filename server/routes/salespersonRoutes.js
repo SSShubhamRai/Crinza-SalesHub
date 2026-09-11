@@ -149,22 +149,100 @@ router.patch("/calls/:callId/connected", verifyToken, async (req, res) => {
 
 router.put("/calls/:id/end", verifyToken, async (req, res) => {
   try {
-    const { status, durationSeconds, connectedAt } = req.body;
-    const call = await CallLog.findOne({ _id: req.params.id, salespersonId: req.user.userId });
-    if (!call) return res.status(404).json({ message: "Call record not found" });
+    const {
+      status,
+      durationSeconds,
+      connectedAt,
+    } = req.body;
 
-    const wasAlreadyConnected = call.status === "CONNECTED" || call.status === "ENDED";
-    call.status = status || "ENDED";
+    const call = await CallLog.findOne({
+      _id: req.params.id,
+      salespersonId: req.user.userId,
+    });
+
+    if (!call) {
+      return res.status(404).json({
+        message: "Call record not found",
+      });
+    }
+
+    // Check whether this call was already counted as connected
+    const wasAlreadyConnected =
+      call.status === "CONNECTED" ||
+      call.status === "ENDED";
+
+    const newStatus = status || "ENDED";
+    const duration = Number(durationSeconds) || 0;
+
+    // ---------------------------------------------------------
+    // UPDATE CALL STATUS
+    // ---------------------------------------------------------
+
+    call.status = newStatus;
+
+    // ---------------------------------------------------------
+    // CONNECTED AT
+    // ---------------------------------------------------------
+
+    if (connectedAt) {
+      call.connectedAt = new Date(connectedAt);
+    } else if (
+      !call.connectedAt &&
+      (newStatus === "CONNECTED" || newStatus === "ENDED") &&
+      duration > 0
+    ) {
+      // Estimate connection time from end time - duration
+      call.connectedAt = new Date(
+        Date.now() - duration * 1000
+      );
+    }
+
+    // ---------------------------------------------------------
+    // ENDED AT
+    // ---------------------------------------------------------
+
     call.endedAt = new Date();
-    call.durationSeconds = Number(durationSeconds) || 0;
+
+    // ---------------------------------------------------------
+    // DURATION
+    // ---------------------------------------------------------
+
+    call.durationSeconds = duration;
+
     await call.save();
 
-    if ((status === "CONNECTED" || status === "ENDED") && !wasAlreadyConnected) {
-      await addSalespersonPoints(req.user.userId, "CALL_CONNECTED");
+    // ---------------------------------------------------------
+    // SALESPERSON POINTS
+    // ---------------------------------------------------------
+    // Count connected call only once.
+
+    if (
+      (newStatus === "CONNECTED" ||
+        newStatus === "ENDED") &&
+      !wasAlreadyConnected
+    ) {
+      await addSalespersonPoints(
+        req.user.userId,
+        "CALL_CONNECTED"
+      );
     }
-    res.json({ success: true, message: "Call updated successfully", call });
+
+    return res.json({
+      success: true,
+      message: "Call updated successfully",
+      call,
+    });
+
   } catch (err) {
-    res.status(500).json({ message: "Failed to update call", error: err.message });
+    console.error(
+      "❌ Failed to update call:",
+      err
+    );
+
+    return res.status(500).json({
+      message: "Failed to update call",
+      error: err.message,
+    });
   }
 });
 
@@ -253,16 +331,67 @@ router.post("/leads", verifyToken, upload.single("meetingPhoto"), async (req, re
   }
 });
 
+// router.put("/leads/:id", verifyToken, upload.single("meetingPhoto"), async (req, res) => {
+//   try {
+//     const updatedLead = await Lead.findByIdAndUpdate(req.params.id, { $set: req.body }, { returnDocument: "after" });
+//     if (!updatedLead) return res.status(404).json({ message: "Lead not found" });
+//     res.json({ message: "Lead updated successfully!", lead: updatedLead });
+//   } catch (err) {
+//     res.status(500).json({ message: "Failed to update lead", error: err.message });
+//   }
+// });
+
 router.put("/leads/:id", verifyToken, upload.single("meetingPhoto"), async (req, res) => {
   try {
-    const updatedLead = await Lead.findByIdAndUpdate(req.params.id, { $set: req.body }, { returnDocument: "after" });
-    if (!updatedLead) return res.status(404).json({ message: "Lead not found" });
-    res.json({ message: "Lead updated successfully!", lead: updatedLead });
+    const { leadStatus, demoStatus, demoCompletedAt, demoDoneDate, notes, followUpDate, followUpTime, followUpAction } = req.body;
+    
+    // 1. Existing lead ko find karein
+    const lead = await Lead.findById(req.params.id);
+    if (!lead) return res.status(404).json({ message: "Lead not found" });
+
+    // 🌟 2. Check karein ki kya pehle se demo completed tha ya abhi naya complete hua hai
+    const wasAlreadyCompleted = lead.demoStatus === "Completed";
+
+    // 3. Update fields map karein
+    const updateFields = {};
+    if (leadStatus) updateFields.leadStatus = leadStatus;
+    if (demoStatus) updateFields.demoStatus = demoStatus;
+    if (notes) updateFields.notes = notes;
+    if (followUpDate) updateFields.followUpDate = followUpDate;
+    if (followUpTime) updateFields.followUpTime = followUpTime;
+    if (followUpAction) updateFields.followUpAction = followUpAction;
+
+    // 4. Agar Demo Completed hai, toh user ki select ki hui date save karein
+    if (demoStatus === "Completed") {
+      updateFields.demoCompletedAt = demoCompletedAt || demoDoneDate || new Date();
+    }
+
+    // 5. Agar meeting photo upload hui hai
+    if (req.file) {
+      updateFields.meetingPhoto = req.file.path;
+    }
+
+    // 6. Database update execute karein
+    const updatedLead = await Lead.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateFields },
+      { new: true }
+    );
+
+    // 🌟 7. Agar pehle completed nahi tha aur ab successfully "Completed" ho gaya, toh points add karein
+    if (demoStatus === "Completed" && !wasAlreadyCompleted) {
+      const targetDate = updateFields.demoCompletedAt 
+        ? new Date(updateFields.demoCompletedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) 
+        : undefined;
+
+      await addSalespersonPoints(req.user.userId, "DEMO_DONE", targetDate);
+    }
+
+    res.json({ success: true, message: "Lead updated successfully!", lead: updatedLead });
   } catch (err) {
     res.status(500).json({ message: "Failed to update lead", error: err.message });
   }
 });
-
 router.get("/tasks", verifyToken, async (req, res) => {
   try {
     const tasks = await Task.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 });
@@ -317,6 +446,380 @@ router.get("/notifications", verifyToken, async (req, res) => {
     res.json(formattedNotifications);
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch notifications", error: err.message });
+  }
+});
+
+
+// =============================================================
+// 📞 SYNC ANDROID DEVICE CALL LOGS
+// =============================================================
+// This endpoint receives calls read directly from the Android
+// device call history and stores them in CRM.
+//
+// Frontend:
+// POST /api/salesperson/calls/sync
+//
+// Body:
+// {
+//   calls: [
+//     {
+//       deviceCallLogId,
+//       phoneNumber,
+//       type,
+//       timestamp,
+//       durationSeconds,
+//       connected
+//     }
+//   ]
+// }
+// =============================================================
+
+router.post("/calls/sync", verifyToken, async (req, res) => {
+  try {
+    const { calls } = req.body;
+
+    // ---------------------------------------------------------
+    // Validate request
+    // ---------------------------------------------------------
+
+    if (!Array.isArray(calls)) {
+      return res.status(400).json({
+        success: false,
+        message: "calls must be an array",
+      });
+    }
+
+    if (calls.length === 0) {
+      return res.json({
+        success: true,
+        message: "No device calls to sync.",
+        inserted: 0,
+        skipped: 0,
+        updated: 0,
+      });
+    }
+
+    const salespersonId = req.user.userId;
+
+    let inserted = 0;
+    let skipped = 0;
+    let updated = 0;
+
+    const syncedCalls = [];
+
+    // ---------------------------------------------------------
+    // Process every Android call
+    // ---------------------------------------------------------
+
+    for (const deviceCall of calls) {
+      try {
+        const {
+          deviceCallLogId,
+          phoneNumber,
+          type,
+          timestamp,
+          durationSeconds,
+          connected,
+        } = deviceCall;
+
+        // -----------------------------------------------------
+        // Basic validation
+        // -----------------------------------------------------
+
+        if (!deviceCallLogId || !phoneNumber) {
+          skipped++;
+          continue;
+        }
+
+        // -----------------------------------------------------
+        // Normalize phone number
+        // Same normalization used by CRM calls.
+        // -----------------------------------------------------
+
+        const normalizedPhone = String(phoneNumber)
+          .replace(/\D/g, "")
+          .slice(-10);
+
+        if (!normalizedPhone) {
+          skipped++;
+          continue;
+        }
+
+        // -----------------------------------------------------
+        // Validate timestamp
+        // Android gives milliseconds.
+        // -----------------------------------------------------
+
+        const timestampNumber = Number(timestamp);
+
+        if (
+          !Number.isFinite(timestampNumber) ||
+          timestampNumber <= 0
+        ) {
+          skipped++;
+          continue;
+        }
+
+        const deviceDate = new Date(timestampNumber);
+
+        if (Number.isNaN(deviceDate.getTime())) {
+          skipped++;
+          continue;
+        }
+
+        // -----------------------------------------------------
+        // Duration
+        // -----------------------------------------------------
+
+        const duration = Math.max(
+          0,
+          Number(durationSeconds) || 0
+        );
+
+        // -----------------------------------------------------
+        // Find existing call using Android Call Log ID
+        // -----------------------------------------------------
+
+        const existingDeviceCall =
+          await CallLog.findOne({
+            salespersonId,
+            deviceCallLogId: String(deviceCallLogId),
+          });
+
+        // -----------------------------------------------------
+        // Already synced
+        // -----------------------------------------------------
+
+        if (existingDeviceCall) {
+          skipped++;
+
+          syncedCalls.push(existingDeviceCall);
+
+          continue;
+        }
+
+        // -----------------------------------------------------
+        // Find matching Lead
+        // -----------------------------------------------------
+        // We use the same normalized phone number.
+        //
+        // IMPORTANT:
+        // Your Lead schema must contain the actual phone field
+        // used by your CRM. The existing project uses Lead data,
+        // so this first checks common fields safely.
+        // -----------------------------------------------------
+
+        let lead = null;
+
+        try {
+          lead = await Lead.findOne({
+            $or: [
+              { phoneNumber: normalizedPhone },
+              { phone: normalizedPhone },
+              { mobile: normalizedPhone },
+              { mobileNumber: normalizedPhone },
+              { contactNumber: normalizedPhone },
+            ],
+          }).lean();
+        } catch (leadError) {
+          console.warn(
+            "Lead phone matching warning:",
+            leadError.message
+          );
+        }
+
+        // -----------------------------------------------------
+        // Customer name
+        // -----------------------------------------------------
+
+        let customerName = "";
+
+        if (lead) {
+          customerName =
+            lead.customerName ||
+            lead.name ||
+            lead.instituteName ||
+            lead.schoolName ||
+            "";
+        }
+
+        // -----------------------------------------------------
+        // Determine call status
+        // -----------------------------------------------------
+
+        let callStatus = "NOT_CONNECTED";
+
+        const normalizedType = String(
+          type || ""
+        ).toUpperCase();
+
+        // -----------------------------------------------------
+        // MISSED
+        // -----------------------------------------------------
+
+        if (normalizedType === "MISSED") {
+          callStatus = "MISSED";
+        }
+
+        // -----------------------------------------------------
+        // REJECTED
+        // -----------------------------------------------------
+
+        else if (normalizedType === "REJECTED") {
+          callStatus = "REJECTED";
+        }
+
+        // -----------------------------------------------------
+        // BLOCKED
+        // -----------------------------------------------------
+
+        else if (normalizedType === "BLOCKED") {
+          callStatus = "FAILED";
+        }
+
+        // -----------------------------------------------------
+        // OUTGOING / INCOMING
+        // duration > 0 means call was connected
+        // -----------------------------------------------------
+
+        else if (
+          normalizedType === "OUTGOING" ||
+          normalizedType === "INCOMING"
+        ) {
+          if (
+            Boolean(connected) ||
+            duration > 0
+          ) {
+            callStatus = "ENDED";
+          } else {
+            callStatus = "NOT_CONNECTED";
+          }
+        }
+
+        // -----------------------------------------------------
+        // Unknown type fallback
+        // -----------------------------------------------------
+
+        else {
+          if (duration > 0) {
+            callStatus = "ENDED";
+          } else {
+            callStatus = "NOT_CONNECTED";
+          }
+        }
+
+        // -----------------------------------------------------
+        // Connected time
+        // -----------------------------------------------------
+
+        let connectedAt = null;
+
+        if (
+          callStatus === "ENDED" &&
+          duration > 0
+        ) {
+          connectedAt = new Date(
+            deviceDate.getTime()
+          );
+        }
+
+        // -----------------------------------------------------
+        // End time
+        // -----------------------------------------------------
+
+        let endedAt = null;
+
+        if (duration > 0) {
+          endedAt = new Date(
+            deviceDate.getTime() +
+              duration * 1000
+          );
+        } else if (
+          callStatus === "MISSED" ||
+          callStatus === "REJECTED" ||
+          callStatus === "NOT_CONNECTED"
+        ) {
+          endedAt = deviceDate;
+        }
+
+        // -----------------------------------------------------
+        // Create CRM CallLog
+        // -----------------------------------------------------
+
+        const newCall = await CallLog.create({
+          salespersonId,
+
+          leadId: lead?._id || null,
+
+          customerName,
+
+          phoneNumber: normalizedPhone,
+
+          source: "DEVICE",
+
+          deviceCallLogId:
+            String(deviceCallLogId),
+
+          deviceTimestamp: deviceDate,
+
+          status: callStatus,
+
+          dialedAt: deviceDate,
+
+          connectedAt,
+
+          endedAt,
+
+          durationSeconds: duration,
+
+          recordingUrl: "",
+
+          recordingConsent: false,
+        });
+
+        inserted++;
+
+        syncedCalls.push(newCall);
+
+      } catch (callError) {
+        console.error(
+          "Device call sync item error:",
+          callError
+        );
+
+        skipped++;
+      }
+    }
+
+    // ---------------------------------------------------------
+    // Return result
+    // ---------------------------------------------------------
+
+    return res.json({
+      success: true,
+
+      message: "Device call logs synced successfully.",
+
+      inserted,
+      updated,
+      skipped,
+
+      totalReceived: calls.length,
+
+      calls: syncedCalls,
+    });
+
+  } catch (err) {
+    console.error(
+      "🔥 Device call sync error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to sync device call logs.",
+      error: err.message,
+    });
   }
 });
 

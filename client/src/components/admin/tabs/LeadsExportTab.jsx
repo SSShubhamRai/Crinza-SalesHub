@@ -20,7 +20,13 @@ export const LeadsExportTab = ({
   // 🌟 Helper: Filters master leads by Date Range and Employee
   const getMasterExportLeads = () => {
     return allSystemLeads.filter((lead) => {
-      const leadDateStr = lead.leadDate || (lead.createdAt ? new Date(lead.createdAt).toISOString().split('T')[0] : "");
+      // 🌟 Agar Demo Done tab active hai ya demo completed hai, toh demoCompletedAt use karo, warna leadDate/createdAt
+      let leadDateStr = "";
+      if (adminLeadFilter === "demo-done" && lead.demoCompletedAt) {
+        leadDateStr = new Date(lead.demoCompletedAt).toISOString().split('T')[0];
+      } else {
+        leadDateStr = lead.leadDate || (lead.createdAt ? new Date(lead.createdAt).toISOString().split('T')[0] : "");
+      }
       
       // 1. Date Range Filter Check
       if (exportStartDate && leadDateStr && leadDateStr < exportStartDate) return false;
@@ -283,14 +289,20 @@ export const LeadsExportTab = ({
       ) : (
         <div className="space-y-3">
           {filteredSystemLeads.map((lead) => {
+            // 🌟 Agar Demo Completed hai, toh card par bhi demo date dikhayein
             const generatedTimestampStr =
-              lead.leadDate ||
+              adminLeadFilter === "demo-done" && lead.demoCompletedAt
+              ? new Date(lead.demoCompletedAt).toLocaleString("en-IN", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })
+            : lead.leadDate ||
               (lead.createdAt
                 ? new Date(lead.createdAt).toLocaleString("en-IN", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })
-                : "N/A");
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })
+              : "N/A");
 
             return (
               <div
@@ -314,7 +326,7 @@ export const LeadsExportTab = ({
 
                 <div className="space-y-1.5 w-full min-w-0">
                   <p className="text-emerald-600 font-semibold flex items-center gap-1">
-                    <span>✨ Generated On:</span>{" "}
+                    <span>{adminLeadFilter === "demo-done" ? "✨ Demo Completed On:" : "✨ Generated On:"}</span>{" "}
                     <strong>{generatedTimestampStr}</strong>
                   </p>
 
@@ -342,11 +354,6 @@ export const LeadsExportTab = ({
                         }
                         alt="Meeting Proof"
                         className="w-16 h-16 object-cover rounded-xl border border-[var(--color-border)] shadow-sm bg-black/5 flex-shrink-0"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src =
-                            "https://placehold.co/100?text=Preview";
-                        }}
                       />
                       <div className="overflow-hidden flex-1 min-w-0">
                         <p className="text-[10px] text-[var(--color-body)] font-mono mb-1 truncate w-full">

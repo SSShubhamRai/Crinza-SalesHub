@@ -1,11 +1,19 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Permissions -->
+    <!-- ===================================================== -->
+    <!-- 🔐 PERMISSIONS -->
+    <!-- ===================================================== -->
+
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 🎙️ Audio / Call Recording -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- 📞 Phone & Call History -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <!-- 🔔 Android 13+ Notification Permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -22,6 +30,10 @@
     <!-- 🔄 Boot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- ===================================================== -->
+    <!-- 📱 APPLICATION -->
+    <!-- ===================================================== -->
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -30,7 +42,8 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <!-- 🔔 FCM Background Notification Defaults (Added Here) -->
+        <!-- 🔔 FCM Background Notification Defaults -->
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_launcher" />

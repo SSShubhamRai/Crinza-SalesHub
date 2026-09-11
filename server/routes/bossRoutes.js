@@ -129,7 +129,7 @@ router.get("/salesperson-call-analytics/:salespersonId", verifyToken, async (req
   }
 });
 
-// 3. Salesperson Points Analytics
+// 3. Salesperson Points Analytics (FIXED & MERGED WORKING DAYS)
 router.get("/salesperson-points/:salespersonId", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "admin" && req.user.role !== "boss") {
@@ -154,19 +154,44 @@ router.get("/salesperson-points/:salespersonId", verifyToken, async (req, res) =
       return res.status(400).json({ success: false, message: "From date cannot be after To date" });
     }
 
+    // 1. Fetch points records
     const pointRecords = await SalespersonPoint.find({
       salespersonId,
       date: { $gte: from, $lte: to },
     }).sort({ date: 1 }).lean();
 
+    // 2. Find days where the shift was explicitly started
     const workingDayRecords = await DaySession.find({
       salespersonId,
       date: { $gte: from, $lte: to },
       status: "STARTED",
-    }).sort({ date: 1 }).lean();
+    }).lean();
 
-    const workingDates = [...new Set(workingDayRecords.map((session) => session.date))];
+    // 3. Find days where points/actions were recorded (fallback for missed shift clicks)
+    const pointRecordsForWorkDays = await SalespersonPoint.find({
+      salespersonId,
+      date: { $gte: from, $lte: to },
+      totalPoints: { $gt: 0 },
+    }).lean();
+
+    // 4. Merge unique dates from both collections to accurately calculate working days
+    const workingDates = [
+      ...new Set([
+        ...workingDayRecords.map((s) => s.date),
+        ...pointRecordsForWorkDays.map((p) => p.date),
+      ]),
+    ];
+
     const workingDays = workingDates.length;
+
+    // 5. Generate all dates in range for daily breakdown
+    let startDate = new Date(from);
+    let endDate = new Date(to);
+    let allDatesInRange = [];
+    
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      allDatesInRange.push(d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }));
+    }
 
     const totalPoints = pointRecords.reduce(
       (sum, record) => sum + (Number(record.totalPoints) || 0),
@@ -180,11 +205,13 @@ router.get("/salesperson-points/:salespersonId", verifyToken, async (req, res) =
       pointsByDate[record.date] = (pointsByDate[record.date] || 0) + (Number(record.totalPoints) || 0);
     });
 
-    const dailyBreakdown = workingDates.map((date) => {
+    const dailyBreakdown = allDatesInRange.map((date) => {
       const pointRecord = pointRecords.find((record) => record.date === date);
+      const sessionRecord = workingDayRecords.find((session) => session.date === date) || pointRecordsForWorkDays.find((p) => p.date === date);
+      
       return {
         date,
-        startedDay: true,
+        startedDay: Boolean(sessionRecord),
         totalPoints: pointsByDate[date] || 0,
         breakdown: {
           leadsCreated: pointRecord?.leadsCreated || 0,
@@ -424,7 +451,6 @@ router.get("/tasks", verifyToken, async (req, res) => {
   }
 });
 
-// 7. Coupons Management
 // 7. Coupons Management & Creation
 router.get("/coupons", verifyToken, async (req, res) => {
   try {
@@ -438,7 +464,6 @@ router.get("/coupons", verifyToken, async (req, res) => {
   }
 });
 
-// Support both /create-coupon and /coupons (POST) for frontend compatibility
 router.post(["/create-coupon", "/coupons"], verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
@@ -683,6 +708,75 @@ router.get("/kpi-summary", verifyToken, async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch KPI summary", error: err.message });
+  }
+});
+
+// --- 📊 ADMIN LEADS REPORT ENDPOINT (WITH DATE & STATUS FILTER) ---
+router.get("/leads-report", verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== "boss" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+
+    const { from, to, salespersonId, demoStatus, leadStatus } = req.query;
+    let query = {};
+
+    // 1. Salesperson Filter
+    if (salespersonId && salespersonId !== "all" && salespersonId !== "null") {
+      const targetUser = await User.findOne({
+        $or: [
+          { userId: salespersonId },
+          { _id: salespersonId.match(/^[0-9a-fA-F]{24}$/) ? salespersonId : null }
+        ]
+      }).catch(() => null);
+
+      if (targetUser) {
+        query.salespersonId = { $in: [targetUser.userId, targetUser._id.toString(), salespersonId] };
+      } else {
+        query.salespersonId = salespersonId;
+      }
+    }
+
+    // 2. Status Filters
+    if (leadStatus) {
+      query.leadStatus = leadStatus;
+    }
+    if (demoStatus) {
+      query.demoStatus = demoStatus;
+    }
+
+    // 3. Robust Date Range Filter Logic
+    if (from || to) {
+      let startDateStr = from || "2000-01-01";
+      let endDateStr = to || "2100-12-31";
+      let startDateObj = new Date(`${startDateStr}T00:00:00.000Z`);
+      let endDateObj = new Date(`${endDateStr}T23:59:59.999Z`);
+
+      if (demoStatus === "Completed") {
+        query.$or = [
+          { demoCompletedAt: { $gte: startDateObj, $lte: endDateObj } },
+          { demoCompletedAt: { $gte: startDateStr, $lte: endDateStr } },
+
+          { 
+            $and: [
+              { demoCompletedAt: { $exists: false } },
+              { updatedAt: { $gte: startDateObj, $lte: endDateObj } }
+            ]
+          }
+        ];
+      } else {
+        query.$or = [
+          { leadDate: { $gte: startDateStr, $lte: endDateStr } },
+          { createdAt: { $gte: startDateObj, $lte: endDateObj } }
+        ];
+      }
+    }
+
+    const leads = await Lead.find(query).sort({ updatedAt: -1, createdAt: -1 });
+    return res.json({ success: true, count: leads.length, leads });
+  } catch (err) {
+    console.error("❌ Failed to fetch leads report:", err);
+    return res.status(500).json({ message: "Failed to fetch leads report", error: err.message });
   }
 });
 
