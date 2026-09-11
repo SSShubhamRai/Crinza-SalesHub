@@ -268,12 +268,87 @@ router.get("/call-analytics", verifyToken, async (req, res) => {
       startDate = new Date(now);
       startDate.setHours(0, 0, 0, 0);
       endDate = new Date(now);
+      endDate.setHours(23, 59, 59, 999);
     }
 
-    const calls = await CallLog.find({ salespersonId: req.user.userId, dialedAt: { $gte: startDate, $lte: endDate } }).lean();
-    res.json({ success: true, analytics: { totalDials: calls.length } });
+    const salespersonId = req.user.userId;
+
+    // MongoDB Aggregation to get total count, total duration, and breakdown by status/type
+    const summary = await CallLog.aggregate([
+      { 
+        $match: { 
+          salespersonId, 
+          dialedAt: { $gte: startDate, $lte: endDate } 
+        } 
+      },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          totalDuration: { $sum: "$durationSeconds" }
+        }
+      }
+    ]);
+
+    const totalCalls = summary.reduce((acc, curr) => acc + curr.count, 0);
+    const totalDurationAll = summary.reduce((acc, curr) => acc + curr.totalDuration, 0);
+
+    res.json({
+      success: true,
+      analytics: {
+        totalCalls,
+        totalDurationAll,
+        breakdown: summary,
+        dateRange: { from: startDate, to: endDate }
+      }
+    });
   } catch (err) {
     res.status(500).json({ message: "Failed to calculate call analytics", error: err.message });
+  }
+});
+
+// --- 📊 CALL ANALYTICS SUMMARY (Cally App Style Dashboard) ---
+router.get("/calls/analytics-summary", verifyToken, async (req, res) => {
+  try {
+    const salespersonId = req.user.userId;
+    const { from, to } = req.query;
+
+    let matchQuery = { salespersonId };
+    
+    // Optional date filter support
+    if (from || to) {
+      matchQuery.dialedAt = {};
+      if (from) matchQuery.dialedAt.$gte = new Date(`${from}T00:00:00`);
+      if (to) matchQuery.dialedAt.$lte = new Date(`${to}T23:59:59.999`);
+    }
+
+    // MongoDB Aggregation Pipeline to calculate status counts and total durations
+    const summary = await CallLog.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          totalDuration: { $sum: "$durationSeconds" }
+        }
+      }
+    ]);
+
+    const totalCalls = summary.reduce((acc, curr) => acc + curr.count, 0);
+    const totalDurationAll = summary.reduce((acc, curr) => acc + curr.totalDuration, 0);
+
+    res.json({
+      success: true,
+      totalCalls,
+      totalDurationAll,
+      breakdown: summary
+    });
+  } catch (err) {
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to fetch call analytics summary", 
+      error: err.message 
+    });
   }
 });
 

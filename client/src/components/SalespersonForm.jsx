@@ -804,86 +804,49 @@ const fetchCallHistory = useCallback(async () => {
 const fetchCallAnalytics = useCallback(async () => {
   try {
     setCallAnalyticsLoading(true);
-
     const token = localStorage.getItem("token");
 
-    let url = `${API_BASE}/api/salesperson/call-analytics`;
+    let url = `${API_BASE}/api/salesperson/calls/analytics-summary`;
 
-    // Custom date range
     if (callDateFilter === "custom") {
-      if (!callFromDate || !callToDate) {
-        setCallAnalyticsLoading(false);
-        return;
+      if (callFromDate && callToDate) {
+        url += `?from=${callFromDate}&to=${callToDate}`;
       }
-
-      url += `?from=${callFromDate}&to=${callToDate}`;
-    }
-
-    // Today
-    else if (callDateFilter === "today") {
+    } else if (callDateFilter === "today") {
       const today = new Date().toISOString().split("T")[0];
-
       url += `?from=${today}&to=${today}`;
-    }
-
-    // This Week
-    else if (callDateFilter === "week") {
+    } else if (callDateFilter === "week") {
       const today = new Date();
       const day = today.getDay();
-
       const diff = day === 0 ? 6 : day - 1;
-
       const weekStart = new Date(today);
       weekStart.setDate(today.getDate() - diff);
-
       const from = weekStart.toISOString().split("T")[0];
       const to = today.toISOString().split("T")[0];
-
       url += `?from=${from}&to=${to}`;
-    }
-
-    // This Month
-    else if (callDateFilter === "month") {
+    } else if (callDateFilter === "month") {
       const today = new Date();
-
-      const monthStart = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        1
-      );
-
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
       const from = monthStart.toISOString().split("T")[0];
       const to = today.toISOString().split("T")[0];
-
       url += `?from=${from}&to=${to}`;
     }
 
     const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Failed to fetch call analytics");
 
-    if (!res.ok) {
-      throw new Error(
-        data.message || "Failed to fetch call analytics"
-      );
-    }
-
-    setCallAnalytics(data.analytics);
+    // Backend se aane wale summary breakdown ko map karna
+    setCallAnalytics(data);
   } catch (error) {
     console.error("Call analytics error:", error);
   } finally {
     setCallAnalyticsLoading(false);
   }
-}, [
-  API_BASE,
-  callDateFilter,
-  callFromDate,
-  callToDate,
-]);
+}, [API_BASE, callDateFilter, callFromDate, callToDate]);
 
 // ============================================================
 // 📞 SYNC ANDROID DEVICE CALL LOGS
@@ -3741,99 +3704,36 @@ const handleUpdateLeadStatus = async (
       <h3 className="text-sm font-bold text-[var(--color-heading)]">
         {getCallFilterLabel()}
       </h3>
-
-      {callAnalytics.dateRange && (
-        <p className="text-xs text-[var(--color-body)] mt-1">
-          {new Date(callAnalytics.dateRange.from).toLocaleDateString()}{" "}
-          →{" "}
-          {new Date(callAnalytics.dateRange.to).toLocaleDateString()}
-        </p>
-      )}
     </div>
 
-    {/* ANALYTICS CARDS */}
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+    {/* ANALYTICS CARDS (Cally App Style) */}
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
 
-      {/* TOTAL DIALS */}
+      {/* ALL CALLS / TOTAL */}
       <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-body)]">
-          Total Dials
+        <p className="text-xs text-[var(--color-body)]">All Calls</p>
+        <p className="text-2xl font-bold mt-1 text-[var(--color-heading)]">
+          {callAnalytics.totalCalls || 0}
         </p>
-
-        <p className="text-2xl font-bold mt-1">
-          {callAnalytics.totalDials}
+        <p className="text-[11px] text-[var(--color-body)] mt-0.5">
+          {formatCallDuration(callAnalytics.totalDurationAll || 0)}
         </p>
       </div>
 
-      {/* UNIQUE */}
-      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-body)]">
-          Unique
-        </p>
-
-        <p className="text-2xl font-bold mt-1">
-          {callAnalytics.uniqueDials}
-        </p>
-      </div>
-
-      {/* DUPLICATE */}
-      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-body)]">
-          Duplicate
-        </p>
-
-        <p className="text-2xl font-bold mt-1">
-          {callAnalytics.duplicateDials}
-        </p>
-      </div>
-
-      {/* CONNECTED */}
-      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-body)]">
-          Connected
-        </p>
-
-        <p className="text-2xl font-bold mt-1">
-          {callAnalytics.connectedCalls}
-        </p>
-      </div>
-
-      {/* NOT CONNECTED */}
-      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-body)]">
-          Not Connected
-        </p>
-
-        <p className="text-2xl font-bold mt-1">
-          {callAnalytics.notConnectedCalls}
-        </p>
-      </div>
-
-      {/* TALK TIME */}
-      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-body)]">
-          Talk Time
-        </p>
-
-        <p className="text-lg font-bold mt-2">
-          {formatCallDuration(
-            callAnalytics.totalDurationSeconds
-          )}
-        </p>
-      </div>
-
-      {/* AVG DURATION */}
-      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-body)]">
-          Avg. Duration
-        </p>
-
-        <p className="text-lg font-bold mt-2">
-          {formatCallDuration(
-            callAnalytics.averageDurationSeconds
-          )}
-        </p>
-      </div>
+      {/* DYNAMIC BREAKDOWN CARDS (Incoming, Outgoing, Missed, Rejected etc.) */}
+      {callAnalytics.breakdown && callAnalytics.breakdown.map((item, index) => (
+        <div key={index} className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+          <p className="text-xs text-[var(--color-body)] capitalize">
+            {item._id ? item._id.toLowerCase() : "Unknown"} Calls
+          </p>
+          <p className="text-2xl font-bold mt-1 text-[var(--color-heading)]">
+            {item.count}
+          </p>
+          <p className="text-[11px] text-[var(--color-body)] mt-0.5">
+            {formatCallDuration(item.totalDuration || 0)}
+          </p>
+        </div>
+      ))}
 
     </div>
   </>

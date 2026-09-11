@@ -65,6 +65,7 @@ router.post("/broadcast", verifyToken, async (req, res) => {
 });
 
 // 2. Salesperson Call Analytics
+// 2. Salesperson Call Analytics (Updated with Cally-Style Breakdown)
 router.get("/salesperson-call-analytics/:salespersonId", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "admin" && req.user.role !== "boss") {
@@ -82,12 +83,12 @@ router.get("/salesperson-call-analytics/:salespersonId", verifyToken, async (req
       if (to) match.dialedAt.$lte = new Date(`${to}T23:59:59.999`);
     }
 
-    const logs = await CallLog.find(match).sort({ dialedAt: -1 });
+    const logs = await CallLog.find(match).sort({ dialedAt: -1 }).lean();
     const totalDials = logs.length;
     const uniquePhones = new Set(logs.map((call) => call.phoneNumber));
 
     const connectedCalls = logs.filter(
-      (call) => call.status === "CONNECTED" || call.status === "ENDED"
+      (call) => call.status === "CONNECTED" || call.status === "ENDED" || (call.durationSeconds && call.durationSeconds > 0)
     ).length;
 
     const notConnectedCalls = logs.filter(
@@ -105,7 +106,19 @@ router.get("/salesperson-call-analytics/:salespersonId", verifyToken, async (req
 
     const averageDurationSeconds =
       connectedCalls > 0 ? Math.floor(totalDurationSeconds / connectedCalls) : 0;
-    const duplicateDials = totalDials - uniquePhones.size;
+    const duplicateDials = Math.max(0, totalDials - uniquePhones.size);
+
+    // 🌟 MongoDB Aggregation for Cally-Style Breakdown & Pie Chart
+    const breakdown = await CallLog.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          totalDuration: { $sum: "$durationSeconds" }
+        }
+      }
+    ]);
 
     return res.json({
       success: true,
@@ -118,6 +131,7 @@ router.get("/salesperson-call-analytics/:salespersonId", verifyToken, async (req
         notConnectedCalls,
         totalDurationSeconds,
         averageDurationSeconds,
+        breakdown, // 👈 Yeh frontend ke chart aur status breakdown cards ke liye zaroori hai
       },
     });
   } catch (err) {
@@ -777,6 +791,49 @@ router.get("/leads-report", verifyToken, async (req, res) => {
   } catch (err) {
     console.error("❌ Failed to fetch leads report:", err);
     return res.status(500).json({ message: "Failed to fetch leads report", error: err.message });
+  }
+});
+
+router.get("/call-analytics-overview", verifyToken, async (req, res) => {
+  try {
+    const { salespersonId, from, to } = req.query;
+    let matchQuery = {};
+
+    if (salespersonId) matchQuery.salespersonId = salespersonId;
+    if (from || to) {
+      matchQuery.dialedAt = {};
+      if (from) matchQuery.dialedAt.$gte = new Date(`${from}T00:00:00`);
+      if (to) matchQuery.dialedAt.$lte = new Date(`${to}T23:59:59.999`);
+    }
+
+    const summary = await CallLog.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          totalDuration: { $sum: "$durationSeconds" }
+        }
+      }
+    ]);
+
+    const totalCalls = summary.reduce((acc, curr) => acc + curr.count, 0);
+    const totalDurationAll = summary.reduce((acc, curr) => acc + curr.totalDuration, 0);
+
+    const detailedLogs = await CallLog.find(matchQuery)
+      .sort({ dialedAt: -1 })
+      .limit(100)
+      .lean();
+
+    res.json({
+      success: true,
+      totalCalls,
+      totalDurationAll,
+      breakdown: summary,
+      logs: detailedLogs
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

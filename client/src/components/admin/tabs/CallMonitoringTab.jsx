@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
+
+const COLORS = ["#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#8b5cf6", "#ec4899", "#64748b"];
 
 export const CallMonitoringTab = ({
   API_BASE,
@@ -91,7 +94,7 @@ export const CallMonitoringTab = ({
   };
 
   // ============================================================
-  // 📊 FETCH ANALYTICS
+  // 📊 FETCH ANALYTICS & CALLY SUMMARY BREAKDOWN
   // ============================================================
 
   const fetchAnalytics = useCallback(
@@ -274,6 +277,20 @@ export const CallMonitoringTab = ({
     "Select Salesperson";
 
   // ============================================================
+  // 🥧 PREPARE PIE CHART DATA FROM BREAKDOWN
+  // ============================================================
+
+  const pieChartData = useMemo(() => {
+    if (!analytics?.breakdown || !Array.isArray(analytics.breakdown)) {
+      return [];
+    }
+    return analytics.breakdown.map((item) => ({
+      name: item._id ? item._id.toUpperCase() : "UNKNOWN",
+      value: item.count || 0,
+    }));
+  }, [analytics]);
+
+  // ============================================================
   // 👥 CUSTOMER-WISE GROUPING
   // ============================================================
 
@@ -406,12 +423,11 @@ export const CallMonitoringTab = ({
 
           <div>
             <h2 className="text-lg sm:text-xl font-bold text-[var(--color-heading)]">
-              📞 Call Monitoring
+              📞 Call Monitoring & Analytics
             </h2>
 
             <p className="text-xs text-[var(--color-body)] mt-1">
-              Monitor salesperson calling activity,
-              conversation time and recordings.
+              Analyze performance breakdown, team call statuses, duration, and recordings.
             </p>
           </div>
 
@@ -421,7 +437,7 @@ export const CallMonitoringTab = ({
               fetchAnalytics();
               fetchCallHistory();
             }}
-            className="px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-xs font-semibold"
+            className="px-4 py-2.5 rounded-xl bg-[var(--color-primary)] text-white text-xs font-semibold cursor-pointer"
           >
             🔄 Refresh
           </button>
@@ -443,7 +459,7 @@ export const CallMonitoringTab = ({
                   e.target.value
                 )
               }
-              className="w-full px-3 py-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-heading)] outline-none"
+              className="w-full px-3 py-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-sm text-[var(--color-heading)] outline-none cursor-pointer"
             >
               {salespersonList.map(
                 (employee) => (
@@ -494,30 +510,26 @@ export const CallMonitoringTab = ({
       </div>
 
       {/* ====================================================== */}
-      {/* 📊 ANALYTICS */}
+      {/* 📊 CALLY-STYLE ANALYTICS CARDS & PIE CHART */}
       {/* ====================================================== */}
 
-      <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 shadow-sm">
+      <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 shadow-sm space-y-6">
 
-        <div className="flex items-center justify-between mb-5">
-
+        <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-bold text-[var(--color-heading)]">
-              📊 Call Analytics
+              📊 Performance Summary & Visual Distribution
             </h3>
-
             <p className="text-xs text-[var(--color-body)] mt-1">
-              {selectedSalespersonName}
+              Active Member: <strong className="text-[var(--color-primary)]">{selectedSalespersonName}</strong>
             </p>
           </div>
 
-          {(loadingAnalytics ||
-            loadingHistory) && (
-            <span className="text-xs text-[var(--color-body)]">
-              Loading...
+          {(loadingAnalytics || loadingHistory) && (
+            <span className="text-xs text-[var(--color-body)] animate-pulse">
+              Syncing analytics...
             </span>
           )}
-
         </div>
 
         {loadingAnalytics && !analytics ? (
@@ -525,75 +537,103 @@ export const CallMonitoringTab = ({
             Loading call analytics...
           </div>
         ) : analytics ? (
-          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+          <div className="space-y-6">
+            {/* TOP METRICS GRID */}
+            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+              <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                <p className="text-xs text-[var(--color-body)]">Total Dials</p>
+                <p className="text-2xl font-bold mt-1">{analytics.totalDials || 0}</p>
+              </div>
 
-            <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-body)]">
-                Total Dials
-              </p>
-              <p className="text-2xl font-bold mt-1">
-                {analytics.totalDials}
-              </p>
+              <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                <p className="text-xs text-[var(--color-body)]">Unique</p>
+                <p className="text-2xl font-bold mt-1">{analytics.uniqueDials || 0}</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                <p className="text-xs text-[var(--color-body)]">Duplicate</p>
+                <p className="text-2xl font-bold mt-1">{analytics.duplicateDials || 0}</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                <p className="text-xs text-[var(--color-body)]">Connected</p>
+                <p className="text-2xl font-bold mt-1 text-emerald-600">{analytics.connectedCalls || 0}</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                <p className="text-xs text-[var(--color-body)]">Not Connected</p>
+                <p className="text-2xl font-bold mt-1 text-amber-600">{analytics.notConnectedCalls || 0}</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                <p className="text-xs text-[var(--color-body)]">Talk Time</p>
+                <p className="text-base font-bold mt-2">{formatCallDuration(analytics.totalDurationSeconds)}</p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                <p className="text-xs text-[var(--color-body)]">Avg. Duration</p>
+                <p className="text-base font-bold mt-2">{formatCallDuration(analytics.averageDurationSeconds)}</p>
+              </div>
             </div>
 
-            <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-body)]">
-                Unique
-              </p>
-              <p className="text-2xl font-bold mt-1">
-                {analytics.uniqueDials}
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-body)]">
-                Duplicate
-              </p>
-              <p className="text-2xl font-bold mt-1">
-                {analytics.duplicateDials}
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-body)]">
-                Connected
-              </p>
-              <p className="text-2xl font-bold mt-1">
-                {analytics.connectedCalls}
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-body)]">
-                Not Connected
-              </p>
-              <p className="text-2xl font-bold mt-1">
-                {analytics.notConnectedCalls}
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-body)]">
-                Talk Time
-              </p>
-              <p className="text-lg font-bold mt-2">
-                {formatCallDuration(
-                  analytics.totalDurationSeconds
+            {/* 🥧 RECHARTS PIE CHART SECTION */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] p-5 rounded-2xl flex flex-col items-center justify-center">
+                <h4 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider mb-3 w-full text-left">
+                  🥧 Call Status Share (Pie Chart)
+                </h4>
+                {pieChartData.length > 0 ? (
+                  <div className="w-full h-64">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieChartData}
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={80}
+                          dataKey="value"
+                          label
+                        >
+                          {pieChartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--color-body)] py-16">No breakdown data available for chart</p>
                 )}
-              </p>
-            </div>
+              </div>
 
-            <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-              <p className="text-xs text-[var(--color-body)]">
-                Avg. Duration
-              </p>
-              <p className="text-lg font-bold mt-2">
-                {formatCallDuration(
-                  analytics.averageDurationSeconds
+              {/* STATUS BREAKDOWN CARDS */}
+              <div className="bg-[var(--color-surface)] border border-[var(--color-border)] p-5 rounded-2xl space-y-3">
+                <h4 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider mb-2">
+                  📌 Status & Type Breakdown Details
+                </h4>
+                {analytics.breakdown && analytics.breakdown.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {analytics.breakdown.map((item, idx) => (
+                      <div key={idx} className="p-3 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)]">
+                        <p className="text-[11px] text-[var(--color-body)] font-medium uppercase">
+                          {item._id || "UNKNOWN"} Calls
+                        </p>
+                        <p className="text-lg font-bold mt-0.5 text-[var(--color-heading)]">
+                          {item.count}
+                        </p>
+                        <p className="text-[10px] text-[var(--color-body)]">
+                          Duration: {formatCallDuration(item.totalDuration || 0)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[var(--color-body)] py-12 text-center">No status breakdown found.</p>
                 )}
-              </p>
+              </div>
             </div>
-
           </div>
         ) : (
           <div className="py-10 text-center text-sm text-[var(--color-body)]">
@@ -611,11 +651,11 @@ export const CallMonitoringTab = ({
         <div className="mb-5">
 
           <h3 className="text-lg font-bold text-[var(--color-heading)]">
-            👥 Customer Call History
+            👥 Customer Call History & Recording Feeds
           </h3>
 
           <p className="text-xs text-[var(--color-body)] mt-1">
-            {selectedSalespersonName}
+            Review timeline, talk times, and review uploaded recordings per client.
           </p>
 
         </div>
@@ -661,7 +701,7 @@ export const CallMonitoringTab = ({
                             : customerKey
                         )
                       }
-                      className="w-full text-left p-4"
+                      className="w-full text-left p-4 cursor-pointer"
                     >
 
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -734,7 +774,7 @@ export const CallMonitoringTab = ({
                       <div className="border-t border-[var(--color-border)] p-4">
 
                         <h5 className="text-sm font-bold text-[var(--color-heading)] mb-3">
-                          📞 Individual Calls
+                          📞 Individual Calls & Audio Recordings
                         </h5>
 
                         <div className="space-y-3">
@@ -761,7 +801,7 @@ export const CallMonitoringTab = ({
                                     call._id ||
                                     `${customerKey}-${index}`
                                   }
-                                  className="p-4 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)]"
+                                  className="p-4 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)] space-y-3"
                                 >
 
                                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -817,14 +857,13 @@ export const CallMonitoringTab = ({
 
                                   {(call.connectedAt ||
                                     call.endedAt) && (
-                                    <div className="mt-3 pt-3 border-t border-[var(--color-border)] grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div className="pt-2 border-t border-[var(--color-border)] grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
 
                                       <div>
-                                        <p className="text-xs text-[var(--color-body)]">
-                                          Connected At
-                                        </p>
-
-                                        <p className="text-xs font-semibold mt-1">
+                                        <span className="text-[var(--color-body)]">
+                                          Connected At:{" "}
+                                        </span>
+                                        <span className="font-semibold">
                                           {call.connectedAt
                                             ? new Date(
                                                 call.connectedAt
@@ -832,15 +871,14 @@ export const CallMonitoringTab = ({
                                                 "en-IN"
                                               )
                                             : "—"}
-                                        </p>
+                                        </span>
                                       </div>
 
                                       <div>
-                                        <p className="text-xs text-[var(--color-body)]">
-                                          Ended At
-                                        </p>
-
-                                        <p className="text-xs font-semibold mt-1">
+                                        <span className="text-[var(--color-body)]">
+                                          Ended At:{" "}
+                                        </span>
+                                        <span className="font-semibold">
                                           {call.endedAt
                                             ? new Date(
                                                 call.endedAt
@@ -848,27 +886,27 @@ export const CallMonitoringTab = ({
                                                 "en-IN"
                                               )
                                             : "—"}
-                                        </p>
+                                        </span>
                                       </div>
 
                                     </div>
                                   )}
 
-                                  {/* 🎙️ RECORDING */}
+                                  {/* 🎙️ RECORDING PLAYER */}
 
-                                  <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+                                  <div className="pt-2 border-t border-[var(--color-border)]">
 
                                     {call.recordingUrl ? (
-                                      <div className="space-y-2">
+                                      <div className="space-y-1.5">
 
                                         <p className="text-xs font-semibold text-[var(--color-heading)]">
-                                          🎙️ Call Recording
+                                          🎙️ Call Recording Audio
                                         </p>
 
                                         <audio
                                           controls
                                           preload="metadata"
-                                          className="w-full"
+                                          className="w-full h-10"
                                           src={
                                             call.recordingUrl
                                           }
@@ -876,8 +914,8 @@ export const CallMonitoringTab = ({
 
                                       </div>
                                     ) : (
-                                      <p className="text-xs text-[var(--color-body)]">
-                                        🎙️ No recording uploaded
+                                      <p className="text-xs text-[var(--color-body)] italic">
+                                        🎙️ No audio recording available for this call
                                       </p>
                                     )}
 

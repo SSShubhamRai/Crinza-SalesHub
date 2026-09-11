@@ -316,7 +316,7 @@ const Login = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
     if (lockoutTimer > 0) {
       toast.error(`Too many failed attempts. Please wait ${lockoutTimer}s.`);
@@ -340,6 +340,13 @@ const Login = ({ onLoginSuccess }) => {
       
       await Preferences.set({ key: 'isLoggedIn', value: 'true' });
       await Preferences.set({ key: 'salespersonId', value: data.userId });
+
+      // 🌟 YAHAN NATIVE SHARED PREFERENCES MEIN AUTH TOKEN SAVE KAREIN (Background Sync ke liye)
+      try {
+        await Preferences.set({ key: 'auth_token', value: data.token });
+      } catch (prefErr) {
+        console.log("Failed to save token to preferences", prefErr);
+      }
 
       if (socketRef.current) {
         socketRef.current.disconnect();
