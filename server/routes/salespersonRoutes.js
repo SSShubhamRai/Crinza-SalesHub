@@ -93,13 +93,52 @@ router.post("/end-day", verifyToken, async (req, res) => {
 
     const { latitude, longitude } = req.body;
     const endTimeDate = new Date();
+    
     session.status = "ENDED";
     session.endTime = endTimeDate;
     session.endLocation = { latitude: Number(latitude) || 0, longitude: Number(longitude) || 0 };
     await session.save();
 
-    const workingHours = ((endTimeDate - new Date(session.startTime)) / (1000 * 60 * 60)).toFixed(1);
-    res.json({ success: true, message: "Day ended successfully.", summary: { workingHours: `${workingHours} hrs` } });
+    // ⏱️ 1. Format Start & End Time (12-hour format with AM/PM)
+    const startTimeFormatted = new Date(session.startTime).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: '2-digit', minute: '2-digit' });
+    const endTimeFormatted = endTimeDate.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: '2-digit', minute: '2-digit' });
+
+    // ⏳ 2. Calculate Working Hours
+    const workingHoursNum = ((endTimeDate - new Date(session.startTime)) / (1000 * 60 * 60)).toFixed(1);
+    const workingHours = `${workingHoursNum} hrs`;
+
+    // 📍 3. Calculate Total Visits (Leads created today)
+    const totalVisits = await Lead.countDocuments({
+      salespersonId: req.user.userId,
+      leadDate: today
+    });
+
+    // 💰 4. Calculate Total Collections (Invoices paid today by this salesperson)
+    const invoicesToday = await Invoice.find({
+      salespersonId: req.user.userId,
+      status: { $ne: 'rejected' },
+      createdAt: { 
+        $gte: new Date(`${today}T00:00:00.000Z`), 
+        $lte: new Date(`${today}T23:59:59.999Z`) 
+      }
+    });
+    const totalCollected = invoicesToday.reduce((sum, inv) => sum + (inv.paidAmount || 0), 0);
+
+    // 🛣️ 5. Total Distance (Fallback to session totalDistanceKm or 0)
+    const totalDistanceKm = session.totalDistanceKm || 0;
+
+    res.json({ 
+      success: true, 
+      message: "Day ended successfully.", 
+      summary: { 
+        startTime: startTimeFormatted,
+        endTime: endTimeFormatted,
+        workingHours, 
+        totalVisits,
+        totalCollected,
+        totalDistanceKm
+      } 
+    });
   } catch (err) {
     res.status(500).json({ message: "Failed to end day", error: err.message });
   }

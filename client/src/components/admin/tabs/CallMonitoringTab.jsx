@@ -276,7 +276,7 @@ export const CallMonitoringTab = ({
     selectedSalesperson ||
     "Select Salesperson";
 
-  // ============================================================
+// ============================================================
   // 🥧 PREPARE PIE CHART DATA FROM BREAKDOWN
   // ============================================================
 
@@ -284,11 +284,33 @@ export const CallMonitoringTab = ({
     if (!analytics?.breakdown || !Array.isArray(analytics.breakdown)) {
       return [];
     }
-    return analytics.breakdown.map((item) => ({
-      name: item._id ? item._id.toUpperCase() : "UNKNOWN",
-      value: item.count || 0,
-    }));
+    return analytics.breakdown.map((item) => {
+      const rawStatus = item._id ? item._id.toUpperCase() : "UNKNOWN";
+      let formattedName = rawStatus;
+
+      // 🌟 Clear heading mapping for Pie Chart
+      if (rawStatus === "ENDED" || rawStatus === "CONNECTED") {
+        formattedName = "CONNECTED";
+      } else if (rawStatus === "NOT_CONNECTED" || rawStatus === "NOT CONNECTED") {
+        formattedName = "NOT CONNECTED";
+      } else if (rawStatus === "MISSED") {
+        formattedName = "MISSED";
+      } else if (rawStatus === "REJECTED") {
+        formattedName = "REJECTED";
+      } else if (rawStatus === "INITIATED") {
+        formattedName = "INITIATED";
+      } else if (rawStatus === "FAILED") {
+        formattedName = "FAILED";
+      }
+
+      return {
+        name: formattedName,
+        value: item.count || 0,
+      };
+    });
   }, [analytics]);
+
+
 
   // ============================================================
   // 👥 CUSTOMER-WISE GROUPING
@@ -608,26 +630,46 @@ export const CallMonitoringTab = ({
                 )}
               </div>
 
-              {/* STATUS BREAKDOWN CARDS */}
+{/* STATUS BREAKDOWN CARDS */}
               <div className="bg-[var(--color-surface)] border border-[var(--color-border)] p-5 rounded-2xl space-y-3">
                 <h4 className="text-xs font-bold text-[var(--color-heading)] uppercase tracking-wider mb-2">
                   📌 Status & Type Breakdown Details
                 </h4>
                 {analytics.breakdown && analytics.breakdown.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {analytics.breakdown.map((item, idx) => (
-                      <div key={idx} className="p-3 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)]">
-                        <p className="text-[11px] text-[var(--color-body)] font-medium uppercase">
-                          {item._id || "UNKNOWN"} Calls
-                        </p>
-                        <p className="text-lg font-bold mt-0.5 text-[var(--color-heading)]">
-                          {item.count}
-                        </p>
-                        <p className="text-[10px] text-[var(--color-body)]">
-                          Duration: {formatCallDuration(item.totalDuration || 0)}
-                        </p>
-                      </div>
-                    ))}
+                    {analytics.breakdown.map((item, idx) => {
+                      const rawStatus = item._id ? item._id.toUpperCase() : "UNKNOWN";
+                      let displayTitle = rawStatus;
+
+                      // 🌟 Clear title mapping for Cards
+                      if (rawStatus === "ENDED" || rawStatus === "CONNECTED") {
+                        displayTitle = "CONNECTED CALLS";
+                      } else if (rawStatus === "NOT_CONNECTED" || rawStatus === "NOT CONNECTED") {
+                        displayTitle = "NOT CONNECTED CALLS";
+                      } else if (rawStatus === "MISSED") {
+                        displayTitle = "MISSED CALLS";
+                      } else if (rawStatus === "REJECTED") {
+                        displayTitle = "REJECTED CALLS";
+                      } else if (rawStatus === "INITIATED") {
+                        displayTitle = "INITIATED CALLS";
+                      } else {
+                        displayTitle = `${rawStatus} CALLS`;
+                      }
+
+                      return (
+                        <div key={idx} className="p-3 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)]">
+                          <p className="text-[11px] text-[var(--color-body)] font-medium uppercase">
+                            {displayTitle}
+                          </p>
+                          <p className="text-lg font-bold mt-0.5 text-[var(--color-heading)]">
+                            {item.count}
+                          </p>
+                          <p className="text-[10px] text-[var(--color-body)]">
+                            Duration: {formatCallDuration(item.totalDuration || 0)}
+                          </p>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="text-xs text-[var(--color-body)] py-12 text-center">No status breakdown found.</p>
