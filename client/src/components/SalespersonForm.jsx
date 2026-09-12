@@ -3762,13 +3762,332 @@ const handleUpdateLeadStatus = async (
     📞 CUSTOMER-WISE CALL HISTORY
 =========================================================================== */}
 
+<div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 shadow-sm mb-6">
+
+  <div className="mb-5">
+    <h2 className="text-lg sm:text-xl font-bold text-[var(--color-heading)]">
+      📞 Customer Call History
+    </h2>
+
+    <p className="text-xs text-[var(--color-body)] mt-1">
+      View calls and total conversation time customer-wise
+    </p>
+  </div>
+
+  {groupedCallHistory.length === 0 ? (
+    <div className="py-8 text-center text-sm text-[var(--color-body)]">
+      No call history available yet.
+    </div>
+  ) : (
+    <div className="space-y-3">
+
+      {groupedCallHistory.map((customer) => {
+  const customerKey =
+    customer.phoneNumber ||
+    customer.leadId ||
+    customer.customerName;
+
+  const isExpanded = expandedCustomer === customerKey;
+
+  return (
+    <div
+      key={customerKey}
+      className="rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden"
+    >
+
+      {/* CUSTOMER SUMMARY */}
+      <button
+        type="button"
+        onClick={() =>
+          setExpandedCustomer(
+            isExpanded ? null : customerKey
+          )
+        }
+        className="w-full text-left p-4"
+      >
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+
+          {/* CUSTOMER */}
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+
+              <h3 className="font-bold text-[var(--color-heading)] truncate">
+                {customer.customerName}
+              </h3>
+
+              <span className="text-xs">
+                {isExpanded ? "▲" : "▼"}
+              </span>
+
+            </div>
+
+            <p className="text-xs text-[var(--color-body)] mt-1">
+              {customer.phoneNumber || "Phone unavailable"}
+            </p>
+          </div>
+
+          {/* SUMMARY */}
+          <div className="grid grid-cols-3 gap-4 text-center">
+
+            <div>
+              <p className="text-xs text-[var(--color-body)]">
+                Calls
+              </p>
+
+              <p className="font-bold">
+                {customer.totalCalls}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-[var(--color-body)]">
+                Connected
+              </p>
+
+              <p className="font-bold">
+                {customer.connectedCalls}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs text-[var(--color-body)]">
+                Talk Time
+              </p>
+
+              <p className="font-bold">
+                {formatCallDuration(
+                  customer.totalDurationSeconds
+                )}
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* LAST CALLED */}
+        <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
+
+          <p className="text-xs text-[var(--color-body)]">
+            Last Called
+          </p>
+
+          <p className="text-sm font-semibold mt-1">
+            {customer.lastCalledAt
+              ? new Date(
+                  customer.lastCalledAt
+                ).toLocaleString()
+              : "—"}
+          </p>
+
+        </div>
+
+      </button>
+
+
+      {/* =========================================================
+          INDIVIDUAL CALLS
+      ========================================================= */}
+
+      {isExpanded && (
+        <div className="border-t border-[var(--color-border)] p-4">
+
+          <h4 className="text-sm font-bold text-[var(--color-heading)] mb-3">
+            📞 Individual Calls
+          </h4>
+
+          <div className="space-y-3">
+
+            {customer.calls
+              .slice()
+              .sort(
+                (a, b) =>
+                  new Date(b.dialedAt) -
+                  new Date(a.dialedAt)
+              )
+              .map((call, index) => (
+
+                <div
+                  key={
+                    call._id ||
+                    `${customerKey}-${index}`
+                  }
+                  className="p-4 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)]"
+                >
+
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+
+                    {/* DATE/TIME */}
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {call.dialedAt
+                          ? new Date(
+                              call.dialedAt
+                            ).toLocaleString()
+                          : "Date unavailable"}
+                      </p>
+
+                      <p className="text-xs text-[var(--color-body)] mt-1">
+                        {call.phoneNumber ||
+                          customer.phoneNumber ||
+                          "Phone unavailable"}
+                      </p>
+                    </div>
+
+
+                    {/* STATUS */}
+                    <div>
+                      <span
+                        className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                          call.status === "CONNECTED"
+                            ? "bg-green-100 text-green-700"
+                            : call.status === "MISSED"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
+                      >
+                        {call.status || "UNKNOWN"}
+                      </span>
+                    </div>
+
+
+                    {/* DURATION */}
+                    <div className="text-left sm:text-right">
+
+                      <p className="text-xs text-[var(--color-body)]">
+                        Duration
+                      </p>
+
+                      <p className="font-bold mt-1">
+                        {formatCallDuration(
+                          call.durationSeconds
+                        )}
+                      </p>
+
+                    </div>
+                    {/* 🎙️ CALL RECORDING */}
+<div className="mt-4 pt-4 border-t border-[var(--color-border)]">
+
+  <input
+    type="file"
+    accept="audio/*,.m4a,.mp3,.wav,.aac,.ogg"
+    id={`recording-${call._id}`}
+    className="hidden"
+    onChange={(e) => {
+      const file = e.target.files?.[0];
+
+      if (file) {
+        handleCallRecordingUpload(
+          call._id,
+          file
+        );
+      }
+
+      // Same file ko dobara select karne allow karega
+      e.target.value = "";
+    }}
+  />
+
+  {call.recordingUrl ? (
+    <div className="space-y-2">
+
+      <p className="text-xs font-semibold text-[var(--color-heading)]">
+        🎙️ Recording
+      </p>
+
+      <audio
+        controls
+        preload="metadata"
+        className="w-full"
+        src={call.recordingUrl}
+      />
+
+      <label
+        htmlFor={`recording-${call._id}`}
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold cursor-pointer"
+      >
+        🔄 Replace Recording
+      </label>
+
+    </div>
+  ) : (
+
+    <label
+      htmlFor={`recording-${call._id}`}
+      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold cursor-pointer"
+    >
+      🎙️ Upload Recording
+    </label>
+
+  )}
+
+</div>
+
+                  </div>
+
+                  {/* CONNECTED / ENDED TIME */}
+                  {(call.connectedAt ||
+                    call.endedAt) && (
+                    <div className="mt-3 pt-3 border-t border-[var(--color-border)] grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+                      <div>
+                        <p className="text-xs text-[var(--color-body)]">
+                          Connected At
+                        </p>
+
+                        <p className="text-xs font-semibold mt-1">
+                          {call.connectedAt
+                            ? new Date(
+                                call.connectedAt
+                              ).toLocaleString()
+                            : "—"}
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-[var(--color-body)]">
+                          Ended At
+                        </p>
+
+                        <p className="text-xs font-semibold mt-1">
+                          {call.endedAt
+                            ? new Date(
+                                call.endedAt
+                              ).toLocaleString()
+                            : "—"}
+                        </p>
+                      </div>
+
+                    </div>
+                  )}
+
+                </div>
+
+              ))}
+
+          </div>
+
+        </div>
+      )}
+
+    </div>
+  );
+})}
+
+
+
+    </div>
+  )}
+
+</div>
 
 
 {/* =========================================================================
     📞 CALL HISTORY
 =========================================================================== */}
 
-{/* <div className="mt-6">
+<div className="mt-6">
 
   <h3 className="text-base font-bold text-[var(--color-heading)] mb-3">
     📞 Recent Calls
@@ -3819,7 +4138,7 @@ const handleUpdateLeadStatus = async (
     </div>
   )}
 
-</div> */}
+</div> 
 
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-2">
