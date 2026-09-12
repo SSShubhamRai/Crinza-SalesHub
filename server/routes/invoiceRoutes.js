@@ -27,6 +27,7 @@ const storage = new CloudinaryStorage({
 const upload = multer({ storage: storage });
 
 // 1. Invoice Submission Handler
+// 1. Invoice Submission Handler
 const handleInvoiceSubmission = async (req, res) => {
   try {
     const today = new Date().toLocaleDateString("en-CA", {
@@ -53,8 +54,6 @@ const handleInvoiceSubmission = async (req, res) => {
       });
     }
 
-    const invoiceId = "CRINZA-" + Date.now().toString().slice(-6);
-
     let parsedAddons = { testModule: false, windowApp: false, iosApp: false };
     if (req.body.addons) {
       try {
@@ -74,7 +73,7 @@ const handleInvoiceSubmission = async (req, res) => {
     const paymentProofPath = req.files && req.files["paymentProof"] ? req.files["paymentProof"][0].path : "";
     const logoProofPath = req.files && req.files["logoProof"] ? req.files["logoProof"][0].path : "";
 
-    const { ownerName, validityYears, validityMonths } = req.body;
+    const { ownerName, validityYears, validityMonths, existingDealId } = req.body;
     const yearsNum = Number(validityYears) || 0;
     const monthsNum = Number(validityMonths) || 0;
 
@@ -88,6 +87,49 @@ const handleInvoiceSubmission = async (req, res) => {
     const paymentMode = req.body.paymentMode || "ONLINE";
     const utrNumber = req.body.utrNumber ? req.body.utrNumber.trim() : "";
     const claimedPaid = Number(req.body.paidAmount) || 0;
+
+    // =========================================================
+    // 🌟 1. AGAR PURANE DEAL KA ID DIYA HAI (Installment Payment)
+    // =========================================================
+    if (existingDealId && existingDealId.trim() !== "") {
+      const existingDeal = await Invoice.findOne({ _id: existingDealId, salespersonId: req.user.userId });
+      
+      if (!existingDeal) {
+        return res.status(404).json({ success: false, message: "Original deal/invoice not found!" });
+      }
+
+      // Purane deal mein naya installment object push karein
+      existingDeal.installments = existingDeal.installments || [];
+      existingDeal.installments.push({
+        paidAmount: claimedPaid,
+        paymentMode,
+        utrNumber,
+        receiptNo: req.body.receiptNo || "",
+        chequeNo: req.body.chequeNo || "",
+        bankName: req.body.bankName || "",
+        paymentProof: paymentProofPath,
+        date: new Date()
+      });
+
+      // Total paid update karein aur due amount recalculate karein
+      existingDeal.paidAmount = (existingDeal.paidAmount || 0) + claimedPaid;
+      existingDeal.dueAmount = Math.max(0, existingDeal.totalAmount - existingDeal.paidAmount);
+
+      await existingDeal.save();
+
+      // Distance calculation aur points update yahan bhi run kar sakte hain agar zaroorat ho
+      return res.status(200).json({
+        success: true,
+        message: "Installment added successfully to existing deal!",
+        invoiceId: existingDeal.invoiceId,
+        dueAmount: existingDeal.dueAmount
+      });
+    }
+
+    // =========================================================
+    // 🌟 2. AGAR NAYA DEAL HAI (Fresh Sale)
+    // =========================================================
+    const invoiceId = "CRINZA-" + Date.now().toString().slice(-6);
 
     let ocrStatus = "PENDING";
     let ocrMessage = "Manual review required";
@@ -155,6 +197,18 @@ const handleInvoiceSubmission = async (req, res) => {
       ocrStatus,
       ocrMessage,
       status: "pending",
+      installments: [
+        {
+          paidAmount: claimedPaid,
+          paymentMode,
+          utrNumber,
+          receiptNo: req.body.receiptNo || "",
+          chequeNo: req.body.chequeNo || "",
+          bankName: req.body.bankName || "",
+          paymentProof: paymentProofPath,
+          date: new Date()
+        }
+      ]
     });
 
     await newInvoice.save();

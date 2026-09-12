@@ -1698,7 +1698,8 @@ return () => {
   }, [userId, API_BASE, onLogout, fetchBroadcastNotifications, dayStatus]);
 
   // --- Initial Form States ---
-  const initialFormData = {
+const initialFormData = {
+    existingDealId: "", // 🌟 Naya field add karein purane deal ko track karne ke liye
     instituteName: "",
     ownerName: "",
     appName: "",
@@ -2271,7 +2272,7 @@ if (leadFilter === "telecaller-assigned") {
     if (name === "pincode") fetchByPincode(value);
   };
 
-  const handlePayDueFromLedger = (deal) => {
+const handlePayDueFromLedger = (deal) => {
     const matchedState = indianStates.find(
       (s) => s.name.toLowerCase() === (deal.state || "").toLowerCase(),
     );
@@ -2279,6 +2280,7 @@ if (leadFilter === "telecaller-assigned") {
 
     setFormData({
       ...initialFormData,
+      existingDealId: deal._id, // 🌟 Yeh line zaroori hai taaki backend ko pata chale yeh installment hai
       instituteName: deal.instituteName || "",
       appName: deal.appName || "",
       categories: deal.categories || (deal.category ? [deal.category] : []),
