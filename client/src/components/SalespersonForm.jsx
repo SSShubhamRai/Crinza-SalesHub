@@ -849,255 +849,154 @@ const fetchCallAnalytics = useCallback(async () => {
 }, [API_BASE, callDateFilter, callFromDate, callToDate]);
 
 // ============================================================
-// 📞 SYNC ANDROID DEVICE CALL LOGS
+// 📞 SYNC ANDROID DEVICE CALL LOGS (UPDATED FOR SHIFT START TIME)
 // ============================================================
 
 const syncDeviceCallLogs = useCallback(async () => {
   try {
     const { Capacitor } = await import("@capacitor/core");
 
-    // ---------------------------------------------------------
-    // 1. Only Android / native app
-    // ---------------------------------------------------------
-
     if (!Capacitor.isNativePlatform()) {
-      console.log(
-        "📞 Device call-log sync skipped: browser platform."
-      );
+      console.log("📞 Device call-log sync skipped: browser platform.");
       return;
     }
 
     const token = localStorage.getItem("token");
-
     if (!token) {
-      console.warn(
-        "📞 Device call-log sync skipped: authentication token missing."
-      );
+      console.warn("📞 Device call-log sync skipped: authentication token missing.");
       return;
     }
 
-    // ---------------------------------------------------------
-    // 2. Check CALL LOG permission
-    // ---------------------------------------------------------
+    // 🌟 1. Pehle Day Status check karein ki day start hua hai ya nahi aur kab hua hai
+    const dayStatusRes = await fetch(`${API_BASE}/api/salesperson/day-status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const dayStatusData = await dayStatusRes.json();
 
+    if (!dayStatusRes.ok || dayStatusData.status !== "STARTED" || !dayStatusData.startTime) {
+      console.log("📞 Call sync skipped: Working day not started yet today.");
+      return;
+    }
+
+    // 🌟 2. Din shuru hone ka exact timestamp (milliseconds)
+    const dayStartTime = new Date(dayStatusData.startTime).getTime();
+
+    // ---------------------------------------------------------
+    // 3. Check CALL LOG permission
+    // ---------------------------------------------------------
     let permission;
-
     try {
-      permission =
-        await CallRecording.checkCallLogPermission();
+      permission = await CallRecording.checkCallLogPermission();
     } catch (permissionError) {
-      console.error(
-        "❌ Failed to check call-log permission:",
-        permissionError
-      );
+      console.error("❌ Failed to check call-log permission:", permissionError);
       return;
     }
 
-    // ---------------------------------------------------------
-    // 3. Request permission if required
-    // ---------------------------------------------------------
-
     if (!permission?.granted) {
       try {
-        permission =
-          await CallRecording.requestCallLogPermission();
+        permission = await CallRecording.requestCallLogPermission();
       } catch (permissionError) {
-        console.error(
-          "❌ Failed to request call-log permission:",
-          permissionError
-        );
+        console.error("❌ Failed to request call-log permission:", permissionError);
         return;
       }
 
-      // Check again after Android permission dialog
       try {
-        permission =
-          await CallRecording.checkCallLogPermission();
+        permission = await CallRecording.checkCallLogPermission();
       } catch (permissionError) {
-        console.error(
-          "❌ Failed to re-check call-log permission:",
-          permissionError
-        );
         return;
       }
     }
 
-    // ---------------------------------------------------------
-    // 4. Permission still not granted
-    // ---------------------------------------------------------
-
     if (!permission?.granted) {
-      console.warn(
-        "📞 READ_CALL_LOG permission not granted."
-      );
-
-      toast.error(
-        "Call log permission is required to sync phone calls."
-      );
-
+      toast.error("Call log permission is required to sync phone calls.");
       return;
     }
 
     // ---------------------------------------------------------
-    // 5. Read Android call history
+    // 4. Read Android call history
     // ---------------------------------------------------------
-
     let response;
-
     try {
-      response =
-        await CallRecording.getCallLogs();
+      response = await CallRecording.getCallLogs();
     } catch (callLogError) {
-      console.error(
-        "❌ Failed to read Android call logs:",
-        callLogError
-      );
-
-      toast.error(
-        "Unable to read phone call history."
-      );
-
+      console.error("❌ Failed to read Android call logs:", callLogError);
       return;
     }
 
-    const calls = Array.isArray(response?.calls)
-      ? response.calls
-      : [];
+    const calls = Array.isArray(response?.calls) ? response.calls : [];
+    if (calls.length === 0) return;
 
-    console.log(
-      `📞 Android call logs found: ${calls.length}`
-    );
+    // =========================================================
+    // 🌟 5. FILTER CALLS: Sirf woh calls jo DAY START hone ke baad ki hain
+    // =========================================================
+    const activeShiftCalls = calls.filter((call) => {
+      const callTime = Number(call.timestamp || call.date || call.callDate || 0);
+      return callTime >= dayStartTime;
+    });
 
-    // ---------------------------------------------------------
-    // 6. No calls available
-    // ---------------------------------------------------------
+    console.log(`📞 Total device calls: ${calls.length}, Calls since shift started: ${activeShiftCalls.length}`);
 
-    if (calls.length === 0) {
-      console.log(
-        "📞 No device calls available for sync."
-      );
+    if (activeShiftCalls.length === 0) {
+      console.log("📞 No calls made after starting the day.");
       return;
     }
 
     // ---------------------------------------------------------
-    // 7. Prepare clean call data
+    // 6. Prepare clean call data
     // ---------------------------------------------------------
-
-    const validCalls = calls
+    const validCalls = activeShiftCalls
       .map((call) => {
         if (!call) return null;
 
-        const phoneNumber =
-          call.phoneNumber ||
-          call.number ||
-          call.phone ||
-          "";
-
-        const timestamp =
-          call.timestamp ||
-          call.date ||
-          call.callDate ||
-          null;
-
+        const phoneNumber = call.phoneNumber || call.number || call.phone || "";
+        const timestamp = call.timestamp || call.date || call.callDate || null;
         const durationSeconds = Math.max(
           0,
-          Number(
-            call.durationSeconds ??
-              call.duration ??
-              0
-          ) || 0
+          Number(call.durationSeconds ?? call.duration ?? 0) || 0
         );
-
-        const type = String(
-          call.type ||
-            call.callType ||
-            ""
-        ).toUpperCase();
-
-        const connected =
-          Boolean(call.connected) ||
-          durationSeconds > 0;
-
+        const type = String(call.type || call.callType || "").toUpperCase();
+        const connected = Boolean(call.connected) || durationSeconds > 0;
         const deviceCallLogId =
           call.deviceCallLogId ||
           call.id ||
           call._id ||
           `${phoneNumber}_${timestamp}_${type}`;
 
-        if (!phoneNumber || !timestamp) {
-          return null;
-        }
+        if (!phoneNumber || !timestamp) return null;
 
         return {
-          deviceCallLogId: String(
-            deviceCallLogId
-          ),
-
-          phoneNumber: String(
-            phoneNumber
-          ),
-
+          deviceCallLogId: String(deviceCallLogId),
+          phoneNumber: String(phoneNumber),
           type,
-
           timestamp: Number(timestamp),
-
           durationSeconds,
-
           connected,
         };
       })
       .filter(Boolean);
 
-    if (validCalls.length === 0) {
-      console.log(
-        "📞 No valid device calls found."
-      );
-      return;
-    }
+    if (validCalls.length === 0) return;
 
     // ---------------------------------------------------------
-    // 8. Remove duplicates before sending
+    // 7. Remove duplicates before sending
     // ---------------------------------------------------------
-
     const uniqueCalls = Array.from(
-      new Map(
-        validCalls.map((call) => [
-          call.deviceCallLogId,
-          call,
-        ])
-      ).values()
-    );
-
-    console.log(
-      `📞 Valid calls: ${validCalls.length}`
-    );
-
-    console.log(
-      `📞 Unique calls to sync: ${uniqueCalls.length}`
+      new Map(validCalls.map((call) => [call.deviceCallLogId, call])).values()
     );
 
     // ---------------------------------------------------------
-    // 9. Send calls to backend
+    // 8. Send filtered calls to backend
     // ---------------------------------------------------------
-
-    const syncResponse = await fetch(
-      `${API_BASE}/api/salesperson/calls/sync`,
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-
-        body: JSON.stringify({
-          calls: uniqueCalls,
-        }),
-      }
-    );
+    const syncResponse = await fetch(`${API_BASE}/api/salesperson/calls/sync`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ calls: uniqueCalls }),
+    });
 
     let data = {};
-
     try {
       data = await syncResponse.json();
     } catch {
@@ -1105,65 +1004,18 @@ const syncDeviceCallLogs = useCallback(async () => {
     }
 
     if (!syncResponse.ok) {
-      throw new Error(
-        data?.message ||
-          "Failed to sync device call logs."
-      );
+      throw new Error(data?.message || "Failed to sync device call logs.");
     }
 
-    // ---------------------------------------------------------
-    // 10. Sync result
-    // ---------------------------------------------------------
-
-    console.log(
-      "✅ Device call logs sync result:",
-      data
-    );
-
-    console.log(
-      `📞 Received: ${
-        data?.totalReceived ??
-        uniqueCalls.length
-      }`
-    );
-
-    console.log(
-      `📞 Inserted: ${
-        data?.inserted ?? 0
-      }`
-    );
-
-    console.log(
-      `📞 Updated: ${
-        data?.updated ?? 0
-      }`
-    );
-
-    console.log(
-      `📞 Skipped: ${
-        data?.skipped ?? 0
-      }`
-    );
-
-    // ---------------------------------------------------------
-    // 11. Refresh CRM call history
-    // ---------------------------------------------------------
+    console.log("✅ Device call logs sync result:", data);
 
     await fetchCallHistory();
-
     await fetchCallAnalytics();
 
   } catch (error) {
-    console.error(
-      "🔥 Device call-log sync error:",
-      error
-    );
+    console.error("🔥 Device call-log sync error:", error);
   }
-}, [
-  API_BASE,
-  fetchCallHistory,
-  fetchCallAnalytics,
-]);
+}, [API_BASE, fetchCallHistory, fetchCallAnalytics]);
 
 const getCallFilterLabel = () => {
   if (callDateFilter === "today") return "Today";
@@ -1448,12 +1300,19 @@ const groupedCallHistory = useMemo(() => {
 
     groups[key].totalCalls += 1;
 
-    if (call.status === "CONNECTED") {
+    // 🌟 UPDATED: Status ya duration check karein ki call connected thi ya nahi
+    const callStatus = String(call.status || "").toUpperCase();
+    const duration = Number(call.durationSeconds) || 0;
+
+    if (
+      callStatus === "CONNECTED" ||
+      callStatus === "ENDED" ||
+      duration > 0
+    ) {
       groups[key].connectedCalls += 1;
     }
 
-    groups[key].totalDurationSeconds +=
-      Number(call.durationSeconds) || 0;
+    groups[key].totalDurationSeconds += duration;
 
     if (
       !groups[key].lastCalledAt ||
@@ -2933,6 +2792,7 @@ const handleUpdateLeadStatus = async (
       {activeView === "leads" && "My Generated Leads"}
       {activeView === "kanban" && "📌 Manage Lead"}
       {activeView === "calendar" && "📅 Follow-up & Meeting Calendar"}
+      {activeView === "calls" && "📞 Call History "}
       {activeView === "lead-form" && "New Lead & Client Visit"}
       {activeView === "invoice-form" && "Invoices & Installments"}
     </h1>
@@ -3341,6 +3201,16 @@ const handleUpdateLeadStatus = async (
             >
               📅 Calendar
             </button>
+            <button
+  onClick={() => setActiveView("calls")}
+  className={`px-4 py-3 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0 active:scale-95 min-h-[44px] ${
+    activeView === "calls"
+      ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20"
+      : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+  }`}
+>
+  📞 Call History
+</button>
           </div>
 
           <div className="flex gap-2 w-full sm:w-auto justify-stretch sm:justify-end">
@@ -3381,62 +3251,77 @@ const handleUpdateLeadStatus = async (
         </div>
 
         {/* --- MOBILE THUMB-FRIENDLY BOTTOM NAVIGATION BAR --- */}
-        <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-[var(--color-card)] border-t border-[var(--color-border)] z-40 px-2 py-2 flex justify-between items-center shadow-2xl backdrop-blur-lg bg-opacity-95">
-          <button
-            onClick={() => setActiveView("dashboard")}
-            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${
-              activeView === "dashboard"
-                ? "text-[var(--color-primary)] font-bold"
-                : "text-[var(--color-body)]"
-            }`}
-          >
-            <span className="text-lg">📊</span>
-            <span className="text-[9px]">Dash</span>
-          </button>
-          <button
-            onClick={() => setActiveView("leads")}
-            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${
-              activeView === "leads"
-                ? "text-[var(--color-primary)] font-bold"
-                : "text-[var(--color-body)]"
-            }`}
-          >
-            <span className="text-lg">📋</span>
-            <span className="text-[9px]">Leads</span>
-          </button>
-          <div className="w-1/5 flex justify-center">
-            <button
-              onClick={() => {
-                if (dayStatus !== "ACTIVE") {
-                  toast.error("Start day first!");
-                  return;
-                }
-                setActiveView("lead-form");
-              }}
-              className="flex flex-col items-center justify-center -mt-8 bg-[var(--color-primary)] text-white w-12 h-12 rounded-full shadow-lg border-4 border-[var(--color-background)] active:scale-90 transition"
-            >
-              <span className="text-2xl font-bold leading-none">＋</span>
-            </button>
-          </div>
-          <button
-            onClick={() => setActiveView("kanban")}
-            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${
-              activeView === "kanban"
-                ? "text-[var(--color-primary)] font-bold"
-                : "text-[var(--color-body)]"
-            }`}
-          >
-            <span className="text-lg">📌</span>
-            <span className="text-[9px]">Pipeline</span>
-          </button>
-          <button
-            onClick={toggleTheme}
-            className="flex flex-col items-center justify-center p-2 rounded-xl text-[var(--color-body)] w-1/5 transition hover:text-[var(--color-primary)]"
-          >
-            <span className="text-lg">{isDarkMode ? "☀️" : "🌙"}</span>
-            <span className="text-[9px]">{isDarkMode ? "Light" : "Dark"}</span>
-          </button>
-        </div>
+              <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-[var(--color-card)] border-t border-[var(--color-border)] z-40 px-2 py-2 flex justify-between items-center shadow-2xl backdrop-blur-lg bg-opacity-95">
+          <button
+            onClick={() => setActiveView("dashboard")}
+            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${
+              activeView === "dashboard"
+                ? "text-[var(--color-primary)] font-bold"
+                : "text-[var(--color-body)]"
+            }`}
+          >
+            <span className="text-lg">📊</span>
+            <span className="text-[9px]">Dash</span>
+          </button>
+          <button
+            onClick={() => setActiveView("leads")}
+            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${
+              activeView === "leads"
+                ? "text-[var(--color-primary)] font-bold"
+                : "text-[var(--color-body)]"
+            }`}
+          >
+            <span className="text-lg">📋</span>
+            <span className="text-[9px]">Leads</span>
+          </button>
+          <div className="w-1/5 flex justify-center">
+            <button
+              onClick={() => {
+                if (dayStatus !== "ACTIVE") {
+                  toast.error("Start day first!");
+                  return;
+                }
+                setActiveView("lead-form");
+              }}
+              className="flex flex-col items-center justify-center -mt-8 bg-[var(--color-primary)] text-white w-12 h-12 rounded-full shadow-lg border-4 border-[var(--color-background)] active:scale-90 transition"
+            >
+              <span className="text-2xl font-bold leading-none">＋</span>
+            </button>
+          </div>
+          <button
+            onClick={() => setActiveView("kanban")}
+            className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${
+              activeView === "kanban"
+                ? "text-[var(--color-primary)] font-bold"
+                : "text-[var(--color-body)]"
+            }`}
+          >
+            <span className="text-lg">📌</span>
+            <span className="text-[9px]">Pipeline</span>
+          </button>
+          <button
+  onClick={() => setActiveView("calls")}
+  className={`flex flex-col items-center justify-center p-2 rounded-xl transition w-1/5 ${
+    activeView === "calls"
+      ? "text-[var(--color-primary)] font-bold"
+      : "text-[var(--color-body)]"
+  }`}
+>
+  <span className="text-lg">📞</span>
+  <span className="text-[9px]">Calls</span>
+</button>
+          <button
+            onClick={toggleTheme}
+            className="flex flex-col items-center justify-center p-2 rounded-xl text-[var(--color-body)] w-1/5 transition hover:text-[var(--color-primary)]"
+          >
+            <span className="text-lg">{isDarkMode ? "☀️" : "🌙"}</span>
+            <span className="text-[9px]">{isDarkMode ? "Light" : "Dark"}</span>
+          </button>
+        </div>
+        
+
+
+
 
         {/* --- VIEW CONTAINER WITH SMOOTH FRAMER MOTION TRANSITION --- */}
         <AnimatePresence mode="wait">
@@ -3556,591 +3441,7 @@ const handleUpdateLeadStatus = async (
                   </div>
                 </div>
 
-                {/* =========================================================================
-    📞 CALL ANALYTICS
-=========================================================================== */}
 
-<div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 shadow-sm mb-6">
-
-  <div className="flex flex-wrap gap-2 mb-5">
-
-  <button
-    type="button"
-    onClick={() => {
-      setCallDateFilter("today");
-    }}
-    className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
-      callDateFilter === "today"
-        ? "bg-[var(--color-primary)] text-white"
-        : "bg-[var(--color-surface)] border-[var(--color-border)]"
-    }`}
-  >
-    Today
-  </button>
-
-  <button
-    type="button"
-    onClick={() => {
-      setCallDateFilter("week");
-    }}
-    className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
-      callDateFilter === "week"
-        ? "bg-[var(--color-primary)] text-white"
-        : "bg-[var(--color-surface)] border-[var(--color-border)]"
-    }`}
-  >
-    This Week
-  </button>
-
-  <button
-    type="button"
-    onClick={() => {
-      setCallDateFilter("month");
-    }}
-    className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
-      callDateFilter === "month"
-        ? "bg-[var(--color-primary)] text-white"
-        : "bg-[var(--color-surface)] border-[var(--color-border)]"
-    }`}
-  >
-    This Month
-  </button>
-
-  <button
-    type="button"
-    onClick={() => {
-      setCallDateFilter("custom");
-    }}
-    className={`px-4 py-2 rounded-xl text-xs font-semibold border ${
-      callDateFilter === "custom"
-        ? "bg-[var(--color-primary)] text-white"
-        : "bg-[var(--color-surface)] border-[var(--color-border)]"
-    }`}
-  >
-    Custom
-  </button>
-
-</div>
-
-{callDateFilter === "custom" && (
-  <div className="flex flex-col sm:flex-row gap-3 mb-5">
-
-    <div className="flex-1">
-      <label className="block text-xs font-semibold mb-1">
-        From Date
-      </label>
-
-      <input
-        type="date"
-        value={callFromDate}
-        onChange={(e) => setCallFromDate(e.target.value)}
-        className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-sm"
-      />
-    </div>
-
-    <div className="flex-1">
-      <label className="block text-xs font-semibold mb-1">
-        To Date
-      </label>
-
-      <input
-        type="date"
-        value={callToDate}
-        onChange={(e) => setCallToDate(e.target.value)}
-        className="w-full px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-sm"
-      />
-    </div>
-
-    <div className="flex items-end">
-      <button
-        type="button"
-        onClick={fetchCallAnalytics}
-        disabled={!callFromDate || !callToDate}
-        className="px-5 py-2 rounded-xl bg-[var(--color-primary)] text-white text-sm font-semibold disabled:opacity-50"
-      >
-        Apply
-      </button>
-    </div>
-
-  </div>
-)}
-
-  <div className="flex items-center justify-between mb-5">
-    <div>
-      <h2 className="text-lg sm:text-xl font-bold text-[var(--color-heading)]">
-        📞 Call Analytics
-      </h2>
-
-      <p className="text-xs text-[var(--color-body)] mt-1">
-        Your calling performance
-      </p>
-    </div>
-
-    <button
-      type="button"
-      onClick={() => {
-        fetchCallAnalytics();
-        fetchCallHistory();
-      }}
-      className="px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold"
-    >
-      🔄 Refresh
-    </button>
-  </div>
-
-  
-
-  {/* =========================================================
-    📊 SELECTED DATE RANGE ANALYTICS
-========================================================= */}
-
-{callAnalyticsLoading ? (
-  <div className="py-8 text-center text-sm text-[var(--color-body)]">
-    Loading call analytics...
-  </div>
-) : callAnalytics ? (
-  <>
-    {/* SELECTED PERIOD */}
-    <div className="mb-5">
-      <h3 className="text-sm font-bold text-[var(--color-heading)]">
-        {getCallFilterLabel()}
-      </h3>
-    </div>
-
-    {/* ANALYTICS CARDS (Cally App Style) */}
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-
-      {/* ALL CALLS / TOTAL */}
-      <div className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-        <p className="text-xs text-[var(--color-body)]">All Calls</p>
-        <p className="text-2xl font-bold mt-1 text-[var(--color-heading)]">
-          {callAnalytics.totalCalls || 0}
-        </p>
-        <p className="text-[11px] text-[var(--color-body)] mt-0.5">
-          {formatCallDuration(callAnalytics.totalDurationAll || 0)}
-        </p>
-      </div>
-
-      {/* DYNAMIC BREAKDOWN CARDS (Incoming, Outgoing, Missed, Rejected etc.) */}
-      {/* DYNAMIC BREAKDOWN CARDS */}
-{callAnalytics.breakdown && callAnalytics.breakdown.map((item, index) => {
-  // 🌟 Status heading ko clean aur user-friendly banane ke liye mapping
-  let displayTitle = item._id ? item._id.toLowerCase() : "unknown";
-  if (displayTitle === "ended" || displayTitle === "connected") {
-    displayTitle = "Connected Calls";
-  } else if (displayTitle === "not_connected" || displayTitle === "not connected") {
-    displayTitle = "Not Connected Calls";
-  } else {
-    displayTitle = `${displayTitle} Calls`;
-  }
-
-  return (
-    <div key={index} className="p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-      <p className="text-xs text-[var(--color-body)] capitalize font-semibold">
-        {displayTitle}
-      </p>
-      <p className="text-2xl font-bold mt-1 text-[var(--color-heading)]">
-        {item.count}
-      </p>
-      <p className="text-[11px] text-[var(--color-body)] mt-0.5">
-        {formatCallDuration(item.totalDuration || 0)}
-      </p>
-    </div>
-  );
-})}
-
-
-    </div>
-  </>
-) : (
-  <div className="py-8 text-center text-sm text-[var(--color-body)]">
-    No call analytics available yet.
-  </div>
-)}
-
-</div>
-
-{/* =========================================================================
-    📞 CUSTOMER-WISE CALL HISTORY
-=========================================================================== */}
-
-<div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 shadow-sm mb-6">
-
-  <div className="mb-5">
-    <h2 className="text-lg sm:text-xl font-bold text-[var(--color-heading)]">
-      📞 Customer Call History
-    </h2>
-
-    <p className="text-xs text-[var(--color-body)] mt-1">
-      View calls and total conversation time customer-wise
-    </p>
-  </div>
-
-  {groupedCallHistory.length === 0 ? (
-    <div className="py-8 text-center text-sm text-[var(--color-body)]">
-      No call history available yet.
-    </div>
-  ) : (
-    <div className="space-y-3">
-
-      {groupedCallHistory.map((customer) => {
-  const customerKey =
-    customer.phoneNumber ||
-    customer.leadId ||
-    customer.customerName;
-
-  const isExpanded = expandedCustomer === customerKey;
-
-  return (
-    <div
-      key={customerKey}
-      className="rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden"
-    >
-
-      {/* CUSTOMER SUMMARY */}
-      <button
-        type="button"
-        onClick={() =>
-          setExpandedCustomer(
-            isExpanded ? null : customerKey
-          )
-        }
-        className="w-full text-left p-4"
-      >
-
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-
-          {/* CUSTOMER */}
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-
-              <h3 className="font-bold text-[var(--color-heading)] truncate">
-                {customer.customerName}
-              </h3>
-
-              <span className="text-xs">
-                {isExpanded ? "▲" : "▼"}
-              </span>
-
-            </div>
-
-            <p className="text-xs text-[var(--color-body)] mt-1">
-              {customer.phoneNumber || "Phone unavailable"}
-            </p>
-          </div>
-
-          {/* SUMMARY */}
-          <div className="grid grid-cols-3 gap-4 text-center">
-
-            <div>
-              <p className="text-xs text-[var(--color-body)]">
-                Calls
-              </p>
-
-              <p className="font-bold">
-                {customer.totalCalls}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-xs text-[var(--color-body)]">
-                Connected
-              </p>
-
-              <p className="font-bold">
-                {customer.connectedCalls}
-              </p>
-            </div>
-
-            <div>
-              <p className="text-xs text-[var(--color-body)]">
-                Talk Time
-              </p>
-
-              <p className="font-bold">
-                {formatCallDuration(
-                  customer.totalDurationSeconds
-                )}
-              </p>
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* LAST CALLED */}
-        <div className="mt-3 pt-3 border-t border-[var(--color-border)]">
-
-          <p className="text-xs text-[var(--color-body)]">
-            Last Called
-          </p>
-
-          <p className="text-sm font-semibold mt-1">
-            {customer.lastCalledAt
-              ? new Date(
-                  customer.lastCalledAt
-                ).toLocaleString()
-              : "—"}
-          </p>
-
-        </div>
-
-      </button>
-
-
-      {/* =========================================================
-          INDIVIDUAL CALLS
-      ========================================================= */}
-
-      {isExpanded && (
-        <div className="border-t border-[var(--color-border)] p-4">
-
-          <h4 className="text-sm font-bold text-[var(--color-heading)] mb-3">
-            📞 Individual Calls
-          </h4>
-
-          <div className="space-y-3">
-
-            {customer.calls
-              .slice()
-              .sort(
-                (a, b) =>
-                  new Date(b.dialedAt) -
-                  new Date(a.dialedAt)
-              )
-              .map((call, index) => (
-
-                <div
-                  key={
-                    call._id ||
-                    `${customerKey}-${index}`
-                  }
-                  className="p-4 rounded-xl bg-[var(--color-card)] border border-[var(--color-border)]"
-                >
-
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-
-                    {/* DATE/TIME */}
-                    <div>
-                      <p className="text-sm font-semibold">
-                        {call.dialedAt
-                          ? new Date(
-                              call.dialedAt
-                            ).toLocaleString()
-                          : "Date unavailable"}
-                      </p>
-
-                      <p className="text-xs text-[var(--color-body)] mt-1">
-                        {call.phoneNumber ||
-                          customer.phoneNumber ||
-                          "Phone unavailable"}
-                      </p>
-                    </div>
-
-
-                    {/* STATUS */}
-                    <div>
-                      <span
-                        className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
-                          call.status === "CONNECTED"
-                            ? "bg-green-100 text-green-700"
-                            : call.status === "MISSED"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        {call.status || "UNKNOWN"}
-                      </span>
-                    </div>
-
-
-                    {/* DURATION */}
-                    <div className="text-left sm:text-right">
-
-                      <p className="text-xs text-[var(--color-body)]">
-                        Duration
-                      </p>
-
-                      <p className="font-bold mt-1">
-                        {formatCallDuration(
-                          call.durationSeconds
-                        )}
-                      </p>
-
-                    </div>
-                    {/* 🎙️ CALL RECORDING */}
-<div className="mt-4 pt-4 border-t border-[var(--color-border)]">
-
-  <input
-    type="file"
-    accept="audio/*,.m4a,.mp3,.wav,.aac,.ogg"
-    id={`recording-${call._id}`}
-    className="hidden"
-    onChange={(e) => {
-      const file = e.target.files?.[0];
-
-      if (file) {
-        handleCallRecordingUpload(
-          call._id,
-          file
-        );
-      }
-
-      // Same file ko dobara select karne allow karega
-      e.target.value = "";
-    }}
-  />
-
-  {call.recordingUrl ? (
-    <div className="space-y-2">
-
-      <p className="text-xs font-semibold text-[var(--color-heading)]">
-        🎙️ Recording
-      </p>
-
-      <audio
-        controls
-        preload="metadata"
-        className="w-full"
-        src={call.recordingUrl}
-      />
-
-      <label
-        htmlFor={`recording-${call._id}`}
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold cursor-pointer"
-      >
-        🔄 Replace Recording
-      </label>
-
-    </div>
-  ) : (
-
-    <label
-      htmlFor={`recording-${call._id}`}
-      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold cursor-pointer"
-    >
-      🎙️ Upload Recording
-    </label>
-
-  )}
-
-</div>
-
-                  </div>
-
-                  {/* CONNECTED / ENDED TIME */}
-                  {(call.connectedAt ||
-                    call.endedAt) && (
-                    <div className="mt-3 pt-3 border-t border-[var(--color-border)] grid grid-cols-1 sm:grid-cols-2 gap-2">
-
-                      <div>
-                        <p className="text-xs text-[var(--color-body)]">
-                          Connected At
-                        </p>
-
-                        <p className="text-xs font-semibold mt-1">
-                          {call.connectedAt
-                            ? new Date(
-                                call.connectedAt
-                              ).toLocaleString()
-                            : "—"}
-                        </p>
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-[var(--color-body)]">
-                          Ended At
-                        </p>
-
-                        <p className="text-xs font-semibold mt-1">
-                          {call.endedAt
-                            ? new Date(
-                                call.endedAt
-                              ).toLocaleString()
-                            : "—"}
-                        </p>
-                      </div>
-
-                    </div>
-                  )}
-
-                </div>
-
-              ))}
-
-          </div>
-
-        </div>
-      )}
-
-    </div>
-  );
-})}
-
-
-
-    </div>
-  )}
-
-</div>
-
-
-{/* =========================================================================
-    📞 CALL HISTORY
-=========================================================================== */}
-
-<div className="mt-6">
-
-  <h3 className="text-base font-bold text-[var(--color-heading)] mb-3">
-    📞 Recent Calls
-  </h3>
-
-  {callHistory.length === 0 ? (
-    <div className="p-6 rounded-2xl bg-[var(--color-surface)] text-sm text-[var(--color-body)] text-center">
-      No calls recorded yet.
-    </div>
-  ) : (
-    <div className="space-y-2">
-
-      {callHistory.slice(0, 20).map((call) => (
-        <div
-          key={call._id}
-          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]"
-        >
-
-          <div>
-            <p className="font-semibold text-sm text-[var(--color-heading)]">
-              {call.customerName || "Unknown Customer"}
-            </p>
-
-            <p className="text-xs text-[var(--color-body)]">
-              📞 {call.phoneNumber}
-            </p>
-
-            <p className="text-[10px] text-[var(--color-body)] mt-1">
-              {new Date(call.dialedAt).toLocaleString("en-IN")}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-
-            <span className="text-xs font-semibold">
-              {call.status}
-            </span>
-
-            <span className="text-xs font-bold">
-              {formatCallDuration(call.durationSeconds)}
-            </span>
-
-          </div>
-
-        </div>
-      ))}
-
-    </div>
-  )}
-
-</div> 
 
                 <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-2">
@@ -5447,6 +4748,355 @@ const handleUpdateLeadStatus = async (
                 )}
               </div>
             )}
+
+            {activeView === "calls" && (
+  <div className="space-y-5 max-w-4xl mx-auto">
+    {/* --- 📞 CALL ANALYTICS SUMMARY SECTION --- */}
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-5 shadow-sm">
+      <div className="flex flex-wrap gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setCallDateFilter("today")}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border ${
+            callDateFilter === "today"
+              ? "bg-[var(--color-primary)] text-white"
+              : "bg-[var(--color-surface)] border-[var(--color-border)]"
+          }`}
+        >
+          Today
+        </button>
+        <button
+          type="button"
+          onClick={() => setCallDateFilter("week")}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border ${
+            callDateFilter === "week"
+              ? "bg-[var(--color-primary)] text-white"
+              : "bg-[var(--color-surface)] border-[var(--color-border)]"
+          }`}
+        >
+          This Week
+        </button>
+        <button
+          type="button"
+          onClick={() => setCallDateFilter("month")}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border ${
+            callDateFilter === "month"
+              ? "bg-[var(--color-primary)] text-white"
+              : "bg-[var(--color-surface)] border-[var(--color-border)]"
+          }`}
+        >
+          This Month
+        </button>
+        <button
+          type="button"
+          onClick={() => setCallDateFilter("custom")}
+          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border ${
+            callDateFilter === "custom"
+              ? "bg-[var(--color-primary)] text-white"
+              : "bg-[var(--color-surface)] border-[var(--color-border)]"
+          }`}
+        >
+          Custom
+        </button>
+      </div>
+
+      {callDateFilter === "custom" && (
+        <div className="flex flex-col sm:flex-row gap-2.5 mb-4">
+          <div className="flex-1">
+            <label className="block text-[11px] font-semibold mb-1">From Date</label>
+            <input
+              type="date"
+              value={callFromDate}
+              onChange={(e) => setCallFromDate(e.target.value)}
+              className="w-full px-3 py-1.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-[11px] font-semibold mb-1">To Date</label>
+            <input
+              type="date"
+              value={callToDate}
+              onChange={(e) => setCallToDate(e.target.value)}
+              className="w-full px-3 py-1.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs"
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              onClick={fetchCallAnalytics}
+              disabled={!callFromDate || !callToDate}
+              className="px-4 py-1.5 rounded-xl bg-[var(--color-primary)] text-white text-xs font-semibold disabled:opacity-50"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">
+            📞 Call Analytics
+          </h2>
+          <p className="text-[11px] text-[var(--color-body)] mt-0.5">
+            Your calling performance metrics
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            fetchCallAnalytics();
+            fetchCallHistory();
+          }}
+          className="px-2.5 py-1.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs font-semibold cursor-pointer"
+        >
+          🔄 Refresh
+        </button>
+      </div>
+
+      {callAnalyticsLoading ? (
+        <div className="py-6 text-center text-xs text-[var(--color-body)]">
+          Loading call analytics...
+        </div>
+      ) : callAnalytics ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
+          <div className="p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+            <p className="text-[11px] text-[var(--color-body)]">All Calls</p>
+            <p className="text-xl font-bold mt-0.5 text-[var(--color-heading)]">
+              {callAnalytics.totalCalls || 0}
+            </p>
+            <p className="text-[10px] text-[var(--color-body)] mt-0.5">
+              {formatCallDuration(callAnalytics.totalDurationAll || 0)}
+            </p>
+          </div>
+          {callAnalytics.breakdown &&
+            callAnalytics.breakdown.map((item, index) => {
+              let displayTitle = item._id ? item._id.toLowerCase() : "unknown";
+              if (displayTitle === "ended" || displayTitle === "connected") {
+                displayTitle = "Connected Calls";
+              } else if (displayTitle === "not_connected" || displayTitle === "not connected") {
+                displayTitle = "Not Connected Calls";
+              } else {
+                displayTitle = `${displayTitle} Calls`;
+              }
+              return (
+                <div key={index} className="p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                  <p className="text-[11px] text-[var(--color-body)] capitalize font-semibold truncate">
+                    {displayTitle}
+                  </p>
+                  <p className="text-xl font-bold mt-0.5 text-[var(--color-heading)]">
+                    {item.count}
+                  </p>
+                  <p className="text-[10px] text-[var(--color-body)] mt-0.5">
+                    {formatCallDuration(item.totalDuration || 0)}
+                  </p>
+                </div>
+              );
+            })}
+        </div>
+      ) : (
+        <div className="py-6 text-center text-xs text-[var(--color-body)]">
+          No call analytics available yet.
+        </div>
+      )}
+    </div>
+
+    {/* --- 📞 CUSTOMER-WISE CALL HISTORY --- */}
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-5 shadow-sm">
+      <div className="mb-4">
+        <h2 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">
+          📞 Customer Call History
+        </h2>
+        <p className="text-[11px] text-[var(--color-body)] mt-0.5">
+          Conversation history and recordings per customer
+        </p>
+      </div>
+
+      {groupedCallHistory.length === 0 ? (
+        <div className="py-6 text-center text-xs text-[var(--color-body)]">
+          No call history available yet.
+        </div>
+      ) : (
+        <div className="space-y-2.5 max-h-[550px] overflow-y-auto pr-1">
+          {groupedCallHistory.map((customer) => {
+            const customerKey =
+              customer.phoneNumber ||
+              customer.leadId ||
+              customer.customerName;
+
+            const isExpanded = expandedCustomer === customerKey;
+
+            return (
+              <div
+                key={customerKey}
+                className="rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] overflow-hidden transition"
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedCustomer(
+                      isExpanded ? null : customerKey
+                    )
+                  }
+                  className="w-full text-left p-3.5 cursor-pointer"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="font-bold text-xs sm:text-sm text-[var(--color-heading)] truncate">
+                          {customer.customerName}
+                        </h3>
+                        <span className="text-[10px]">{isExpanded ? "▲" : "▼"}</span>
+                      </div>
+                      <p className="text-[11px] text-[var(--color-body)] mt-0.5">
+                        {customer.phoneNumber || "Phone unavailable"}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-center">
+                      <div>
+                        <p className="text-[10px] text-[var(--color-body)]">Calls</p>
+                        <p className="text-xs font-bold">{customer.totalCalls}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-[var(--color-body)]">Connected</p>
+                        <p className="text-xs font-bold">{customer.connectedCalls}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-[var(--color-body)]">Talk Time</p>
+                        <p className="text-xs font-bold">
+                          {formatCallDuration(customer.totalDurationSeconds)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 pt-2 border-t border-[var(--color-border)] flex justify-between items-center text-[11px]">
+                    <span className="text-[var(--color-body)]">Last Called:</span>
+                    <strong className="text-[var(--color-heading)]">
+                      {customer.lastCalledAt
+                        ? new Date(customer.lastCalledAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })
+                        : "—"}
+                    </strong>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-[var(--color-border)] p-3 bg-[var(--color-card)] space-y-2.5">
+                    <h4 className="text-xs font-bold text-[var(--color-heading)] mb-2">
+                      📞 Individual Call Records
+                    </h4>
+                    <div className="space-y-2">
+                      {customer.calls
+                        .slice()
+                        .sort((a, b) => new Date(b.dialedAt) - new Date(a.dialedAt))
+                        .map((call, index) => (
+                          <div
+                            key={call._id || `${customerKey}-${index}`}
+                            className="p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] space-y-2 text-xs"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                              <div>
+                                <p className="font-semibold text-xs">
+                                  {call.dialedAt ? new Date(call.dialedAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : "Date unavailable"}
+                                </p>
+                                <p className="text-[11px] text-[var(--color-body)] mt-0.5">
+                                  {call.phoneNumber || customer.phoneNumber || "Phone unavailable"}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                                  call.status === "CONNECTED" ? "bg-emerald-500/10 text-emerald-600" : call.status === "MISSED" ? "bg-red-500/10 text-red-600" : "bg-gray-500/10 text-gray-500"
+                                }`}>
+                                  {call.status || "UNKNOWN"}
+                                </span>
+                                <span className="font-bold text-[11px]">{formatCallDuration(call.durationSeconds)}</span>
+                              </div>
+                            </div>
+
+                            {/* 🎙️ CALL RECORDING */}
+                            <div className="pt-2 border-t border-[var(--color-border)]">
+                              <input
+                                type="file"
+                                accept="audio/*,.m4a,.mp3,.wav,.aac,.ogg"
+                                id={`recording-${call._id}`}
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    handleCallRecordingUpload(call._id, file);
+                                  }
+                                  e.target.value = "";
+                                }}
+                              />
+                              {call.recordingUrl ? (
+                                <div className="space-y-1.5">
+                                  <p className="text-[11px] font-semibold text-[var(--color-heading)]">🎙️ Recording</p>
+                                  <audio controls preload="metadata" className="w-full h-8" src={call.recordingUrl} />
+                                  <label htmlFor={`recording-${call._id}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--color-card)] border border-[var(--color-border)] text-[10px] font-semibold cursor-pointer">
+                                    🔄 Replace
+                                  </label>
+                                </div>
+                              ) : (
+                                <label htmlFor={`recording-${call._id}`} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--color-card)] border border-[var(--color-border)] text-[10px] font-semibold cursor-pointer text-blue-600">
+                                  🎙️ Upload Recording
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+
+    {/* --- 📞 RECENT CALLS LIST --- */}
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl p-4 sm:p-5 shadow-sm">
+      <h3 className="text-sm sm:text-base font-bold text-[var(--color-heading)] mb-3">
+        📞 Recent Calls Log
+      </h3>
+      {callHistory.length === 0 ? (
+        <div className="py-6 text-center text-xs text-[var(--color-body)]">
+          No recent calls recorded yet.
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-[350px] overflow-y-auto pr-1">
+          {callHistory.slice(0, 20).map((call) => (
+            <div
+              key={call._id}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] text-xs"
+            >
+              <div>
+                <p className="font-semibold text-xs text-[var(--color-heading)]">
+                  {call.customerName || "Unknown Customer"}
+                </p>
+                <p className="text-[11px] text-[var(--color-body)]">
+                  📞 {call.phoneNumber}
+                </p>
+                <p className="text-[10px] text-[var(--color-body)] mt-0.5">
+                  {new Date(call.dialedAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                  call.status === "CONNECTED" ? "bg-emerald-500/10 text-emerald-600" : "bg-gray-500/10 text-gray-500"
+                }`}>
+                  {call.status}
+                </span>
+                <span className="text-xs font-bold">{formatCallDuration(call.durationSeconds)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
             {activeView === "lead-form" && (
               <div>
