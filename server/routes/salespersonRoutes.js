@@ -16,6 +16,7 @@ const { calculateDistance } = require("../utils/distanceHelper");
 const multer = require("multer");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 const cloudinary = require("cloudinary").v2;
+const { calculateLeadScore } = require("../utils/leadScorer");
 
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
@@ -392,14 +393,14 @@ router.get("/calls/analytics-summary", verifyToken, async (req, res) => {
 });
 
 // --- 🗂️ LEADS, DEALS & TASKS ---
-router.get("/my-leads", verifyToken, async (req, res) => {
-  try {
-    const leads = await Lead.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 });
-    res.json(leads);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to fetch leads history", error: err.message });
-  }
-});
+// router.get("/my-leads", verifyToken, async (req, res) => {
+//   try {
+//     const leads = await Lead.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 });
+//     res.json(leads);
+//   } catch (err) {
+//     res.status(500).json({ message: "Failed to fetch leads history", error: err.message });
+//   }
+// });
 
 router.get("/my-deals", verifyToken, async (req, res) => {
   try {
@@ -590,7 +591,6 @@ router.get("/notifications", verifyToken, async (req, res) => {
 //   ]
 // }
 // =============================================================
-
 router.post("/calls/sync", verifyToken, async (req, res) => {
   try {
     const { calls } = req.body;
@@ -606,6 +606,30 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
       });
     }
 
+    const salespersonId = req.user.userId;
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+    // 🌟 1. Check if the salesperson has an active started day session today
+    const activeSession = await DaySession.findOne({
+      salespersonId,
+      date: today,
+      status: "STARTED"
+    });
+
+    // Agar salesperson ne aaj "Start Day" nahi kiya hai, toh saare calls skip kar do!
+    if (!activeSession || !activeSession.startTime) {
+      return res.json({
+        success: true,
+        message: "Call sync skipped: Working day not started yet today.",
+        inserted: 0,
+        skipped: calls.length,
+        updated: 0,
+      });
+    }
+
+    // 🌟 2. Exact timestamp jab salesperson ne day start kiya tha
+    const shiftStartTime = new Date(activeSession.startTime).getTime();
+
     if (calls.length === 0) {
       return res.json({
         success: true,
@@ -615,8 +639,6 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
         updated: 0,
       });
     }
-
-    const salespersonId = req.user.userId;
 
     let inserted = 0;
     let skipped = 0;
@@ -649,22 +671,7 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
         }
 
         // -----------------------------------------------------
-        // Normalize phone number
-        // Same normalization used by CRM calls.
-        // -----------------------------------------------------
-
-        const normalizedPhone = String(phoneNumber)
-          .replace(/\D/g, "")
-          .slice(-10);
-
-        if (!normalizedPhone) {
-          skipped++;
-          continue;
-        }
-
-        // -----------------------------------------------------
         // Validate timestamp
-        // Android gives milliseconds.
         // -----------------------------------------------------
 
         const timestampNumber = Number(timestamp);
@@ -677,6 +684,12 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
           continue;
         }
 
+        // 🌟 3. SHIFT START TIME CHECK: Agar call "Start Day" time se pehle ki hai, toh skip karo!
+        if (timestampNumber < shiftStartTime) {
+          skipped++;
+          continue;
+        }
+
         const deviceDate = new Date(timestampNumber);
 
         if (Number.isNaN(deviceDate.getTime())) {
@@ -685,13 +698,17 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
         }
 
         // -----------------------------------------------------
-        // Duration
+        // Normalize phone number (last 10 digits)
         // -----------------------------------------------------
 
-        const duration = Math.max(
-          0,
-          Number(durationSeconds) || 0
-        );
+        const normalizedPhone = String(phoneNumber)
+          .replace(/\D/g, "")
+          .slice(-10);
+
+        if (!normalizedPhone || normalizedPhone.length < 10) {
+          skipped++;
+          continue;
+        }
 
         // -----------------------------------------------------
         // Find existing call using Android Call Log ID
@@ -709,40 +726,51 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
 
         if (existingDeviceCall) {
           skipped++;
-
           syncedCalls.push(existingDeviceCall);
-
           continue;
         }
 
         // -----------------------------------------------------
-        // Find matching Lead
-        // -----------------------------------------------------
-        // We use the same normalized phone number.
-        //
-        // IMPORTANT:
-        // Your Lead schema must contain the actual phone field
-        // used by your CRM. The existing project uses Lead data,
-        // so this first checks common fields safely.
+        // 🌟 FIND MATCHING LEAD & APPLY SAME-DAY / PRIOR VALIDATION
         // -----------------------------------------------------
 
         let lead = null;
+        const callDateStr = deviceDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 
         try {
-          lead = await Lead.findOne({
+          // Search for lead matching the 10-digit phone number across possible fields
+          const matchingLeads = await Lead.find({
             $or: [
-              { phoneNumber: normalizedPhone },
-              { phone: normalizedPhone },
-              { mobile: normalizedPhone },
-              { mobileNumber: normalizedPhone },
-              { contactNumber: normalizedPhone },
+              { phoneNumber: { $regex: new RegExp(normalizedPhone + "$") } },
+              { phone: { $regex: new RegExp(normalizedPhone + "$") } },
+              { mobile: { $regex: new RegExp(normalizedPhone + "$") } },
+              { mobileNumber: { $regex: new RegExp(normalizedPhone + "$") } },
+              { contactNumber: { $regex: new RegExp(normalizedPhone + "$") } },
+              { mobileNo: { $regex: new RegExp(normalizedPhone + "$") } },
             ],
           }).lean();
+
+          // Filter leads to ensure lead creation date <= call date (Same-day or prior lead creation)
+          for (const candidateLead of matchingLeads) {
+            const leadCreatedAt = candidateLead.createdAt || candidateLead.leadDate || candidateLead._id.getTimestamp();
+            const leadDateStr = new Date(leadCreatedAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+            if (leadDateStr <= callDateStr) {
+              lead = candidateLead;
+              break;
+            }
+          }
         } catch (leadError) {
           console.warn(
             "Lead phone matching warning:",
             leadError.message
           );
+        }
+
+        // If no valid lead found created on or before the call date, skip this call (Personal / unrelated call)
+        if (!lead) {
+          skipped++;
+          continue;
         }
 
         // -----------------------------------------------------
@@ -757,6 +785,7 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
             lead.name ||
             lead.instituteName ||
             lead.schoolName ||
+            lead.contactPerson ||
             "";
         }
 
@@ -770,64 +799,36 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
           type || ""
         ).toUpperCase();
 
-        // -----------------------------------------------------
-        // MISSED
-        // -----------------------------------------------------
-
         if (normalizedType === "MISSED") {
           callStatus = "MISSED";
-        }
-
-        // -----------------------------------------------------
-        // REJECTED
-        // -----------------------------------------------------
-
-        else if (normalizedType === "REJECTED") {
+        } else if (normalizedType === "REJECTED") {
           callStatus = "REJECTED";
-        }
-
-        // -----------------------------------------------------
-        // BLOCKED
-        // -----------------------------------------------------
-
-        else if (normalizedType === "BLOCKED") {
+        } else if (normalizedType === "BLOCKED") {
           callStatus = "FAILED";
-        }
-
-        // -----------------------------------------------------
-        // OUTGOING / INCOMING
-        // duration > 0 means call was connected
-        // -----------------------------------------------------
-
-        else if (
+        } else if (
           normalizedType === "OUTGOING" ||
           normalizedType === "INCOMING"
         ) {
           if (
             Boolean(connected) ||
-            duration > 0
+            Number(durationSeconds) > 0
           ) {
             callStatus = "ENDED";
           } else {
             callStatus = "NOT_CONNECTED";
           }
-        }
-
-        // -----------------------------------------------------
-        // Unknown type fallback
-        // -----------------------------------------------------
-
-        else {
-          if (duration > 0) {
+        } else {
+          if (Number(durationSeconds) > 0) {
             callStatus = "ENDED";
           } else {
             callStatus = "NOT_CONNECTED";
           }
         }
 
-        // -----------------------------------------------------
-        // Connected time
-        // -----------------------------------------------------
+        const duration = Math.max(
+          0,
+          Number(durationSeconds) || 0
+        );
 
         let connectedAt = null;
 
@@ -839,10 +840,6 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
             deviceDate.getTime()
           );
         }
-
-        // -----------------------------------------------------
-        // End time
-        // -----------------------------------------------------
 
         let endedAt = null;
 
@@ -866,7 +863,7 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
         const newCall = await CallLog.create({
           salespersonId,
 
-          leadId: lead?._id || null,
+          leadId: lead._id,
 
           customerName,
 
@@ -894,7 +891,7 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
           recordingConsent: false,
         });
 
-        // 🌟 ADDED: Increment points for synced calls
+        // 🌟 4. POINT SAFEGUARD: Points sirf tabhi add honge jab call valid lead se match ho aur shift start hone ke baad ki ho
         try {
           await addSalespersonPoints(salespersonId, "DIAL_CALL");
           if (callStatus === "ENDED" || callStatus === "CONNECTED" || duration > 0) {
@@ -910,7 +907,7 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
 
       } catch (callError) {
         console.error(
-          "Device call sync item error:",
+          "Device call item error:",
           callError
         );
 
@@ -925,7 +922,7 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
     return res.json({
       success: true,
 
-      message: "Device call logs synced successfully.",
+      message: "Device call logs synced successfully with lead & same-day validation.",
 
       inserted,
       updated,
@@ -950,6 +947,98 @@ router.post("/calls/sync", verifyToken, async (req, res) => {
   }
 });
 
+// --- 🗂️ LEADS, DEALS & TASKS ---
+router.get("/my-leads", verifyToken, async (req, res) => {
+  try {
+    const leads = await Lead.find({ salespersonId: req.user.userId }).sort({ createdAt: -1 }).lean();
+
+    // 🌟 Har lead ke sath scoring attach karna zaroori hai
+    const enrichedLeads = await Promise.all(
+      leads.map(async (lead) => {
+        const scoring = await calculateLeadScore(lead);
+        return {
+          ...lead,
+          aiScore: scoring.score,
+          aiPriority: scoring.priority
+        };
+      })
+    );
+
+    enrichedLeads.sort((a, b) => b.aiScore - a.aiScore);
+
+    res.json(enrichedLeads);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch leads history", error: err.message });
+  }
+});
+
+// =========================================================================
+// --- 🤖 AI SMART FOLLOW-UP TIME PREDICTOR ENDPOINT ---
+// =========================================================================
+router.get("/calls/best-time/:leadId", verifyToken, async (req, res) => {
+  try {
+    const { leadId } = req.params;
+    
+    // 1. Pehle lead ki details nikal lo taaki uska mobile number mil sake
+    const lead = await Lead.findById(leadId);
+    let searchCriteria = [{ leadId }];
+
+    if (lead && lead.mobileNo) {
+      const cleanPhone = String(lead.mobileNo).replace(/\D/g, "").slice(-10);
+      // Phone number ke alag-alag formats (jaise 91xxxx ya sirf 10 digits) match karne ke liye
+      searchCriteria.push({ phoneNumber: { $regex: cleanPhone } });
+    }
+
+    // 2. Ab leadId YA phone number dono mein se kisi se bhi match hone wale call logs nikal lo
+    const calls = await CallLog.find({ 
+      $or: searchCriteria,
+      salespersonId: req.user.userId,
+      status: { $in: ["CONNECTED", "ENDED"] } 
+    });
+
+    if (!calls || calls.length === 0) {
+      return res.json({ 
+        success: true, 
+        hasData: false, 
+        suggestion: "Best: 11:00 AM (Default)" 
+      });
+    }
+
+    // 3. Ghanto (Hours) ki frequency count karein
+    const hourCounts = {};
+    calls.forEach(call => {
+      const callTimestamp = call.dialedAt || call.timestamp;
+      if (callTimestamp) {
+        const hour = new Date(Number(callTimestamp) || callTimestamp).getHours();
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+      }
+    });
+
+    let bestHour = 11;
+    let maxCalls = 0;
+    
+    for (const [hour, count] of Object.entries(hourCounts)) {
+      if (count > maxCalls) {
+        maxCalls = count;
+        bestHour = Number(hour);
+      }
+    }
+
+    const amPm = bestHour >= 12 ? "PM" : "AM";
+    const displayHour = bestHour > 12 ? bestHour - 12 : (bestHour === 0 ? 12 : bestHour);
+
+    res.json({
+      success: true,
+      hasData: true,
+      bestHour,
+      suggestion: `Best: ${displayHour}:00 ${amPm} (${maxCalls} past calls)`
+    });
+
+  } catch (err) {
+    console.error("AI Prediction Error:", err);
+    res.status(500).json({ success: false, message: "Failed to calculate best calling time" });
+  }
+});
 
 
 module.exports = router;

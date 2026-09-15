@@ -12,9 +12,10 @@ const TelecallerActivityTab = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/api/admin/telecaller-activity`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await fetch(`${API_BASE}/api/telecaller/admin/telecaller-activity`, {
+  headers: { Authorization: `Bearer ${token}` }
+});
+  
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to fetch telecaller activities");
 

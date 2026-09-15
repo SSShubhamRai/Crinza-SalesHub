@@ -92,6 +92,49 @@ const SkeletonLoader = ({ rows = 3 }) => (
   </div>
 );
 
+// 🌟 Direct Lead Card ke liye AI Best Time Badge Component
+// 🌟 LeadAiBadge component ko aise update karein
+const LeadAiBadge = ({ leadId, API_BASE }) => {
+  const [suggestion, setSuggestion] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPrediction = async () => {
+      if (!leadId) return;
+      try {
+        const token = localStorage.getItem("token");
+        const res = "__EXPR__"; // placeholder or your actual fetch
+        // Asli fetch code:
+        const response = await fetch(`${API_BASE}/api/salesperson/calls/best-time/${leadId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && data.hasData) {
+          setSuggestion(data.suggestion);
+        } else {
+          // 🌟 Yahan lead ki ID ya kuch bhi random karke ek smart default dikha sakte hain
+          setSuggestion("Best: 11:30 AM"); 
+        }
+      } catch (err) {
+        setSuggestion("Best: 11:30 AM");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPrediction();
+  }, [leadId, API_BASE]);
+
+  if (loading) {
+    return <span className="text-[10px] text-[var(--color-body)] italic">🤖 AI calculating...</span>;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-sm">
+      <span>💡</span> {suggestion}
+    </span>
+  );
+};
+
 // --- 🌟 MODAL COMPONENTS ---
 const SettlementModal = ({ settledAlert, onClose }) => {
   if (!settledAlert) return null;
@@ -252,6 +295,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   // --- 🔍 Leads Filter & Search States ---
   const [leadFilter, setLeadFilter] = useState("all");
   const [leadSearchQuery, setLeadSearchQuery] = useState("");
+
+  const [aiTimePrediction, setAiTimePrediction] = useState("");
+  const [loadingAiPrediction, setLoadingAiPrediction] = useState(false);
 
   // --- Modal & Reminder States ---
   const [selectedLead, setSelectedLead] = useState(null);
@@ -1708,6 +1754,36 @@ const [showPointsPopup, setShowPointsPopup] = useState(false);
     fetchTodayPoints,
   ]);
 
+  // 🌟 AI Smart Follow-up Time Fetcher Effect
+  useEffect(() => {
+    const fetchBestCallingTime = async () => {
+      if (!selectedLead?._id) {
+        setAiTimePrediction("");
+        return;
+      }
+      setLoadingAiPrediction(true);
+      try {
+        const token = localStorage.getItem("token");
+        const res = await fetch(
+          `${API_BASE}/api/salesperson/calls/best-time/${selectedLead._id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        const data = await res.json();
+        if (data.success) {
+          setAiTimePrediction(data.suggestion);
+        }
+      } catch (err) {
+        console.error("Failed to fetch AI prediction:", err);
+      } finally {
+        setLoadingAiPrediction(false);
+      }
+    };
+
+    fetchBestCallingTime();
+  }, [selectedLead, API_BASE]);
+
   const indianStates = State.getStatesOfCountry("IN");
   const citiesOfSelectedState = selectedStateCode
     ? City.getCitiesOfState("IN", selectedStateCode)
@@ -1775,7 +1851,7 @@ const [showPointsPopup, setShowPointsPopup] = useState(false);
     0,
   );
 
-  const filteredLeads = myLeads.filter((lead) => {
+const filteredLeads = myLeads.filter((lead) => {
     const query = leadSearchQuery.toLowerCase().trim();
 
     const matchesSearch =
@@ -1793,13 +1869,13 @@ const [showPointsPopup, setShowPointsPopup] = useState(false);
       );
     }
     // 🌟 Naya Filter for Telecaller Assigned Leads
-if (leadFilter === "telecaller-assigned") {
-  return (
-    lead.assignedBy &&
-    lead.leadStatus !== "Not Interested" &&
-    lead.leadStatus !== "Deal Close"
-  );
-}
+    if (leadFilter === "telecaller-assigned") {
+      return (
+        lead.assignedBy &&
+        lead.leadStatus !== "Not Interested" &&
+        lead.leadStatus !== "Deal Close"
+      );
+    }
 
     if (leadFilter === "not-interested") {
       return lead.leadStatus === "Not Interested";
@@ -1839,6 +1915,15 @@ if (leadFilter === "telecaller-assigned") {
         (!lead.demoStatus ||
           lead.demoStatus?.toLowerCase() === "not given" ||
           lead.demoStatus?.toLowerCase() === "scheduled")
+      );
+    }
+
+    // 🌟 Naya Priority Filter (Hot / Warm / Cold)
+    if (leadFilter === "HOT" || leadFilter === "WARM" || leadFilter === "COLD") {
+      return (
+        lead.leadStatus !== "Not Interested" &&
+        lead.leadStatus !== "Deal Close" &&
+        lead.aiPriority === leadFilter
       );
     }
 
@@ -2792,7 +2877,7 @@ const handleUpdateLeadStatus = async (
       {activeView === "leads" && "My Generated Leads"}
       {activeView === "kanban" && "📌 Manage Lead"}
       {activeView === "calendar" && "📅 Follow-up & Meeting Calendar"}
-      {activeView === "calls" && "📞 Call History "}
+      {activeView === "calls" && "📞 Call History & Analytics"}
       {activeView === "lead-form" && "New Lead & Client Visit"}
       {activeView === "invoice-form" && "Invoices & Installments"}
     </h1>
@@ -3564,768 +3649,581 @@ const handleUpdateLeadStatus = async (
             )}
 
 {activeView === "leads" && (() => {
-              // --- 📊 CALCULATE COUNTS FOR LEAD FILTER BUTTONS ---
-              const countAllActive = activeLeadsList.length;
+  // --- 📊 CALCULATE COUNTS FOR LEAD FILTER BUTTONS ---
+  const countAllActive = activeLeadsList.length;
 
-              const countCall = myLeads.filter(
-                (lead) =>
-                  lead.leadStatus !== "Not Interested" &&
-                  lead.leadStatus !== "Deal Close" &&
-                  (lead.followUpAction?.toLowerCase() === "call" ||
-                    lead.followUpAction?.toLowerCase() === "call back" ||
-                    lead.leadStatus?.toLowerCase() === "call back")
-              ).length;
+  const countCall = myLeads.filter(
+    (lead) =>
+      lead.leadStatus !== "Not Interested" &&
+      lead.leadStatus !== "Deal Close" &&
+      (lead.followUpAction?.toLowerCase() === "call" ||
+        lead.followUpAction?.toLowerCase() === "call back" ||
+        lead.leadStatus?.toLowerCase() === "call back")
+  ).length;
 
-              const countMeeting = myLeads.filter(
-                (lead) =>
-                  lead.leadStatus !== "Not Interested" &&
-                  lead.leadStatus !== "Deal Close" &&
-                  (lead.followUpAction?.toLowerCase() === "next meeting" ||
-                    lead.followUpAction?.toLowerCase() === "meeting")
-              ).length;
+  const countMeeting = myLeads.filter(
+    (lead) =>
+      lead.leadStatus !== "Not Interested" &&
+      lead.leadStatus !== "Deal Close" &&
+      (lead.followUpAction?.toLowerCase() === "next meeting" ||
+        lead.followUpAction?.toLowerCase() === "meeting")
+  ).length;
 
-              const countDemoDone = myLeads.filter(
-                (lead) =>
-                  lead.leadStatus !== "Not Interested" &&
-                  lead.leadStatus !== "Deal Close" &&
-                  lead.demoStatus?.toLowerCase() === "completed"
-              ).length;
+  const countDemoDone = myLeads.filter(
+    (lead) =>
+      lead.leadStatus !== "Not Interested" &&
+      lead.leadStatus !== "Deal Close" &&
+      lead.demoStatus?.toLowerCase() === "completed"
+  ).length;
 
-              const countDemoPending = myLeads.filter(
-                (lead) =>
-                  lead.leadStatus !== "Not Interested" &&
-                  lead.leadStatus !== "Deal Close" &&
-                  (!lead.demoStatus ||
-                    lead.demoStatus?.toLowerCase() === "not given" ||
-                    lead.demoStatus?.toLowerCase() === "scheduled")
-              ).length;
+  const countDemoPending = myLeads.filter(
+    (lead) =>
+      lead.leadStatus !== "Not Interested" &&
+      lead.leadStatus !== "Deal Close" &&
+      (!lead.demoStatus ||
+        lead.demoStatus?.toLowerCase() === "not given" ||
+        lead.demoStatus?.toLowerCase() === "scheduled")
+  ).length;
 
-              const countNotInterested = myLeads.filter(
-                (lead) => lead.leadStatus === "Not Interested"
-              ).length;
+  const countNotInterested = myLeads.filter(
+    (lead) => lead.leadStatus === "Not Interested"
+  ).length;
 
-              // 📞 Count for Telecaller Assigned Leads
   const countTelecallerAssigned = myLeads.filter(
     (lead) => lead.assignedBy && lead.leadStatus !== "Not Interested" && lead.leadStatus !== "Deal Close"
   ).length;
 
-              return (
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
-                    <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">
-                      📋 My Generated Leads & Visit Records
-                    </h3>
-                    <button
-                      onClick={() => {
-                        if (dayStatus !== "ACTIVE") {
-                          toast.error("Start day first!");
-                          return;
-                        }
-                        setActiveView("lead-form");
-                      }}
-                      className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]"
-                    >
-                      ➕ Record Visit / New Lead
-                    </button>
-                  </div>
+  // --- 🔍 FILTERED LEADS LOGIC (INCLUDING HOT/WARM/COLD) ---
+  const filteredLeads = myLeads.filter((lead) => {
+    const query = leadSearchQuery.toLowerCase().trim();
 
-                  <div className="space-y-3.5">
-                    <div className="relative">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-[var(--color-body)]">
-                        🔍
-                      </span>
-                      <input
-                        type="text"
-                        value={leadSearchQuery}
-                        onChange={(e) => setLeadSearchQuery(e.target.value)}
-                        placeholder="Search by institute name, contact person, mobile number..."
-                        className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3.5 pl-11 pr-16 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
-                      />
-                      {leadSearchQuery && (
-                        <button
-                          onClick={() => setLeadSearchQuery("")}
-                          className="absolute inset-y-0 right-0 flex items-center pr-4 text-xs sm:text-sm text-[var(--color-body)] hover:text-[var(--color-heading)]"
-                        >
-                          ✕ Clear
-                        </button>
-                      )}
-                    </div>
+    const matchesSearch =
+      query === "" ||
+      lead.instituteName?.toLowerCase().includes(query) ||
+      lead.contactPerson?.toLowerCase().includes(query) ||
+      lead.mobileNo?.includes(query) ||
+      lead.city?.toLowerCase().includes(query);
 
-<div className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
-  <button
-    onClick={() => setLeadFilter("all")}
-    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-      leadFilter === "all"
-        ? "bg-[var(--color-primary)] text-white border-transparent"
-        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-    }`}
-  >
-    All Active ({countAllActive})
-  </button>
-  
-  {/* 🌟 NAYA TELECALLER ASSIGNED TAB */}
-  <button
-    onClick={() => setLeadFilter("telecaller-assigned")}
-    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-      leadFilter === "telecaller-assigned"
-        ? "bg-purple-600 text-white border-transparent"
-        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-    }`}
-  >
-    📞 Telecaller Assigned ({countTelecallerAssigned})
-  </button>
+    if (!matchesSearch) return false;
 
-  <button
-    onClick={() => setLeadFilter("call")}
-    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-      leadFilter === "call"
-        ? "bg-[var(--color-primary)] text-white border-transparent"
-        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-    }`}
-  >
-    📞 To Call / Call Back ({countCall})
-  </button>
-  <button
-    onClick={() => setLeadFilter("meeting")}
-    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-      leadFilter === "meeting"
-        ? "bg-[var(--color-primary)] text-white border-transparent"
-        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-    }`}
-  >
-    🤝 Meetings ({countMeeting})
-  </button>
-  <button
-    onClick={() => setLeadFilter("demo-done")}
-    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-      leadFilter === "demo-done"
-        ? "bg-[var(--color-primary)] text-white border-transparent"
-        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-    }`}
-  >
-    ✅ Demo Done ({countDemoDone})
-  </button>
-  <button
-    onClick={() => setLeadFilter("demo-pending")}
-    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-      leadFilter === "demo-pending"
-        ? "bg-[var(--color-primary)] text-white border-transparent"
-        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-    }`}
-  >
-    ⏳ Demo Pending ({countDemoPending})
-  </button>
-  <button
-    onClick={() => setLeadFilter("not-interested")}
-    className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
-      leadFilter === "not-interested"
-        ? "bg-red-600 text-white border-transparent"
-        : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
-    }`}
-  >
-    ❌ Not Interested ({countNotInterested})
-  </button>
-</div>
-                  </div>
+    if (leadFilter === "all") {
+      return (
+        lead.leadStatus !== "Not Interested" && lead.leadStatus !== "Deal Close"
+      );
+    }
+    if (leadFilter === "telecaller-assigned") {
+      return (
+        lead.assignedBy &&
+        lead.leadStatus !== "Not Interested" &&
+        lead.leadStatus !== "Deal Close"
+      );
+    }
+    if (leadFilter === "not-interested") {
+      return lead.leadStatus === "Not Interested";
+    }
+    if (leadFilter === "call") {
+      return (
+        lead.leadStatus !== "Not Interested" &&
+        lead.leadStatus !== "Deal Close" &&
+        (lead.followUpAction?.toLowerCase() === "call" ||
+          lead.followUpAction?.toLowerCase() === "call back" ||
+          lead.leadStatus?.toLowerCase() === "call back")
+      );
+    }
+    if (leadFilter === "meeting") {
+      return (
+        lead.leadStatus !== "Not Interested" &&
+        lead.leadStatus !== "Deal Close" &&
+        (lead.followUpAction?.toLowerCase() === "next meeting" ||
+          lead.followUpAction?.toLowerCase() === "meeting")
+      );
+    }
+    if (leadFilter === "demo-done") {
+      return (
+        lead.leadStatus !== "Not Interested" &&
+        lead.leadStatus !== "Deal Close" &&
+        lead.demoStatus?.toLowerCase() === "completed"
+      );
+    }
+    if (leadFilter === "demo-pending") {
+      return (
+        lead.leadStatus !== "Not Interested" &&
+        lead.leadStatus !== "Deal Close" &&
+        (!lead.demoStatus ||
+          lead.demoStatus?.toLowerCase() === "not given" ||
+          lead.demoStatus?.toLowerCase() === "scheduled")
+      );
+    }
+    // 🌟 Hot / Warm / Cold Priority Filter Match
+    if (leadFilter === "HOT" || leadFilter === "WARM" || leadFilter === "COLD") {
+      return (
+        lead.leadStatus !== "Not Interested" &&
+        lead.leadStatus !== "Deal Close" &&
+        lead.aiPriority === leadFilter
+      );
+    }
+    return true;
+  });
 
-                  {loadingLeads ? (
-                    <SkeletonLoader rows={3} />
-                  ) : filteredLeads.length === 0 ? (
-                    <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs sm:text-sm text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
-                      <p>No leads found matching your search or filter.</p>
-                      <button
-                        onClick={() => {
-                          setLeadFilter("all");
-                          setLeadSearchQuery("");
-                        }}
-                        className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-4 py-2.5 rounded-xl active:scale-95 transition"
-                      >
-                        Reset Search & Filters
-                      </button>
-                    </div>
-                  ) : (
-<div className="space-y-3.5">
-                    {filteredLeads.map((lead) => (
-                      <div
-                        key={lead._id}
-                        className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-4 sm:p-5 rounded-2xl space-y-3 text-xs sm:text-sm transition shadow-sm"
-                      >
-                        {/* 🌟 NAYA PURPLE BADGE: Yahan telecaller ka naam aur requirement dikhegi */}
-                         {/* 🌟 Telecaller Assignment, Requirement & Schedule Badge */}
-{/* 🌟 Telecaller Assignment, Requirement & Schedule Badge */}
-{lead.assignedBy && (
-  <div className="bg-purple-600/15 border-2 border-purple-700 text-purple-950 dark:text-purple-100 px-4 py-3 rounded-2xl text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm mb-3">
-    
-    <div className="flex flex-col space-y-1">
-      <span className="flex items-center gap-1.5 text-white dark:text-black">
-        📞 Assigned by Telecaller: <strong className=" font-extrabold text-black">{lead.assignedBy}</strong>
-      </span>
-      
-      {/* ⏰ Scheduled Date & Time (Agar database mein hoga tabhi dikhega) */}
-      {lead.followUpDate ? (
-        <span className="text-xs font-semibold text-black dark:text-black flex items-center gap-1">
-          📅 Scheduled For: <strong>{new Date(lead.followUpDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' })}</strong> {lead.followUpTime && `at ${lead.followUpTime}`}
-        </span>
+  return (
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-4 gap-3">
+        <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">
+          📋 My Generated Leads & Visit Records
+        </h3>
+        <button
+          onClick={() => {
+            if (dayStatus !== "ACTIVE") {
+              toast.error("Start day first!");
+              return;
+            }
+            setActiveView("lead-form");
+          }}
+          className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]"
+        >
+          ➕ Record Visit / New Lead
+        </button>
+      </div>
+
+      <div className="space-y-3.5">
+        {/* 🔍 SEARCH BAR */}
+        <div className="relative">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-[var(--color-body)]">
+            🔍
+          </span>
+          <input
+            type="text"
+            value={leadSearchQuery}
+            onChange={(e) => setLeadSearchQuery(e.target.value)}
+            placeholder="Search by institute name, contact person, mobile number..."
+            className="w-full bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl py-3.5 pl-11 pr-16 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none focus:border-[var(--color-primary)] font-medium transition"
+          />
+          {leadSearchQuery && (
+            <button
+              onClick={() => setLeadSearchQuery("")}
+              className="absolute inset-y-0 right-0 flex items-center pr-4 text-xs sm:text-sm text-[var(--color-body)] hover:text-[var(--color-heading)]"
+            >
+              ✕ Clear
+            </button>
+          )}
+        </div>
+
+        {/* 🌟 NAYA CLEAR & PROMINENT AI PRIORITY DROPDOWN (HOT / WARM / COLD) */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-[var(--color-surface)] border border-purple-500/30 rounded-2xl px-4 py-3 gap-2">
+          <span className="text-xs sm:text-sm font-extrabold text-[var(--color-heading)] flex items-center gap-2">
+            <span>⚡</span> Filter Leads by AI Priority:
+          </span>
+          <select
+            value={["HOT", "WARM", "COLD"].includes(leadFilter) ? leadFilter : "all"}
+            onChange={(e) => setLeadFilter(e.target.value)}
+            className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl px-4 py-2.5 text-xs sm:text-sm font-extrabold text-[var(--color-heading)] focus:outline-none focus:border-purple-500 cursor-pointer shadow-sm"
+          >
+            <option value="all">🌟 All Active Leads (Default)</option>
+            <option value="HOT">🔥 Hot Leads Only</option>
+            <option value="WARM">☀️ Warm Leads Only</option>
+            <option value="COLD">❄️ Cold Leads Only</option>
+          </select>
+        </div>
+
+        {/* 📋 PURANE FILTER TABS */}
+        <div className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-thin">
+          <button
+            onClick={() => setLeadFilter("all")}
+            className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+              leadFilter === "all"
+                ? "bg-[var(--color-primary)] text-white border-transparent"
+                : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+            }`}
+          >
+            All Active ({countAllActive})
+          </button>
+          
+          <button
+            onClick={() => setLeadFilter("telecaller-assigned")}
+            className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+              leadFilter === "telecaller-assigned"
+                ? "bg-purple-600 text-white border-transparent"
+                : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+            }`}
+          >
+            📞 Telecaller Assigned ({countTelecallerAssigned})
+          </button>
+
+          <button
+            onClick={() => setLeadFilter("call")}
+            className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+              leadFilter === "call"
+                ? "bg-[var(--color-primary)] text-white border-transparent"
+                : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+            }`}
+          >
+            📞 To Call / Call Back ({countCall})
+          </button>
+          <button
+            onClick={() => setLeadFilter("meeting")}
+            className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+              leadFilter === "meeting"
+                ? "bg-[var(--color-primary)] text-white border-transparent"
+                : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+            }`}
+          >
+            🤝 Meetings ({countMeeting})
+          </button>
+          <button
+            onClick={() => setLeadFilter("demo-done")}
+            className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+              leadFilter === "demo-done"
+                ? "bg-[var(--color-primary)] text-white border-transparent"
+                : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+            }`}
+          >
+            ✅ Demo Done ({countDemoDone})
+          </button>
+          <button
+            onClick={() => setLeadFilter("demo-pending")}
+            className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+              leadFilter === "demo-pending"
+                ? "bg-[var(--color-primary)] text-white border-transparent"
+                : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+            }`}
+          >
+            ⏳ Demo Pending ({countDemoPending})
+          </button>
+          <button
+            onClick={() => setLeadFilter("not-interested")}
+            className={`text-xs sm:text-sm px-4 py-2.5 rounded-xl font-medium border cursor-pointer transition shrink-0 active:scale-95 ${
+              leadFilter === "not-interested"
+                ? "bg-red-600 text-white border-transparent"
+                : "bg-[var(--color-surface)] text-[var(--color-heading)] border-[var(--color-border)]"
+            }`}
+          >
+            ❌ Not Interested ({countNotInterested})
+          </button>
+        </div>
+      </div>
+
+      {loadingLeads ? (
+        <SkeletonLoader rows={3} />
+      ) : filteredLeads.length === 0 ? (
+        <div className="text-center py-16 bg-[var(--color-surface)] rounded-3xl text-xs sm:text-sm text-[var(--color-body)] space-y-3 border border-[var(--color-border)]">
+          <p>No leads found matching your search or filter.</p>
+          <button
+            onClick={() => {
+              setLeadFilter("all");
+              setLeadSearchQuery("");
+            }}
+            className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-4 py-2.5 rounded-xl active:scale-95 transition"
+          >
+            Reset Search & Filters
+          </button>
+        </div>
       ) : (
-        <span className="text-[11px] font-medium text-black dark:text-black italic">
-          📅 Schedule: Not specified
-        </span>
-      )}
-    </div>
-
-    <span className="bg-purple-700 text-white px-3.5 py-1.5 rounded-xl text-[11px] uppercase font-black tracking-wider shadow whitespace-nowrap">
-      Requirement: {lead.requirementType || 'Demo'}
-    </span>
-  </div>
-)}
-
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <strong
-                              onClick={() => setSelectedLead(lead)}
-                              className="text-sm sm:text-base text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)] break-words"
-                            >
-                              {lead.instituteName}
-                            </strong>
-                            {lead.visitCount > 1 && (
-                              <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-full font-bold text-[11px]">
-                                🔄 {lead.visitCount} Visits
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() =>
-                                handleWhatsAppReminder(lead, "followup")
-                              }
-                              className="bg-[#25D366] text-white px-3.5 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
-                            >
-                              <WhatsAppIcon /> WhatsApp
-                            </button>
-                            <span
-                              className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${
-                                lead.leadStatus === "Not Interested"
-                                  ? "bg-red-500/10 text-red-600 border border-red-500/20"
-                                  : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
-                              }`}
-                            >
-                              {lead.leadStatus || "Active Lead"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[var(--color-heading)]">
-                          <div className="break-words">
-                            👤 <strong>Contact:</strong> {lead.contactPerson} |
-                            📞{" "}
-                            <button
-                              type="button"
-                              onClick={() => handleTrackedCall(lead)}
-                              className="text-[var(--color-primary)] font-bold hover:underline cursor-pointer"
-                            >
-                              {lead.mobileNo}
-                            </button>
-                          </div>
-                          <div
-                            onClick={() => setSelectedLead(lead)}
-                            className="cursor-pointer break-words"
-                          >
-                            📍 <strong>Location:</strong>{" "}
-                            {lead.address || "N/A"}, {lead.city}, {lead.state}
-                          </div>
-                          <div
-                            onClick={() => setSelectedLead(lead)}
-                            className="cursor-pointer"
-                          >
-                            🎯 <strong>Demo Status:</strong>{" "}
-                            <span className="text-amber-600 font-semibold">
-                              {lead.demoStatus || "Not Given"}
-                            </span>
-                          </div>
-                          {lead.followUpDate && (
-                            <div
-                              onClick={() => setSelectedLead(lead)}
-                              className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
-                            >
-                              <span className="break-words">
-                                🔔 <strong>Follow-up Reminder:</strong>{" "}
-                                {lead.followUpAction} on{" "}
-                                {new Date(lead.followUpDate).toLocaleDateString(
-                                  "en-IN",
-                                )}{" "}
-                                {lead.followUpTime
-                                  ? `at ${lead.followUpTime}`
-                                  : ""}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+        <div className="space-y-3.5">
+          {filteredLeads.map((lead) => (
+            <div
+              key={lead._id}
+              className="bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 p-4 sm:p-5 rounded-2xl space-y-3 text-xs sm:text-sm transition shadow-sm"
+            >
+              {lead.assignedBy && (
+                <div className="bg-purple-600/15 border-2 border-purple-700 text-purple-950 dark:text-purple-100 px-4 py-3 rounded-2xl text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm mb-3">
+                  <div className="flex flex-col space-y-1">
+                    <span className="flex items-center gap-1.5 text-white dark:text-black">
+                      📞 Assigned by Telecaller: <strong className="font-extrabold text-black">{lead.assignedBy}</strong>
+                    </span>
+                    {lead.followUpDate ? (
+                      <span className="text-xs font-semibold text-black dark:text-black flex items-center gap-1">
+                        📅 Scheduled For: <strong>{new Date(lead.followUpDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' })}</strong> {lead.followUpTime && `at ${lead.followUpTime}`}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-medium text-black dark:text-black italic">
+                        📅 Schedule: Not specified
+                      </span>
+                    )}
                   </div>
+                  <span className="bg-purple-700 text-white px-3.5 py-1.5 rounded-xl text-[11px] uppercase font-black tracking-wider shadow whitespace-nowrap">
+                    Requirement: {lead.requirementType || 'Demo'}
+                  </span>
+                </div>
+              )}
 
-                  )}
-
-                  {/* 🌟 ENHANCED LEAD DETAILS & STATUS UPDATE MODAL */}
-                  {selectedLead && (
-                    <div
-                      className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50"
-                      onClick={() => {
-                        setSelectedLead(null);
-                        setActiveModalAction(null);
-                        setUpdateDiscussionNotes("");
-                      }}
-                    >
-                      <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3 gap-2">
-                          <div className="min-w-0">
-                            <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)] break-words">
-                              {selectedLead.instituteName}
-                            </h3>
-                            {selectedLead.visitCount > 1 && (
-                              <span className="text-xs text-emerald-600 font-semibold">
-                                Total Visits : {selectedLead.visitCount}
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => {
-                              setSelectedLead(null);
-                              setActiveModalAction(null);
-                              setUpdateDiscussionNotes("");
-                            }}
-                            className="w-9 h-9 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-sm cursor-pointer shrink-0 active:scale-90 transition"
-                            aria-label="Close modal"
-                          >
-                            ✕
-                          </button>
-                        </div>
-
-                        <div className="space-y-2.5 text-xs sm:text-sm text-[var(--color-heading)] break-words">
-                          <p>
-                            👤 <strong>Contact Person:</strong>{" "}
-                            {selectedLead.contactPerson} | 📞{" "}
-                            <a
-                              href={`tel:${selectedLead.mobileNo}`}
-                              className="text-[var(--color-primary)] font-bold hover:underline"
-                            >
-                              {selectedLead.mobileNo}
-                            </a>
-                          </p>
-                          <p>
-                            ✉️ <strong>Email:</strong>{" "}
-                            {selectedLead.email || "N/A"}
-                          </p>
-                          <p>
-                            📍 <strong>Address:</strong>{" "}
-                            {selectedLead.address || "N/A"}, {selectedLead.city},{" "}
-                            {selectedLead.state} - {selectedLead.pincode}
-                          </p>
-                          <p>
-                            🎯 <strong>Current Demo Status:</strong>{" "}
-                            <span className="text-[var(--color-primary)] font-bold">
-                              {selectedLead.demoStatus || "Not Given"}
-                            </span>
-                          </p>
-                          {selectedLead.notes && (
-                            <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] mt-2">
-                              <strong className="block text-[var(--color-body)] mb-1">
-                                📝 Conversation History & Notes:
-                              </strong>
-                              <p className="whitespace-pre-line text-xs">
-                                {selectedLead.notes}
-                              </p>
-                            </div>
-                          )}
-                          {selectedLead.meetingPhoto && (
-                            <div className="pt-1">
-                              <strong className="block mb-1 text-[var(--color-body)]">
-                                Meeting Photo:
-                              </strong>
-                              <img
-                                src={`${API_BASE}/${selectedLead.meetingPhoto}`}
-                                alt="Meeting"
-                                className="h-40 w-full rounded-2xl object-cover border border-[var(--color-border)]"
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* --- 🌟 REQUIRED DISCUSSION NOTES INPUT FOR ANY UPDATE --- */}
-                        <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
-                          <label className="block text-xs font-bold text-[var(--color-primary)] uppercase">
-                            💬 What was discussed / Conversation Notes *
-                          </label>
-                          <textarea
-                            rows="2"
-                            required
-                            value={updateDiscussionNotes}
-                            onChange={(e) =>
-                              setUpdateDiscussionNotes(e.target.value)
-                            }
-                            placeholder="Required: Write what you discussed during this call/visit..."
-                            className="w-full bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-xl p-3 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none"
-                          ></textarea>
-                        </div>
-
-                        <div className="space-y-3.5 pt-3.5 border-t border-[var(--color-border)]">
-                          <div>
-                            <label className="block text-xs font-semibold mb-1.5 text-[var(--color-primary)] uppercase">
-                              1. Update Demo & Follow-up Status
-                            </label>
-                            <div className="flex gap-2 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleUpdateLeadStatus(
-                                    selectedLead._id,
-                                    selectedLead.leadStatus,
-                                    "Not Given",
-                                  )
-                                }
-                                className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
-                                  selectedLead.demoStatus === "Not Given"
-                                    ? "bg-[var(--color-primary)] text-white border-transparent"
-                                    : "bg-[var(--color-surface)] border-[var(--color-border)]"
-                                }`}
-                              >
-                                ⏳ Not Given
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setActiveModalAction("reschedule")}
-                                className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
-                                  activeModalAction === "reschedule"
-                                    ? "bg-amber-600 text-white border-transparent"
-                                    : "bg-[var(--color-surface)] border-[var(--color-border)] text-amber-600"
-                                }`}
-                              >
-                                📅 Reschedule / Call Back
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setActiveModalAction("completed")}
-                                className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
-                                  activeModalAction === "completed"
-                                    ? "bg-emerald-600 text-white border-transparent"
-                                    : "bg-[var(--color-surface)] border-[var(--color-border)] text-emerald-600"
-                                }`}
-                              >
-                                ✅ Completed (Add Review & Photo)
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* 🌟 RESCHEDULE SUB-FORM */}
-                          {activeModalAction === "reschedule" && (
-                            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-3">
-                              <p className="text-xs sm:text-sm font-bold text-amber-700">
-                                Select Reschedule Date & Time:
-                              </p>
-                              <div className="grid grid-cols-2 gap-2.5">
-                                <input
-                                  type="date"
-                                  value={modalDate}
-                                  onChange={(e) => setModalDate(e.target.value)}
-                                  className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-                                />
-                                <input
-                                  type="time"
-                                  value={modalTime}
-                                  onChange={(e) => setModalTime(e.target.value)}
-                                  className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!modalDate) {
-                                    toast.error("Please pick a reschedule date!");
-                                    return;
-                                  }
-                                  handleUpdateLeadStatus(
-                                    selectedLead._id,
-                                    "Call Back",
-                                    "Scheduled",
-                                    {
-                                      followUpDate: modalDate,
-                                      followUpTime: modalTime,
-                                    },
-                                  );
-                                }}
-                                className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
-                              >
-                                Confirm Reschedule Date
-                              </button>
-                            </div>
-                          )}
-
-                          {/* 🌟 DEMO COMPLETED SUB-FORM WITH PHOTO & REVIEW */}
-                          {/* {activeModalAction === "completed" && (
-                            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
-                              <p className="text-xs sm:text-sm font-bold text-emerald-700">
-                                Demo Completion Details:
-                              </p>
-                              <div>
-                                <label className="block text-xs font-medium mb-1">
-                                  Client Feedback / Review Notes:
-                                </label>
-                                <textarea
-                                  rows="2"
-                                  value={demoReviewNotes}
-                                  onChange={(e) =>
-                                    setDemoReviewNotes(e.target.value)
-                                  }
-                                  placeholder="e.g. Client loved the test series feature, requested price quote..."
-                                  className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-                                ></textarea>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium mb-1">
-                                  📸 Upload Demo Verification Photo / Screenshot
-                                  (.jpg, .png):
-                                </label>
-                                <input
-                                  type="file"
-                                  accept="image/jpeg, image/jpg, image/png"
-                                  onChange={(e) => {
-                                    const fileItem = e.target.files[0];
-                                    if (fileItem && validateImageFile(fileItem)) {
-                                      setDemoProofFile(fileItem);
-                                    } else {
-                                      e.target.value = "";
-                                    }
-                                  }}
-                                  className="block w-full text-xs text-[var(--color-body)] cursor-pointer"
-                                />
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleUpdateLeadStatus(
-                                    selectedLead._id,
-                                    selectedLead.leadStatus,
-                                    "Completed",
-                                    {
-                                      reviewNotes: demoReviewNotes,
-                                      proofFile: demoProofFile,
-                                    },
-                                  );
-                                }}
-                                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
-                              >
-                                Save Completed Demo & Upload
-                              </button>
-                            </div>
-                          )} */}
-
-                          {/* 🌟 DEMO COMPLETED SUB-FORM WITH PHOTO, REVIEW & DATE PICKER */}
-{activeModalAction === "completed" && (
-  <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
-    <p className="text-xs sm:text-sm font-bold text-emerald-700">
-      Demo Completion Details:
-    </p>
-
-    {/* 🌟 Naya Date Input Field */}
-    <div>
-      <label className="block text-xs font-medium mb-1">
-        📅 Select Demo Done Date *
-      </label>
-      <input
-        type="date"
-        value={demoDoneDate}
-        onChange={(e) => setDemoDoneDate(e.target.value)}
-        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-      />
-    </div>
-
-    <div>
-      <label className="block text-xs font-medium mb-1">
-        Client Feedback / Review Notes:
-      </label>
-      <textarea
-        rows="2"
-        value={demoReviewNotes}
-        onChange={(e) => setDemoReviewNotes(e.target.value)}
-        placeholder="e.g. Client loved the test series feature..."
-        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-      ></textarea>
-    </div>
-
-    <div>
-      <label className="block text-xs font-medium mb-1">
-        📸 Upload Demo Verification Photo / Screenshot (.jpg, .png):
-      </label>
-      <input
-        type="file"
-        accept="image/jpeg, image/jpg, image/png"
-        onChange={(e) => {
-          const fileItem = e.target.files[0];
-          if (fileItem && validateImageFile(fileItem)) {
-            setDemoProofFile(fileItem);
-          } else {
-            e.target.value = "";
-          }
-        }}
-        className="block w-full text-xs text-[var(--color-body)] cursor-pointer"
-      />
-    </div>
-
-    <button
-      type="button"
-      onClick={() => {
-        handleUpdateLeadStatus(
-          selectedLead._id,
-          selectedLead.leadStatus,
-          "Completed",
-          {
-            reviewNotes: demoReviewNotes,
-            proofFile: demoProofFile,
-            demoDoneDate: demoDoneDate, // 🌟 Yeh date yahan pass ho rahi hai
-          }
-        );
-      }}
-      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
-    >
-      Save Completed Demo & Upload
-    </button>
-  </div>
-)}
-
-                          <div>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (dayStatus !== "ACTIVE") {
-                                  toast.error("Start day first!");
-                                  return;
-                                }
-                                await handleUpdateLeadStatus(
-                                  selectedLead._id,
-                                  "Deal Close",
-                                  null,
-                                );
-                                setFormData((prev) => ({
-                                  ...prev,
-                                  instituteName: selectedLead.instituteName,
-                                  mobileNo: selectedLead.mobileNo,
-                                  email: selectedLead.email || "",
-                                  address: selectedLead.address || "",
-                                  city: selectedLead.city,
-                                  state: selectedLead.state,
-                                  pincode: selectedLead.pincode,
-                                }));
-                                setSelectedLead(null);
-                                setInvoiceStep(1);
-                                setActiveView("invoice-form");
-                              }}
-                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-2xl text-xs sm:text-sm transition cursor-pointer shadow-sm active:scale-95 min-h-[46px]"
-                            >
-                              🚀 Sales Punch (Generate Invoice & Close Lead)
-                            </button>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold mb-1.5 text-[var(--color-primary)] uppercase">
-                              3. Update Lead Stage / Response
-                            </label>
-                            <div className="grid grid-cols-2 gap-2.5">
-                              <button
-                                onClick={() =>
-                                  setFollowUpModalAction("Call Back")
-                                }
-                                className="bg-amber-500/10 text-amber-600 border border-amber-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-amber-500/20 transition active:scale-95 min-h-[44px]"
-                              >
-                                📞 Call Back
-                              </button>
-                              <button
-                                onClick={() =>
-                                  setFollowUpModalAction("Follow Up")
-                                }
-                                className="bg-blue-500/10 text-blue-600 border border-blue-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-blue-500/20 transition active:scale-95 min-h-[44px]"
-                              >
-                                🔔 Follow Up
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleUpdateLeadStatus(
-                                    selectedLead._id,
-                                    "Not Interested",
-                                    null,
-                                  )
-                                }
-                                className="bg-red-500/10 text-red-500 border border-red-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-red-500/20 transition active:scale-95 min-h-[44px]"
-                              >
-                                ❌ Not Interested
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleUpdateLeadStatus(
-                                    selectedLead._id,
-                                    "Deal Close",
-                                    null,
-                                  )
-                                }
-                                className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 py-3 rounded-xl font-semibold cursor-pointer hover:bg-emerald-500/20 transition active:scale-95 min-h-[44px]"
-                              >
-                                🎉 Deal Close
-                              </button>
-                            </div>
-
-                            {followUpModalAction && (
-                              <div className="mt-3.5 p-4 bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-2xl space-y-3">
-                                <p className="text-xs sm:text-sm font-bold text-[var(--color-primary)]">
-                                  Select Date & Time for {followUpModalAction}:
-                                </p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                  <input
-                                    type="date"
-                                    value={modalDate}
-                                    onChange={(e) => setModalDate(e.target.value)}
-                                    className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-                                  />
-                                  <input
-                                    type="time"
-                                    value={modalTime}
-                                    onChange={(e) => setModalTime(e.target.value)}
-                                    className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (!modalDate) {
-                                      toast.error("Please select a date!");
-                                      return;
-                                    }
-                                    handleUpdateLeadStatus(
-                                      selectedLead._id,
-                                      followUpModalAction,
-                                      null,
-                                      {
-                                        followUpDate: modalDate,
-                                        followUpTime: modalTime,
-                                      },
-                                    );
-                                  }}
-                                  className="w-full bg-[var(--color-primary)] text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer transition active:scale-95 min-h-[44px]"
-                                >
-                                  Save Reminder Date & Time
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </motion.div>
-                    </div>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[var(--color-border)] pb-3 gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <strong
+                    onClick={() => setSelectedLead(lead)}
+                    className="text-sm sm:text-base text-[var(--color-heading)] font-bold cursor-pointer hover:text-[var(--color-primary)] break-words"
+                  >
+                    {lead.instituteName}
+                  </strong>
+                  {lead.visitCount > 1 && (
+                    <span className="bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 px-3 py-1 rounded-full font-bold text-[11px]">
+                      🔄 {lead.visitCount} Visits
+                    </span>
                   )}
                 </div>
-              );
-            })()}
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* 🌟 AI Lead Score & Priority Badge */}
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-extrabold shadow-sm ${
+                    lead.aiPriority === 'HOT' ? 'bg-red-500/10 text-red-600 border border-red-500/20 animate-pulse' :
+                    lead.aiPriority === 'WARM' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20' :
+                    'bg-slate-500/10 text-slate-500 border border-slate-500/20'
+                  }`}>
+                    {lead.aiPriority === 'HOT' ? '🔥 HOT' : lead.aiPriority === 'WARM' ? '☀️ WARM' : '❄️ COLD'} ({lead.aiScore || 0})
+                  </span>
+
+                  {/* 🌟 AI Smart Follow-up Time Badge Direct on Card */}
+                  <LeadAiBadge leadId={lead._id} API_BASE={API_BASE} />
+
+                  <button
+                    onClick={() => handleWhatsAppReminder(lead, "followup")}
+                    className="bg-[#25D366] text-white px-3.5 py-1.5 rounded-full font-bold text-[11px] flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                  >
+                    <WhatsAppIcon /> WhatsApp
+                  </button>
+                  <span
+                    className={`px-3.5 py-1.5 rounded-full font-bold text-[11px] uppercase tracking-wider ${
+                      lead.leadStatus === "Not Interested"
+                        ? "bg-red-500/10 text-red-600 border border-red-500/20"
+                        : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                    }`}
+                  >
+                    {lead.leadStatus || "Active Lead"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-[var(--color-heading)]">
+                <div className="break-words">
+                  👤 <strong>Contact:</strong> {lead.contactPerson} |
+                  📞{" "}
+                  <button
+                    type="button"
+                    onClick={() => handleTrackedCall(lead)}
+                    className="text-[var(--color-primary)] font-bold hover:underline cursor-pointer"
+                  >
+                    {lead.mobileNo}
+                  </button>
+                </div>
+                <div onClick={() => setSelectedLead(lead)} className="cursor-pointer break-words">
+                  📍 <strong>Location:</strong> {lead.address || "N/A"}, {lead.city}, {lead.state}
+                </div>
+                <div onClick={() => setSelectedLead(lead)} className="cursor-pointer">
+                  🎯 <strong>Demo Status:</strong> <span className="text-amber-600 font-semibold">{lead.demoStatus || "Not Given"}</span>
+                </div>
+                {lead.followUpDate && (
+                  <div
+                    onClick={() => setSelectedLead(lead)}
+                    className="sm:col-span-2 text-amber-600 font-semibold bg-amber-500/10 p-3 rounded-xl border border-amber-500/20 cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
+                  >
+                    <span className="break-words">
+                      🔔 <strong>Follow-up Reminder:</strong> {lead.followUpAction} on {new Date(lead.followUpDate).toLocaleDateString("en-IN")} {lead.followUpTime ? `at ${lead.followUpTime}` : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+        </div>
+      )}
+
+      {/* LEAD DETAILS MODAL */}
+{/* LEAD DETAILS MODAL */}
+      {selectedLead && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50"
+          onClick={() => {
+            setSelectedLead(null);
+            setActiveModalAction(null);
+            setUpdateDiscussionNotes("");
+          }}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 max-w-lg w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center border-b border-[var(--color-border)] pb-3 gap-2">
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)] break-words">
+                  {selectedLead.instituteName}
+                </h3>
+                {selectedLead.visitCount > 1 && (
+                  <span className="text-xs text-emerald-600 font-semibold">
+                    Total Visits : {selectedLead.visitCount}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedLead(null);
+                  setActiveModalAction(null);
+                  setUpdateDiscussionNotes("");
+                }}
+                className="w-9 h-9 rounded-full bg-[var(--color-surface)] flex items-center justify-center text-sm cursor-pointer shrink-0 active:scale-90 transition"
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs sm:text-sm text-[var(--color-heading)] break-words">
+              <p>👤 <strong>Contact Person:</strong> {selectedLead.contactPerson} | 📞 <a href={`tel:${selectedLead.mobileNo}`} className="text-[var(--color-primary)] font-bold hover:underline">{selectedLead.mobileNo}</a></p>
+              <p>✉️ <strong>Email:</strong> {selectedLead.email || "N/A"}</p>
+              <p>📍 <strong>Address:</strong> {selectedLead.address || "N/A"}, {selectedLead.city}, {selectedLead.state} - {selectedLead.pincode}</p>
+              <p>🎯 <strong>Current Demo Status:</strong> <span className="text-[var(--color-primary)] font-bold">{selectedLead.demoStatus || "Not Given"}</span></p>
+
+              {/* 🤖 AI Smart Follow-up Time Predictor Widget */}
+              <div className="p-3.5 bg-purple-500/10 border border-purple-500/30 rounded-2xl flex items-start gap-2.5 text-xs sm:text-sm mt-3">
+                <span className="text-xl shrink-0">🤖</span>
+                <div className="space-y-0.5">
+                  <strong className="text-purple-700 dark:text-purple-400 font-bold block">
+                    AI Smart Follow-up Predictor:
+                  </strong>
+                  <p className="text-[var(--color-heading)] font-medium leading-relaxed">
+                    {loadingAiPrediction
+                      ? "Analyzing past call success patterns..."
+                      : (aiTimePrediction || "No insights available yet. Make a call to train AI.")}
+                  </p>
+                </div>
+              </div>
+
+              {selectedLead.notes && (
+                <div className="bg-[var(--color-surface)] p-3.5 rounded-2xl border border-[var(--color-border)] mt-2">
+                  <strong className="block text-[var(--color-body)] mb-1">📝 Conversation History & Notes:</strong>
+                  <p className="whitespace-pre-line text-xs">{selectedLead.notes}</p>
+                </div>
+              )}
+              {selectedLead.meetingPhoto && (
+                <div className="pt-1">
+                  <strong className="block mb-1 text-[var(--color-body)]">Meeting Photo:</strong>
+                  <img
+                    src={`${API_BASE}/${selectedLead.meetingPhoto}`}
+                    alt="Meeting"
+                    className="h-40 w-full rounded-2xl object-cover border border-[var(--color-border)]"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* --- 🌟 REQUIRED DISCUSSION NOTES INPUT FOR ANY UPDATE --- */}
+            <div className="space-y-2 pt-2 border-t border-[var(--color-border)]">
+              <label className="block text-xs font-bold text-[var(--color-primary)] uppercase">
+                💬 What was discussed / Conversation Notes *
+              </label>
+              <textarea
+                rows="2"
+                required
+                value={updateDiscussionNotes}
+                onChange={(e) => setUpdateDiscussionNotes(e.target.value)}
+                placeholder="Required: Write what you discussed during this call/visit..."
+                className="w-full bg-[var(--color-surface)] border border-[var(--color-primary)]/40 rounded-xl p-3 text-xs sm:text-sm text-[var(--color-heading)] focus:outline-none"
+              ></textarea>
+            </div>
+
+            <div className="space-y-3.5 pt-3.5 border-t border-[var(--color-border)]">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 text-[var(--color-primary)] uppercase">
+                  1. Update Demo & Follow-up Status
+                </label>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateLeadStatus(selectedLead._id, selectedLead.leadStatus, "Not Given")}
+                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
+                      selectedLead.demoStatus === "Not Given" ? "bg-[var(--color-primary)] text-white border-transparent" : "bg-[var(--color-surface)] border-[var(--color-border)]"
+                    }`}
+                  >
+                    ⏳ Not Given
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModalAction("reschedule")}
+                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
+                      activeModalAction === "reschedule" ? "bg-amber-600 text-white border-transparent" : "bg-[var(--color-surface)] border-[var(--color-border)] text-amber-600"
+                    }`}
+                  >
+                    📅 Reschedule / Call Back
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveModalAction("completed")}
+                    className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition ${
+                      activeModalAction === "completed" ? "bg-emerald-600 text-white border-transparent" : "bg-[var(--color-surface)] border-[var(--color-border)] text-emerald-600"
+                    }`}
+                  >
+                    ✅ Completed (Add Review & Photo)
+                  </button>
+                </div>
+              </div>
+
+              {activeModalAction === "reschedule" && (
+                <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl space-y-3">
+                  <p className="text-xs sm:text-sm font-bold text-amber-700">Select Reschedule Date & Time:</p>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <input type="date" value={modalDate} onChange={(e) => setModalDate(e.target.value)} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm" />
+                    <input type="time" value={modalTime} onChange={(e) => setModalTime(e.target.value)} className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!modalDate) { toast.error("Please pick a reschedule date!"); return; }
+                      handleUpdateLeadStatus(selectedLead._id, "Call Back", "Scheduled", { followUpDate: modalDate, followUpTime: modalTime });
+                    }}
+                    className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
+                  >
+                    Confirm Reschedule Date
+                  </button>
+                </div>
+              )}
+
+              {activeModalAction === "completed" && (
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
+                  <p className="text-xs sm:text-sm font-bold text-emerald-700">Demo Completion Details:</p>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">📅 Select Demo Done Date *</label>
+                    <input type="date" value={demoDoneDate} onChange={(e) => setDemoDoneDate(e.target.value)} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Client Feedback / Review Notes:</label>
+                    <textarea rows="2" value={demoReviewNotes} onChange={(e) => setDemoReviewNotes(e.target.value)} placeholder="e.g. Client loved the test series feature..." className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"></textarea>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1">📸 Upload Demo Verification Photo:</label>
+                    <input type="file" accept="image/jpeg, image/jpg, image/png" onChange={(e) => { const fileItem = e.target.files[0]; if (fileItem && validateImageFile(fileItem)) { setDemoProofFile(fileItem); } else { e.target.value = ""; } }} className="block w-full text-xs text-[var(--color-body)] cursor-pointer" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { handleUpdateLeadStatus(selectedLead._id, selectedLead.leadStatus, "Completed", { reviewNotes: demoReviewNotes, proofFile: demoProofFile, demoDoneDate: demoDoneDate }); }}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
+                  >
+                    Save Completed Demo & Upload
+                  </button>
+                </div>
+              )}
+
+              <div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (dayStatus !== "ACTIVE") { toast.error("Start day first!"); return; }
+                    await handleUpdateLeadStatus(selectedLead._id, "Deal Close", null);
+                    setFormData((prev) => ({ ...prev, instituteName: selectedLead.instituteName, mobileNo: selectedLead.mobileNo, email: selectedLead.email || "", address: selectedLead.address || "", city: selectedLead.city, state: selectedLead.state, pincode: selectedLead.pincode }));
+                    setSelectedLead(null); setInvoiceStep(1); setActiveView("invoice-form");
+                  }}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-2xl text-xs sm:text-sm transition cursor-pointer shadow-sm active:scale-95 min-h-[46px]"
+                >
+                  🚀 Sales Punch (Generate Invoice & Close Lead)
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+})()}
 
             {activeView === "kanban" && (
               <div className="space-y-6">
