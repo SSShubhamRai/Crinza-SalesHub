@@ -30,6 +30,8 @@ const {
 const createInvoicePDF = require("./utils/generatePdf");
 const sendInvoiceEmail = require("./utils/sendEmail");
 
+const { scanGmailForLeaves } = require("./controllers/gmailSyncController");
+
 require("./utils/scheduler")
 
 
@@ -108,6 +110,10 @@ app.use("/api/invoices", invoiceRoutes);
 const telecallerRoutes = require("./routes/telecallerRoutes");
 app.use("/api/telecaller", telecallerRoutes);
 
+// server.js ke andar jahan baaki routes hain wahan yeh add karein:
+const hrRoutes = require("./routes/hrRoutes");
+app.use("/api/hr", hrRoutes);
+
 connectDB()
 
 const io = new Server(server, {
@@ -116,6 +122,7 @@ const io = new Server(server, {
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
+app.set("io", io);
 
 // --- Security & Proxy Setup ---
 app.set("trust proxy", 1);
@@ -127,6 +134,8 @@ app.use(helmet({
 
 app.use(cors());
 app.use(express.json());
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 app.use((req, res, next) => {
   if (req.query) {
@@ -202,6 +211,13 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+setInterval(() => {
+  console.log("Scanning Gmail for incoming leave requests...");
+  scanGmailForLeaves();
+}, 15 * 60 * 1000);
+
+
 
 // =========================================================================
 // --- 🌐 SOCKET.IO REAL-TIME LOCATION & SINGLE SESSION HANDLER ---

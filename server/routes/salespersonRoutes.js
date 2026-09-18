@@ -3,12 +3,14 @@ const router = express.Router();
 const verifyToken = require("../middleware/authMiddleware");
 
 const User = require("../models/User");
+const Notification = require("../models/Notification");
 const Invoice = require("../models/Invoice");
 const Lead = require("../models/Lead");
 const Task = require("../models/Task");
 const CallLog = require("../models/CallLog");
 const DaySession = require("../models/DaySession");
 const Broadcast = require("../models/Broadcast");
+const mongoose = require("mongoose");
 
 const { addSalespersonPoints } = require("../utils/salespersonPoints");
 const { calculateDistance } = require("../utils/distanceHelper");
@@ -532,16 +534,35 @@ router.get("/points/today", verifyToken, async (req, res) => {
 
 router.get("/broadcasts", verifyToken, async (req, res) => {
   try {
-    const broadcasts = await Broadcast.find({ deletedFor: { $ne: req.user.userId } }).sort({ createdAt: -1 });
+    const userIdStr = req.user.userId;
+    const userObjId = req.user._id || req.user.id;
+
+    // User document find karein taaki dismissedBroadcasts array mil sake
+    const currentUser = await User.findOne({
+      $or: [
+        { _id: mongoose.Types.ObjectId.isValid(userObjId) ? userObjId : null },
+        { userId: userIdStr }
+      ]
+    });
+
+    const dismissedIds = currentUser?.dismissedBroadcasts || [];
+
+    // Woh broadcasts fetch karein jo na toh 'deletedFor' mein hon aur na hi user ki 'dismissedBroadcasts' list mein
+    const broadcasts = await Broadcast.find({
+      _id: { $nin: dismissedIds },
+      deletedFor: { $ne: userIdStr }
+    }).sort({ createdAt: -1 });
+
     res.json(broadcasts);
   } catch (err) {
     res.status(500).json({ message: "Failed to fetch broadcasts", error: err.message });
   }
 });
-
 router.get("/notifications", verifyToken, async (req, res) => {
   try {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+
+    // 1. Fetch Task-based reminders
     const tasks = await Task.find({
       salespersonId: req.user.userId,
       status: "pending",
@@ -553,20 +574,114 @@ router.get("/notifications", verifyToken, async (req, res) => {
       ]
     }).sort({ createdAt: -1 });
 
-    const formattedNotifications = tasks.map((t) => ({
+    const taskNotifications = tasks.map((t) => ({
       _id: t._id,
-      title: `${t.taskType.toUpperCase()} Reminder`,
+      title: `${t.taskType ? t.taskType.toUpperCase() : 'TASK'} Reminder`,
       message: `Pending task for institute: ${t.instituteName} (Due: ${t.dueDate || 'N/A'})`,
       isRead: false,
       createdAt: t.createdAt,
       dueDate: t.dueDate,
+      type: "task" // 👈 Type "task"
     }));
-    res.json(formattedNotifications);
+
+    // 2. Fetch HR Direct Messages & Broadcast Notifications
+    const currentUser = await User.findOne({
+      $or: [
+        { _id: mongoose.Types.ObjectId.isValid(req.user.userId || req.user.id) ? (req.user.userId || req.user.id) : null },
+        { userId: req.user.userId || req.user.id }
+      ]
+    });
+
+    let dbNotifications = [];
+    if (currentUser) {
+      dbNotifications = await Notification.find({
+        userId: currentUser._id,
+        isRead: false
+      }).sort({ createdAt: -1 });
+    }
+
+const hrNotifications = dbNotifications.map((n) => {
+  // 🌟 Agar fileUrl nahi hai, toh message text ke andar se koi URL dhoondne ki koshish karo
+  let extractedUrl = n.fileUrl || n.documentUrl || n.file || n.attachment || n.document || null;
+  
+  if (!extractedUrl && n.message) {
+    const urlMatch = n.message.match(/(https?:\/\/[^\s]+)/g);
+    if (urlMatch) extractedUrl = urlMatch[0];
+  }
+
+  return {
+    _id: n._id,
+    title: n.title || "HR Notification",
+    message: n.message,
+    fileUrl: extractedUrl,
+    isRead: n.isRead || false,
+    createdAt: n.createdAt,
+    dueDate: n.dueDate || null,
+    type: "hr_message"
+  };
+});
+
+    // Send both categories separately to frontend
+    res.json({
+      success: true,
+      tasks: taskNotifications,
+      hrMessages: hrNotifications
+    });
   } catch (err) {
+    console.error("Error fetching notifications:", err);
     res.status(500).json({ message: "Failed to fetch notifications", error: err.message });
   }
 });
 
+// 2. Dismiss / Mark Notification as Read
+router.put("/notifications/:id/dismiss", verifyToken, async (req, res) => {
+  try {
+    await Notification.findByIdAndUpdate(req.params.id, { isRead: true });
+    res.json({ success: true, message: "Notification dismissed" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to dismiss notification" });
+  }
+});
+
+router.post("/broadcasts/:id/dismiss", verifyToken, async (req, res) => {
+  try {
+    const broadcastId = req.params.id;
+    const userObjId = req.user._id || req.user.id;
+    const userIdStr = req.user.userId;
+
+    console.log("🔍 Dismissing broadcast:", broadcastId, "for user:", userIdStr || userObjId);
+
+    // 1. Pehle user ko dhoondhein
+    const currentUser = await User.findOne({
+      $or: [
+        { _id: mongoose.Types.ObjectId.isValid(userObjId) ? userObjId : null },
+        { userId: userIdStr }
+      ]
+    });
+
+    if (!currentUser) {
+      console.log("❌ User not found for broadcast dismiss!");
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // 2. Array mein push karein aur save karein
+    if (!currentUser.dismissedBroadcasts) {
+      currentUser.dismissedBroadcasts = [];
+    }
+
+    // Check karein ki pehle se added toh nahi hai
+    if (!currentUser.dismissedBroadcasts.includes(broadcastId)) {
+      currentUser.dismissedBroadcasts.push(broadcastId);
+      await currentUser.save();
+      console.log("✅ Broadcast permanently saved to user dismissed list!");
+    }
+
+    res.json({ success: true, message: "Broadcast permanently dismissed" });
+  } catch (err) {
+    console.error("🔥 Error dismissing broadcast:", err);
+    res.status(500).json({ success: false, message: "Failed to dismiss broadcast", error: err.message });
+  }
+});
 
 // =============================================================
 // 📞 SYNC ANDROID DEVICE CALL LOGS

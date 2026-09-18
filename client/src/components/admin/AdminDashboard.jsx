@@ -21,6 +21,7 @@ import { TechnicalProjectsTab } from "./tabs/TechnicalProjectsTab";
 import { CallMonitoringTab } from "./tabs/CallMonitoringTab";
 import SalespersonPointsTab from "./tabs/SalespersonPointsTab";
 import TelecallerActivityTab from "./tabs/TelecallerActivityTab";
+import HrPortal from '../HrPortal';
 
 const AdminDashboard = ({ userId, onLogout }) => {
   const API_BASE = import.meta.env.PROD
@@ -854,6 +855,7 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
         </div>
 
         {/* Desktop Navbar Tabs */}
+{/* Desktop Navbar Tabs */}
         <div className="hidden md:flex gap-2 p-1.5 bg-[var(--color-card)] border border-[var(--color-border)] rounded-2xl shadow-sm overflow-x-auto">
           <button onClick={() => setActiveTab("tracker")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${activeTab === "tracker" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             📋 Task Tracker
@@ -898,8 +900,6 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
   📞 Call Monitoring
 </button>
 
-
-
 <button
   onClick={() => setActiveTab("salesperson-points")}
   className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
@@ -916,13 +916,26 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
           <button onClick={() => setActiveTab("tech-projects")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${activeTab === "tech-projects" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             🛠️ App Production Queue
           </button>
+
+          {/* 🌟 Naya HR Portal Tab yahan add kiya gaya hai */}
+          <button 
+            onClick={() => setActiveTab("hr-portal")} 
+            className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap active:scale-95 ${
+              activeTab === "hr-portal" 
+                ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" 
+                : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"
+            }`}
+          >
+            👥 HR Portal
+          </button>
+
           <button onClick={() => setActiveTab("security-alerts")} className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all duration-200 cursor-pointer whitespace-nowrap relative active:scale-95 ${activeTab === "security-alerts" ? "bg-[var(--color-primary)] text-white shadow-md shadow-[var(--color-primary)]/20" : "text-[var(--color-heading)] hover:bg-[var(--color-surface)]"}`}>
             🚨 Security & Spoofing {spoofingAlerts.length > 0 && <span className="ml-1 bg-red-500 text-white px-1.5 py-0.5 rounded-full text-[9px] font-extrabold animate-pulse">{spoofingAlerts.length}</span>}
           </button>
         </div>
 
         {/* Mobile Dropdown Tabs */}
-        <div className="block md:hidden w-full">
+<div className="block md:hidden w-full">
           <select
             value={activeTab}
             onChange={(e) => setActiveTab(e.target.value)}
@@ -934,17 +947,13 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
             <option value="directory">👥 Team Directory & Deals</option>
             <option value="coupons">🎟️ Discount Coupons</option>
             <option value="transfer">🔄 Transfer Leads</option>
-
             <option value="broadcast">📢 Team Broadcast</option>
             <option value="telecaller-activity">📞 Telecaller Activity</option>
-                <option value="call-monitoring">
-  📞 Call Monitoring
-</option>
-<option value="salesperson-points">
-  🎯 Salesperson Points
-</option>
+            <option value="call-monitoring">📞 Call Monitoring</option>
+            <option value="salesperson-points">🎯 Salesperson Points</option>
             <option value="live-tracking">🛰️ Live Tracking & Travel</option>
             <option value="tech-projects">🛠️ App Production Queue</option>
+            <option value="hr-portal">👥 HR Portal</option> {/* 🌟 Mobile dropdown mein HR Portal joda gaya */}
             <option value="security-alerts">🚨 Security & Spoofing ({spoofingAlerts.length})</option>
           </select>
         </div>
@@ -1097,6 +1106,14 @@ const filteredSystemLeads = allSystemLeads.filter((lead) => {
             {activeTab === "security-alerts" && (
               <SecurityAlertsTab spoofingAlerts={spoofingAlerts} />
             )}
+
+            {activeTab === "hr-portal" && (
+  <HrPortal
+    userId={userId}
+    username={userId}
+    onLogout={onLogout}
+  />
+)}
           </>
         )}
       </div>

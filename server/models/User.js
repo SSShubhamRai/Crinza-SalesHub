@@ -7,7 +7,7 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { 
     type: String, 
-    enum: ['salesperson', 'accountant', 'boss', 'admin', 'technical', 'telecaller'],
+    enum: ['salesperson', 'accountant', 'boss', 'admin', 'technical', 'telecaller', 'hr'], 
     default: 'salesperson',
     index: true
   },
@@ -16,6 +16,9 @@ const userSchema = new mongoose.Schema({
   
   // 🔔 Push Notifications ke liye FCM Token field added
   fcmToken: { type: String, default: null },
+
+  // 📢 Dismissed Admin Broadcasts tracking field
+  dismissedBroadcasts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Broadcast' }],
 
   // 🌟 Biometric / WebAuthn Devices Array for Fingerprint & Face ID
   devices: [{

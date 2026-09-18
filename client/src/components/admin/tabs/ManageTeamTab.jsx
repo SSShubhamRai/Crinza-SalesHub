@@ -80,7 +80,8 @@ export const ManageTeamTab = ({
               <option value="salesperson">👤 Salesperson</option>
               <option value="accountant">📑 Accountant</option>
               <option value="technical">🛠️ Technical / Developer</option>
-              <option value="telecaller">📞 Telecaller</option> {/* 👈 Naya Telecaller role add kiya gaya */}
+              <option value="telecaller">📞 Telecaller</option> 
+              <option value="hr">👥 HR Manager (Human Resources)</option>
             </select>
           </div>
           <div>
@@ -164,7 +165,8 @@ export const ManageTeamTab = ({
               <option value="salesperson">Salesperson Only</option>
               <option value="accountant">Accountant Only</option>
               <option value="technical">Technical Only</option>
-              <option value="telecaller">Telecaller Only</option> {/* 👈 Filter mein bhi telecaller joda gaya */}
+              <option value="telecaller">Telecaller Only</option>
+              <option value="hr">HR Manager Only</option>
             </select>
 
             <input
@@ -203,12 +205,15 @@ export const ManageTeamTab = ({
                           : emp.role === "technical"
                           ? "bg-purple-500/10 text-purple-600 border border-purple-500/20"
                           : emp.role === "telecaller"
-                          ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" // 👈 Telecaller badge style
+                          ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                          : emp.role === "hr"
+                          ? "bg-rose-500/10 text-rose-600 border border-rose-500/20" // 👈 HR Manager badge style
                           : "bg-blue-500/10 text-blue-600 border border-blue-500/20"
                       }`}
                     >
                       {emp.role}
                     </span>
+
                   </div>
                   {emp.email && (
                     <p className="text-[var(--color-body)] mt-0.5">

@@ -151,6 +151,7 @@ router.post("/reset-password-otp", async (req, res) => {
 });
 
 // 4. Create Employee Route
+// 4. Create Employee Route
 router.post("/create-employee", verifyToken, async (req, res) => {
   try {
     if (req.user.role !== "boss" && req.user.role !== "admin") {
@@ -168,13 +169,15 @@ router.post("/create-employee", verifyToken, async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const assignedRole = role ? role.toLowerCase() : "salesperson";
+
     const newEmp = new User({
       userId,
       name,
       email,
       phone: phone || "",
       password: hashedPassword,
-      role: role || "salesperson",
+      role: assignedRole,
     });
 
     await newEmp.save();
@@ -189,7 +192,7 @@ router.post("/create-employee", verifyToken, async (req, res) => {
           <h2 style="color: #4f46e5; text-align: center; margin-bottom: 5px;">Welcome Aboard, ${name}! 🎉</h2>
           <p style="text-align: center; color: #64748b; font-size: 13px; margin-top: 0;">We are thrilled to have you join our growing team.</p>
           <p>Hello <strong>${name}</strong>,</p>
-          <p>Your official account has been successfully created on the <strong>Crinza One Portal</strong> as a <strong>${(role || 'salesperson').toUpperCase()}</strong>.</p>
+          <p>Your official account has been successfully created on the <strong>Crinza One Portal</strong> as a <strong>${assignedRole.toUpperCase()}</strong>.</p>
           <div style="background: #ffffff; padding: 18px; border-radius: 12px; border: 1px solid #cbd5e1; margin: 20px 0;">
             <p style="margin: 8px 0;"><strong>👤 User ID:</strong> ${userId}</p>
             <p style="margin: 8px 0;"><strong>🔑 Password:</strong> ${password}</p>

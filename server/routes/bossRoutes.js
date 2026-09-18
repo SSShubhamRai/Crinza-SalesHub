@@ -332,11 +332,11 @@ router.put("/technical-projects/assign/:id", verifyToken, async (req, res) => {
 // 6. Employees List & Performance
 router.get("/employees", verifyToken, async (req, res) => {
   try {
-    if (req.user.role !== "boss" && req.user.role !== "admin" && req.user.role !== "telecaller") {
+    if (req.user.role !== "boss" && req.user.role !== "admin" && req.user.role !== "telecaller" && req.user.role !== "hr") {
       return res.status(403).json({ message: "Access denied!" });
     }
     const employees = await User.find({
-      role: { $in: ["salesperson", "accountant", "technical", "telecaller"] },
+      role: { $in: ["salesperson", "accountant", "technical", "telecaller", "hr"] },
     }).select("-password");
     res.json(employees);
   } catch (err) {

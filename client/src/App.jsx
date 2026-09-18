@@ -12,6 +12,7 @@ import TelecallerForm from './components/TelecallerForm';
 import TechnicalDashboard from './components/TechnicalDashboard';
 import AccountantPanel from './components/accountant/AccountantPanel';
 import AdminDashboard from './components/admin/AdminDashboard';
+import HrPortal from './components/HrPortal';
 
 function App() {
   const [token, setToken] = useState(null);
@@ -174,11 +175,17 @@ function App() {
         </button>
       </div>
 
-      {!token ? (
+     {!token ? (
         <Login onLoginSuccess={handleLoginSuccess} />
       ) : role === 'boss' || role === 'admin' ? (
         <AdminDashboard
           userId={userId}
+          onLogout={handleLogout}
+        />
+      ) : role === 'hr' ? (
+        <HrPortal
+          userId={userId}
+          username={userId}
           onLogout={handleLogout}
         />
       ) : role === 'accountant' ? (

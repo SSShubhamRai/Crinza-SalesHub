@@ -1384,17 +1384,20 @@ const fetchSalespersonNotifications = useCallback(async () => {
 
     if (res.ok) {
       const data = await res.json();
-
       
+      // 1. Handle HR direct messages directly
+      setHrMessages(data.hrMessages || []);
+
+      // 2. Filter task reminders by date if necessary
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const filtered = data.filter(n => {
+      const filteredTasks = (data.tasks || []).filter(n => {
         if (!n.dueDate) return true; 
         return new Date(n.dueDate) <= today; 
       });
 
-      setNotifications(filtered);
+      setTaskNotifications(filteredTasks);
     }
   } catch (err) {
     console.error("Failed to load notifications:", err);
@@ -1526,9 +1529,24 @@ const fetchSalespersonNotifications = useCallback(async () => {
       if (typeof onLogout === "function") onLogout();
     });
 
-    socketRef.current.on("new_notification", (notif) => {
-      setNotifications((prev) => [notif, ...prev]);
-      toast.success(notif.message, { icon: "🔔", duration: 5000 });
+socketRef.current.on("new_notification", (notif) => {
+      // 🌟 Ensure naya notification format properly state mein push ho
+      const formattedNotif = {
+        _id: notif._id || Math.random(),
+        title: notif.title || "🔔 New Notification",
+        message: notif.message || notif.title || "You have a new message from HR.",
+        isRead: false,
+        createdAt: notif.createdAt || new Date(),
+        type: "hr_message"
+      };
+
+      setNotifications((prev) => [formattedNotif, ...prev]);
+      
+      toast.success(formattedNotif.message, { 
+        icon: "🔔", 
+        duration: 6000,
+        position: "top-right" 
+      });
     });
 
     socketRef.current.on("team_broadcast", (data) => {
@@ -1681,6 +1699,10 @@ const initialFormData = {
   const [isCouponApplied, setIsCouponApplied] = useState(false);
   const [couponError, setCouponError] = useState("");
   const [couponDetails, setCouponDetails] = useState(null);
+
+  const [taskNotifications, setTaskNotifications] = useState([]);
+const [hrMessages, setHrMessages] = useState([]);
+
 
   const [fetchingDetails, setFetchingDetails] = useState(false);
   const [availablePincodes, setAvailablePincodes] = useState([]);
@@ -2979,98 +3001,184 @@ const handleUpdateLeadStatus = async (
                   ))}
                 </div>
               )}
+              <div className="space-y-4 mt-3">
+  {/* --- SECTION 1: HR DIRECT MESSAGES --- */}
 
-              {/* --- SECTION 2: TASK REMINDERS --- */}
-              <div className="space-y-2 mt-3">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 block px-1">
-                  📋 Task Reminders ({notifications.length})
-                </span>
-                {notifications.length === 0 &&
-                broadcastNotifications.length === 0 ? (
-                  <div className="py-8 text-center text-[var(--color-body)] space-y-1">
-                    <p className="text-sm">☕ All caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((n) => {
-                    const targetLead = myLeads.find((l) =>
-                      n.message?.includes(l.instituteName),
+{/* --- SECTION: HR DIRECT MESSAGES --- */}
+{/* --- SECTION: HR DIRECT MESSAGES --- */}
+{hrMessages.length > 0 && (
+  <div className="space-y-2">
+    <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600 block px-1">
+      💬 HR Direct Messages ({hrMessages.length})
+    </span>
+    {hrMessages.map((msg) => (
+      <div
+        key={msg._id}
+        className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-[var(--color-heading)] space-y-2.5 shadow-sm"
+      >
+        <div className="flex justify-between items-center gap-2">
+          <strong className="text-xs font-bold text-blue-700 dark:text-blue-300 truncate">
+            💬 {msg.title}
+          </strong>
+          <button
+            type="button"
+            onClick={async (e) => {
+              e.stopPropagation();
+              try {
+                const token = localStorage.getItem("token");
+                const res = await fetch(
+                  `${API_BASE}/api/salesperson/notifications/${msg._id}/dismiss`,
+                  {
+                    method: "PUT",
+                    headers: { Authorization: `Bearer ${token}` },
+                  }
+                );
+                if (res.ok) {
+                  setHrMessages((prev) =>
+                    prev.filter((item) => item._id !== msg._id)
+                  );
+                  toast.success("HR message cleared");
+                }
+              } catch (err) {
+                toast.error("Error clearing message");
+              }
+            }}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition shrink-0 active:scale-95"
+            title="Clear HR Message"
+          >
+            ✕ Clear
+          </button>
+        </div>
+
+        <p className="font-medium break-words leading-relaxed text-xs">
+          {msg.message}
+        </p>
+
+        {/* 🌟 100% CLEAN & DIRECT URL OPENING (No Hacks) */}
+        {msg.fileUrl ? (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                const cleanUrl = msg.fileUrl.startsWith('http') 
+                  ? msg.fileUrl 
+                  : `${API_BASE}${msg.fileUrl}`;
+                
+                // Seedha naye tab mein kholen
+                window.open(cleanUrl, "_blank", "noopener,noreferrer");
+              }}
+              className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm active:scale-95 cursor-pointer"
+            >
+              <span>📥</span> Download / View Document
+            </button>
+          </div>
+        ) : (
+          <span className="text-[10px] text-gray-400 italic block">No document attached</span>
+        )}
+
+        <span className="text-[9px] text-[var(--color-body)] block">
+          {new Date(msg.createdAt).toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </span>
+      </div>
+    ))}
+  </div>
+)}
+
+
+  {/* --- SECTION 2: TASK REMINDERS --- */}
+  <div className="space-y-2">
+    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 block px-1">
+      📋 Task Reminders ({taskNotifications.length})
+    </span>
+    {taskNotifications.length === 0 &&
+    hrMessages.length === 0 &&
+    broadcastNotifications.length === 0 ? (
+      <div className="py-8 text-center text-[var(--color-body)] space-y-1">
+        <p className="text-sm">☕ All caught up!</p>
+      </div>
+    ) : (
+      taskNotifications.map((n) => {
+        const targetLead = myLeads.find((l) =>
+          n.message?.includes(l.instituteName),
+        );
+
+        const isPastDate =
+          n.dueDate &&
+          new Date(n.dueDate) < new Date().setHours(0, 0, 0, 0);
+
+        return (
+          <div
+            key={n._id || Math.random()}
+            className={`p-3.5 rounded-2xl border transition ${
+              isPastDate
+                ? "bg-red-100 border-red-500 text-red-900"
+                : "bg-emerald-500/10 border-emerald-500/30 text-[var(--color-heading)]"
+            }`}
+          >
+            <div className="flex justify-between items-center gap-2 mb-2">
+              <strong className="font-bold text-sm truncate">
+                {n.title} {isPastDate && " (OVERDUE!)"}
+              </strong>
+              <span className="text-[10px] shrink-0">
+                {new Date(n.createdAt).toLocaleTimeString("en-IN", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            </div>
+
+            <p className="font-medium break-words leading-relaxed text-xs mb-3">
+              {n.message}
+            </p>
+
+            <div className="flex gap-2 border-t border-black/10 pt-2">
+              {targetLead && (
+                <button
+                  type="button"
+                  onClick={() => handleTrackedCall(targetLead)}
+                  className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition"
+                >
+                  📞 Call
+                </button>
+              )}
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    const token = localStorage.getItem("token");
+                    await fetch(
+                      `${API_BASE}/api/salesperson/notifications/${n._id}/dismiss`,
+                      {
+                        method: "PUT",
+                        headers: {
+                          Authorization: `Bearer ${token}`,
+                        },
+                      },
                     );
-
-                    const isPastDate =
-                      n.dueDate &&
-                      new Date(n.dueDate) <
-                        new Date().setHours(0, 0, 0, 0);
-
-                    return (
-                      <div
-                        key={n._id || Math.random()}
-                        className={`p-3.5 rounded-2xl border transition ${
-                          isPastDate
-                            ? "bg-red-100 border-red-500 text-red-900"
-                            : "bg-emerald-500/10 border-emerald-500/30 text-[var(--color-heading)]"
-                        }`}
-                      >
-                        <div className="flex justify-between items-center gap-2 mb-2">
-                          <strong className="font-bold text-sm truncate">
-                            {n.title} {isPastDate && " (OVERDUE!)"}
-                          </strong>
-                          <span className="text-[10px] shrink-0">
-                            {new Date(n.createdAt).toLocaleTimeString(
-                              "en-IN",
-                              { hour: "2-digit", minute: "2-digit" },
-                            )}
-                          </span>
-                        </div>
-
-                        <p className="font-medium break-words leading-relaxed text-xs mb-3">
-                          {n.message}
-                        </p>
-
-                        <div className="flex gap-2 border-t border-black/10 pt-2">
-                          {targetLead && (
-                            <button
-                              type="button"
-                              onClick={() => handleTrackedCall(targetLead)}
-                              className="text-[10px] bg-blue-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-blue-700 transition"
-                            >
-                              📞 Call
-                            </button>
-                          )}
-                          <button
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                const token =
-                                  localStorage.getItem("token");
-                                await fetch(
-                                  `${API_BASE}/api/salesperson/notifications/${n._id}/dismiss`,
-                                  {
-                                    method: "PUT",
-                                    headers: {
-                                      Authorization: `Bearer ${token}`,
-                                    },
-                                  },
-                                );
-                                setNotifications((prev) =>
-                                  prev.filter(
-                                    (item) => item._id !== n._id,
-                                  ),
-                                );
-                                toast.success("Dismissed");
-                              } catch (err) {
-                                toast.error("Error dismissing");
-                              }
-                            }}
-                            className="text-[10px] bg-white/50 border border-black/10 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/80 transition"
-                          >
-                            ✕ Dismiss
-                          </button>
-                        </div>
-                      </div>
+                    setTaskNotifications((prev) =>
+                      prev.filter((item) => item._id !== n._id),
                     );
-                  })
-                )}
-              </div>
+                    toast.success("Dismissed");
+                  } catch (err) {
+                    toast.error("Error dismissing");
+                  }
+                }}
+                className="text-[10px] bg-white/50 border border-black/10 px-3 py-1.5 rounded-lg font-semibold hover:bg-white/80 transition"
+              >
+                ✕ Dismiss
+              </button>
+            </div>
+          </div>
+        );
+      })
+    )}
+  </div>
+</div>
+
+
             </motion.div>
           )}
         </AnimatePresence>
