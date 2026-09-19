@@ -346,6 +346,31 @@ socket.on("update_location", async (data) => {
   });
 });
 
+// --- 🎟️ COUPON VERIFICATION ROUTE ---
+app.post("/api/coupons/verify", verifyToken, async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: "Coupon code required" });
+
+    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
+    if (!coupon) {
+      return res.status(404).json({ message: "Invalid coupon code!" });
+    }
+
+    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ message: "This coupon has expired!" });
+    }
+
+    res.json({
+      success: true,
+      code: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error verifying coupon", error: err.message });
+  }
+});
 
 // =========================================================================
 // --- 🌐 SERVER LISTENER ---

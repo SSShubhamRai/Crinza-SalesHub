@@ -4,6 +4,7 @@ const userSchema = new mongoose.Schema({
   userId: { type: String, required: true, unique: true, index: true },
   name: { type: String, required: true },
   email: { type: String, required: true },
+  phone: { type: String }, // 📱 Added for Employee Contact
   password: { type: String, required: true },
   role: { 
     type: String, 
@@ -11,6 +12,17 @@ const userSchema = new mongoose.Schema({
     default: 'salesperson',
     index: true
   },
+
+  // 🌟 Employee Management Core Fields Added
+  joiningDate: { type: String }, // Format: YYYY-MM-DD
+  salary: { type: Number, default: 0 }, // Monthly compensation
+  status: { 
+    type: String, 
+    enum: ['active', 'inactive'], 
+    default: 'active',
+    index: true 
+  },
+
   resetPasswordToken: { type: String },
   resetPasswordExpires: { type: Date },
   

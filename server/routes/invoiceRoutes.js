@@ -27,7 +27,6 @@ const storage = new CloudinaryStorage({
 const upload = multer({ storage: storage });
 
 // 1. Invoice Submission Handler
-// 1. Invoice Submission Handler
 const handleInvoiceSubmission = async (req, res) => {
   try {
     const today = new Date().toLocaleDateString("en-CA", {
@@ -98,7 +97,6 @@ const handleInvoiceSubmission = async (req, res) => {
         return res.status(404).json({ success: false, message: "Original deal/invoice not found!" });
       }
 
-      // Purane deal mein naya installment object push karein
       existingDeal.installments = existingDeal.installments || [];
       existingDeal.installments.push({
         paidAmount: claimedPaid,
@@ -111,13 +109,11 @@ const handleInvoiceSubmission = async (req, res) => {
         date: new Date()
       });
 
-      // Total paid update karein aur due amount recalculate karein
       existingDeal.paidAmount = (existingDeal.paidAmount || 0) + claimedPaid;
       existingDeal.dueAmount = Math.max(0, existingDeal.totalAmount - existingDeal.paidAmount);
 
       await existingDeal.save();
 
-      // Distance calculation aur points update yahan bhi run kar sakte hain agar zaroorat ho
       return res.status(200).json({
         success: true,
         message: "Installment added successfully to existing deal!",
@@ -212,6 +208,28 @@ const handleInvoiceSubmission = async (req, res) => {
     });
 
     await newInvoice.save();
+
+    // 🌟 FIX: Auto-update matching lead status to "Deal Close" cleanly
+    try {
+      const Lead = require("../models/Lead");
+      const cleanMobile = String(req.body.mobileNo || "").replace(/\D/g, "").slice(-10);
+      const cleanInstitute = String(req.body.instituteName || "").trim();
+
+      if (cleanMobile || cleanInstitute) {
+        await Lead.updateMany(
+          { 
+            salespersonId: req.user.userId,
+            $or: [
+              ...(cleanMobile ? [{ mobileNo: { $regex: new RegExp(cleanMobile + "$") } }] : []),
+              ...(cleanInstitute ? [{ instituteName: { $regex: new RegExp("^" + cleanInstitute + "$", "i") } }] : [])
+            ]
+          },
+          { $set: { leadStatus: "Deal Close" } }
+        );
+      }
+    } catch (leadUpdateErr) {
+      console.error("Failed to auto-update lead status to Deal Close:", leadUpdateErr);
+    }
 
     if (!Array.isArray(session.distancePoints)) {
       session.distancePoints = [];
@@ -372,6 +390,37 @@ router.post("/reject/:id", verifyToken, async (req, res) => {
     res.status(500).json({ message: "Rejection failed", error: err.message });
   }
 });
+
+// 🎟️ Coupon Verification Route (Supports both /verify-coupon and /verify)
+const handleCouponVerify = async (req, res) => {
+  try {
+    const Coupon = require("../models/Coupon");
+    const { code } = req.body;
+    if (!code) return res.status(400).json({ message: "Coupon code required" });
+
+    const coupon = await Coupon.findOne({ code: code.toUpperCase() });
+    if (!coupon) {
+      return res.status(404).json({ message: "Invalid coupon code!" });
+    }
+
+    if (coupon.expiryDate && new Date() > new Date(coupon.expiryDate)) {
+      return res.status(400).json({ message: "This coupon has expired!" });
+    }
+
+    res.json({
+      success: true,
+      message: "Coupon applied successfully!",
+      code: coupon.code,
+      discountType: coupon.discountType,
+      discountValue: coupon.discountValue,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error verifying coupon", error: err.message });
+  }
+};
+
+router.post("/verify", verifyToken, handleCouponVerify);
+router.post("/verify-coupon", verifyToken, handleCouponVerify);
 
 // 🎟️ Coupon Verification Route
 router.post("/verify-coupon", verifyToken, async (req, res) => {

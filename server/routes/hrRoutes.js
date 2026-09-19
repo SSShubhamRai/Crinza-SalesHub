@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require("multer");
 const mongoose = require("mongoose");
 const nodemailer = require("nodemailer");
+const axios = require("axios"); 
 const Notification = require("../models/Notification");
 const User = require("../models/User");
 const Lead = require("../models/Lead");
@@ -13,6 +14,7 @@ const SalespersonPoint = require("../models/SalespersonPoint");
 const verifyToken = require("../middleware/authMiddleware");
 const { scanGmailForLeaves } = require("../controllers/gmailSyncController");
 const { scanGmailForCandidates } = require("../controllers/candidateGmailSyncController");
+const JobDescription = require("../models/JobDescription");
 
 // 🌟 1. CLOUDINARY CONFIGURATION FOR HR POLICIES
 const cloudinary = require("cloudinary").v2;
@@ -51,13 +53,12 @@ const upload = multer({
   }
 });
 
-// Helper function to upload buffer stream to Cloudinary as public document (resource_type: "auto")
 const uploadBufferToCloudinary = (buffer) => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: "crinza_policies",
-        resource_type: "raw", // 🌟 PDFs ke liye 'raw' hi sabse sahi hai
+        resource_type: "raw", 
       },
       (error, result) => {
         if (result) resolve(result);
@@ -73,12 +74,10 @@ router.post("/upload-policy", verifyToken, upload.single("policyFile"), async (r
   try {
     const { title, description, targetAudience } = req.body;
     
-    // 1. File check karein
     if (!req.file) {
       return res.status(400).json({ success: false, message: "Please select a valid PDF file." });
     }
 
-    // 2. Upload buffer to Cloudinary and get secure URL
     const cloudinaryResult = await uploadBufferToCloudinary(req.file.buffer);
     const fileUrl = cloudinaryResult.secure_url;
 
@@ -86,7 +85,6 @@ router.post("/upload-policy", verifyToken, upload.single("policyFile"), async (r
       return res.status(400).json({ success: false, message: "Cloudinary upload failed." });
     }
 
-    // 3. Find logged-in HR user securely
     const userIdentifier = req.user._id || req.user.id || req.user.userId;
     const hrUser = await User.findOne({
       $or: [
@@ -99,14 +97,12 @@ router.post("/upload-policy", verifyToken, upload.single("policyFile"), async (r
       return res.status(401).json({ success: false, message: "Authorized HR user not found." });
     }
 
-    // 4. Target users find karein
     let query = { role: { $ne: 'hr' } };
     if (targetAudience && targetAudience !== 'ALL') {
       query.role = targetAudience;
     }
     const targetUsers = await User.find(query);
 
-    // 5. Notifications create karein
     const notifications = targetUsers.map(user => ({
       userId: user._id,
       title: title || "New Company Policy",
@@ -117,7 +113,6 @@ router.post("/upload-policy", verifyToken, upload.single("policyFile"), async (r
 
     await Notification.insertMany(notifications);
 
-    // 6. CompanyDocument mein save karein
     const newDoc = new CompanyDocument({
       title: title || "New Policy",
       description,
@@ -191,7 +186,7 @@ router.get("/policies", verifyToken, async (req, res) => {
   }
 });
 
-// 4. Get Team Performance Summary (Sirf Salespersons ke liye)
+// 4. Get Team Performance Summary
 router.get("/summary-performance", verifyToken, async (req, res) => {
   try {
     if (!["boss", "admin", "hr"].includes(req.user.role)) {
@@ -266,7 +261,7 @@ router.get("/employees", verifyToken, async (req, res) => {
   }
 });
 
-// 6. Get All Salespersons Attendance (Daily Tracking with Date Filter)
+// 6. Get All Salespersons Attendance
 router.get("/attendance", verifyToken, async (req, res) => {
   try {
     if (!["boss", "admin", "hr"].includes(req.user.role)) {
@@ -277,18 +272,16 @@ router.get("/attendance", verifyToken, async (req, res) => {
     const targetDate = date || new Date().toISOString().split('T')[0];
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // 🌟 0. Check if the selected date is a Future Date
     if (targetDate > todayStr) {
       return res.json({
         success: true,
-        isFuture: true, // Frontend banner reuse karne ke liye isHoliday ko true rakha hai
+        isFuture: true,
         holidayTitle: "Future Date Selection",
         holidayDescription: "Attendance tracking is not available for future dates. Please select today or a past date.",
         date: targetDate
       });
     }
 
-    // 🌟 1. Check if the selected date is a Sunday (0 stands for Sunday)
     const selectedDateObj = new Date(targetDate);
     const isSunday = selectedDateObj.getDay() === 0;
 
@@ -302,7 +295,7 @@ router.get("/attendance", verifyToken, async (req, res) => {
       });
     }
 
-    // 🌟 2. Check if this targetDate is an official Company Holiday
+    const Holiday = mongoose.models.Holiday || mongoose.model("Holiday", new mongoose.Schema({ title: String, date: String, description: String }));
     const holiday = await Holiday.findOne({ date: targetDate });
     if (holiday) {
       return res.json({
@@ -314,9 +307,7 @@ router.get("/attendance", verifyToken, async (req, res) => {
       });
     }
 
-    // 3. Normal Attendance Logic for regular working days
     const salespersons = await User.find({ role: "salesperson" }).select("userId name email role");
-
     const DaySession = mongoose.models.DaySession || mongoose.model("DaySession", new mongoose.Schema({}, { strict: false }), "daysessions");
     const sessions = await DaySession.find({ date: targetDate });
 
@@ -366,19 +357,18 @@ router.get("/leaves", verifyToken, async (req, res) => {
   }
 });
 
-// 8. Update Leave Status (Approve / Reject with Email Notification & Rejection Reason)
+// 8. Update Leave Status
 router.put("/leaves/:id/status", verifyToken, async (req, res) => {
   try {
     if (!["boss", "admin", "hr"].includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: "Access denied!" });
+      return res.status(403).json({ message: "Access denied!" });
     }
 
-    const { status, rejectionReason } = req.body; // status: 'Approved' or 'Rejected'
+    const { status, rejectionReason } = req.body; 
     if (!["Approved", "Rejected"].includes(status)) {
       return res.status(400).json({ success: false, message: "Invalid status" });
     }
 
-    // Find leave request using findById to avoid Mongoose deprecation warnings
     const leave = await Leave.findById(req.params.id);
     if (!leave) {
       return res.status(404).json({ success: false, message: "Leave request not found" });
@@ -390,7 +380,6 @@ router.put("/leaves/:id/status", verifyToken, async (req, res) => {
     }
     await leave.save();
 
-    // Find employee user to send notification email
     const employee = await User.findOne({ userId: leave.userId });
     if (employee && employee.email) {
       let mailSubject = `Leave Request Update: ${status}`;
@@ -408,9 +397,6 @@ router.put("/leaves/:id/status", verifyToken, async (req, res) => {
         subject: mailSubject,
         text: mailBody,
       });
-      console.log(`Email successfully sent to ${employee.email} for leave status: ${status}`);
-    } else {
-      console.log("Employee email address not found for email notification.");
     }
 
     res.json({ 
@@ -427,12 +413,9 @@ router.put("/leaves/:id/status", verifyToken, async (req, res) => {
 router.post("/sync-gmail-leaves", verifyToken, async (req, res) => {
   try {
     if (!["boss", "admin", "hr"].includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: "Access denied!" });
+      return res.status(403).json({ message: "Access denied!" });
     }
-
-    // Trigger the Gmail scanning function
     await scanGmailForLeaves();
-
     res.json({ success: true, message: "Gmail inbox scanned and leaves synchronized successfully!" });
   } catch (err) {
     console.error("Error syncing Gmail leaves:", err);
@@ -440,22 +423,21 @@ router.post("/sync-gmail-leaves", verifyToken, async (req, res) => {
   }
 });
 
-
-
-// 1. Get All Candidates
+// 🌟 1. Get All Candidates (Sorted by AI Match Score Descending)
 router.get("/candidates", verifyToken, async (req, res) => {
   try {
     if (!["boss", "admin", "hr"].includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: "Access denied!" });
+      return res.status(403).json({ message: "Access denied!" });
     }
-    const candidates = await Candidate.find().sort({ createdAt: -1 });
+    // Sort by aiMatchScore descending so highest score appears first
+    const candidates = await Candidate.find().sort({ aiMatchScore: -1, createdAt: -1 });
     res.json({ success: true, candidates });
   } catch (err) {
     res.status(500).json({ success: false, message: "Failed to fetch candidates" });
   }
 });
 
-// 2. Add Candidate Manually (Quick Add Form with Resume PDF upload)
+// 2. Add Candidate Manually
 router.post("/candidates/add", verifyToken, upload.single("resume"), async (req, res) => {
   try {
     const { name, email, phone, appliedFor } = req.body;
@@ -463,16 +445,51 @@ router.post("/candidates/add", verifyToken, upload.single("resume"), async (req,
       return res.status(400).json({ success: false, message: "Resume PDF is required." });
     }
 
-    // Upload resume buffer to Cloudinary
     const cloudinaryResult = await uploadBufferToCloudinary(req.file.buffer);
     const resumeUrl = cloudinaryResult.secure_url;
+
+    // Optional manual add AI evaluation lookup
+    let aiMatchScore = "N/A";
+    let aiInsights = "Manual entry, evaluation pending.";
+
+    try {
+      const matchedJd = await JobDescription.findOne({ role: appliedFor.toLowerCase().trim() });
+      let contentsArray = [];
+      if (matchedJd && matchedJd.jdPdf && matchedJd.jdPdf.data) {
+        contentsArray.push({
+          inlineData: {
+            data: matchedJd.jdPdf.data.toString("base64"),
+            mimeType: matchedJd.jdPdf.contentType || "application/pdf"
+          }
+        });
+      }
+      contentsArray.push({
+        text: `You are an expert HR recruitment AI. Evaluate the candidate profile for '${appliedFor}'. Candidate: ${name}, Resume Link: ${resumeUrl}. Provide match score percentage (e.g. '85%') and brief insight. Format strictly: SCORE|INSIGHT`
+      });
+
+      const geminiResponse = await ai.models.generateContent({
+        model: 'gemini-3.6-flash',
+        contents: contentsArray,
+      });
+
+      const aiText = geminiResponse.text || (geminiResponse.candidates && geminiResponse.candidates[0]?.content?.parts[0]?.text);
+      if (aiText && aiText.includes("|")) {
+        const parts = aiText.split("|");
+        aiMatchScore = parts[0].trim();
+        aiInsights = parts[1].trim();
+      }
+    } catch (e) {
+      console.error("Manual add AI evaluation error:", e.message);
+    }
 
     const newCandidate = new Candidate({
       name,
       email,
       phone,
       appliedFor,
-      resumeUrl
+      resumeUrl,
+      aiMatchScore,
+      aiInsights
     });
 
     await newCandidate.save();
@@ -483,7 +500,7 @@ router.post("/candidates/add", verifyToken, upload.single("resume"), async (req,
   }
 });
 
-// 3. Update Candidate Status / Schedule Interview & Send Email Notification
+// 3. Update Candidate Status
 router.put("/candidates/:id/action", verifyToken, async (req, res) => {
   try {
     const { status, interviewDate, interviewTime, hrReview } = req.body;
@@ -500,48 +517,18 @@ router.put("/candidates/:id/action", verifyToken, async (req, res) => {
 
     await candidate.save();
 
-    // Nodemailer Email Notification to Candidate
-let mailSubject = `Job Application Update: ${candidate.appliedFor} - Crinza`;
-let mailBody = `Dear ${candidate.name},\n\n`;
+    let mailSubject = `Job Application Update: ${candidate.appliedFor} - Crinza`;
+    let mailBody = `Dear ${candidate.name},\n\n`;
 
-if (status === "Shortlisted") {
-  mailBody += `Great news! We have reviewed your application and are thrilled to inform you that your profile has been shortlisted for the ${candidate.appliedFor} role at Crinza.\n\n` +
-    `Our talent acquisition team was impressed with your background and would love to take the next steps with you. We will reach out to you within the next 2-3 business days to coordinate interview details.\n\n` +
-    `Thank you once again for your interest in growing your career with us.\n\n` +
-    `Warm regards,\n\n` +
-    `Talent Acquisition Team\n` +
-    `Crinza`;
-
-} else if (status === "Interview Scheduled") {
-  mailBody += `We are excited to invite you to the next stage of our hiring process for the ${candidate.appliedFor} position at Crinza.\n\n` +
-    `Here are your interview details:\n` +
-    `• Date: ${interviewDate}\n` +
-    `• Time: ${interviewTime}\n` +
-    `• Mode/Link: ${interviewMode || "Virtual / Video Call (link will be shared shortly)"}\n\n` +
-    `Please ensure you join a few minutes prior to the scheduled time. If you need to reschedule due to an emergency, kindly let us know at least 24 hours in advance.\n\n` +
-    `Best of luck!\n\n` +
-    `Warm regards,\n\n` +
-    `Talent Acquisition Team\n` +
-    `Crinza`;
-
-} else if (status === "Selected") {
-  mailBody += `Congratulations and welcome aboard!\n\n` +
-    `Following your stellar performance throughout our interview process, we are absolutely delighted to offer you the position of ${candidate.appliedFor} at Crinza.\n\n` +
-    `We believe your skills and expertise will be a fantastic addition to our team. Our HR team will send over your formal official offer letter along with the onboarding details shortly.\n\n` +
-    `Congratulations once again on this milestone. We are thrilled at the prospect of working together!\n\n` +
-    `Warm regards,\n\n` +
-    `HR Department\n` +
-    `Crinza`;
-
-} else if (status === "Rejected") {
-  mailBody += `Thank you for taking the time to speak with our team and for your interest in the ${candidate.appliedFor} role at Crinza. We truly appreciate the effort you put into the application and interview process.\n\n` +
-    `While we were deeply impressed by your credentials, we have decided to move forward with other candidates whose profiles more closely align with our current requirements for this specific opening.\n\n` +
-    `Feedback from our evaluation: "${hrReview || "You have a strong profile, but we found a closer match for this specific role at this time."}"\n\n` +
-    `We will keep your resume in our talent pool for future opportunities that might be a better fit. We wish you the absolute best in your job search and professional career.\n\n` +
-    `Warm regards,\n\n` +
-    `Talent Acquisition Team\n` +
-    `Crinza`;
-}
+    if (status === "Shortlisted") {
+      mailBody += `Great news! Your profile has been shortlisted for the ${candidate.appliedFor} role at Crinza.\n\nWarm regards,\nTalent Team\nCrinza`;
+    } else if (status === "Interview Scheduled") {
+      mailBody += `Your interview is scheduled for ${interviewDate} at ${interviewTime}.\n\nBest of luck!\nCrinza`;
+    } else if (status === "Selected") {
+      mailBody += `Congratulations! You are selected for the position of ${candidate.appliedFor} at Crinza.\n\nHR Team\nCrinza`;
+    } else if (status === "Rejected") {
+      mailBody += `Thank you for your interest in Crinza. We are moving forward with other candidates at this time.\n\nBest wishes,\nCrinza`;
+    }
 
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
@@ -557,12 +544,10 @@ if (status === "Shortlisted") {
   }
 });
 
-
-
 router.post("/sync-gmail-candidates", verifyToken, async (req, res) => {
   try {
     if (!["boss", "admin", "hr"].includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: "Access denied!" });
+      return res.status(403).json({ message: "Access denied!" });
     }
     await scanGmailForCandidates();
     res.json({ success: true, message: "Gmail scanned and candidates synchronized successfully!" });
@@ -574,112 +559,64 @@ router.post("/sync-gmail-candidates", verifyToken, async (req, res) => {
 // Monthly Attendance Summary API
 router.get("/attendance-summary", verifyToken, async (req, res) => {
   try {
-    const { month, year } = req.query; // e.g., month="09", year="2026"
+    const { month, year } = req.query; 
     if (!month || !year) {
       return res.status(400).json({ success: false, message: "Month and year are required." });
     }
 
     const employees = await User.find({ role: { $ne: "boss" } });
-    
-    // Holiday model check
-    const Holiday = mongoose.models.Holiday || mongoose.model("Holiday", new mongoose.Schema({
-      title: String,
-      date: String,
-      description: String
-    }));
+    const Holiday = mongoose.models.Holiday || mongoose.model("Holiday", new mongoose.Schema({ title: String, date: String, description: String }));
 
-    const holidays = await Holiday.find({
-      date: { $regex: `^${year}-${month}` }
-    });
+    const holidays = await Holiday.find({ date: { $regex: `^${year}-${month}` } });
     const holidayDates = holidays.map(h => h.date);
 
-    // Dynamic DaySession model for attendance
     const DaySession = mongoose.models.DaySession || mongoose.model("DaySession", new mongoose.Schema({}, { strict: false }), "daysessions");
-    const allSessionsInMonth = await DaySession.find({
-      date: { $regex: `^${year}-${month}` }
-    });
+    const allSessionsInMonth = await DaySession.find({ date: { $regex: `^${year}-${month}` } });
 
     let summary = [];
-
-    // Current date details for future-proofing absent calculation
     const today = new Date();
     const currentYear = String(today.getFullYear());
     const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
     const currentDay = today.getDate();
 
     const daysInMonth = new Date(year, month, 0).getDate();
-    
-    // Agar selected month current month hai, toh calculation sirf aaj (currentDay) tak hogi
-    // Agar past month hai, toh poore mahine ke din count honge. Agar future month hai, toh 0 working days.
     let targetDaysCount = daysInMonth;
     if (year === currentYear && month === currentMonth) {
       targetDaysCount = currentDay;
     } else if (new Date(`${year}-${month}-01`) > today) {
-      targetDaysCount = 0; // Future month
+      targetDaysCount = 0; 
     }
 
     for (const emp of employees) {
-      // Filter sessions up to today for this specific employee
       const empSessions = allSessionsInMonth.filter(s => {
         const isMatchUser = (s.salespersonId === emp.userId || s.salespersonId === emp._id.toString());
-        // Sirf aaj ya past ki attendance count ho
         const isPastOrToday = s.date <= new Date().toISOString().split('T')[0];
         return isMatchUser && isPastOrToday;
       });
 
-      // Present count (status "ENDED", "ACTIVE", "Present", "Late" sabko include karein)
-      const presentDays = empSessions.filter(s => 
-        s.status === "ENDED" || s.status === "ACTIVE" || s.status === "Present" || s.status === "Late"
-      ).length;
-
-      // 2. Fetch approved leaves for this user up to target days
-      const approvedLeaves = await Leave.find({
-        userId: emp.userId,
-        status: "Approved"
-      });
+      const presentDays = empSessions.filter(s => s.status === "ENDED" || s.status === "ACTIVE" || s.status === "Present" || s.status === "Late").length;
+      const approvedLeaves = await Leave.find({ userId: emp.userId, status: "Approved" });
 
       let leaveDays = 0;
       approvedLeaves.forEach(leave => {
         if (leave.fromDate && leave.fromDate.startsWith(`${year}-${month}`)) {
-          // Check if leave date is not in future
-          if (leave.fromDate <= new Date().toISOString().split('T')[0]) {
-            leaveDays += 1;
-          }
+          if (leave.fromDate <= new Date().toISOString().split('T')[0]) leaveDays += 1;
         }
       });
 
-      // Calculate Sundays up to targetDaysCount
       let totalSundays = 0;
       let totalHolidaysCount = 0;
 
       for (let day = 1; day <= targetDaysCount; day++) {
         const dateStr = `${year}-${month}-${String(day).padStart(2, '0')}`;
         const d = new Date(dateStr);
-        
-        // Count Sunday
-        if (d.getDay() === 0) {
-          totalSundays++;
-        }
-        
-        // Count Holiday if falling in this range
-        if (holidayDates.includes(dateStr)) {
-          totalHolidaysCount++;
-        }
+        if (d.getDay() === 0) totalSundays++;
+        if (holidayDates.includes(dateStr)) totalHolidaysCount++;
       }
       
-      // Absent calculation: Target Days tak mein se Present + Leaves + Sundays + Holidays minus karein
       let absentDays = Math.max(0, targetDaysCount - (presentDays + leaveDays + totalSundays + totalHolidaysCount));
 
-      summary.push({
-        userId: emp.userId,
-        name: emp.name,
-        role: emp.role,
-        presentDays,
-        leaveDays,
-        sundays: totalSundays,
-        holidays: totalHolidaysCount,
-        absentDays
-      });
+      summary.push({ userId: emp.userId, name: emp.name, role: emp.role, presentDays, leaveDays, sundays: totalSundays, holidays: totalHolidaysCount, absentDays });
     }
 
     res.json({ success: true, summary });
@@ -689,28 +626,10 @@ router.get("/attendance-summary", verifyToken, async (req, res) => {
   }
 });
 
-
-router.post("/holidays", verifyToken, async (req, res) => {
-  try {
-    const { title, date, description } = req.body;
-    const Holiday = mongoose.models.Holiday || mongoose.model("Holiday", new mongoose.Schema({
-      title: String,
-      date: String,
-      description: String
-    }));
-    const newHoliday = new Holiday({ title, date, description });
-    await newHoliday.save();
-    res.json({ success: true, message: "Holiday added successfully!", holiday: newHoliday });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-const Holiday = require("../models/Holiday");
-
-// Get Holidays
+// Holidays
 router.get("/holidays", verifyToken, async (req, res) => {
   try {
+    const Holiday = mongoose.models.Holiday || mongoose.model("Holiday", new mongoose.Schema({ title: String, date: String, description: String }));
     const holidays = await Holiday.find().sort({ date: 1 });
     res.json({ success: true, holidays });
   } catch (err) {
@@ -718,15 +637,370 @@ router.get("/holidays", verifyToken, async (req, res) => {
   }
 });
 
-// Add Holiday
 router.post("/holidays", verifyToken, async (req, res) => {
   try {
     const { title, date, description } = req.body;
+    const Holiday = mongoose.models.Holiday || mongoose.model("Holiday", new mongoose.Schema({ title: String, date: String, description: String }));
     const newHoliday = new Holiday({ title, date, description });
     await newHoliday.save();
     res.json({ success: true, message: "Holiday added successfully!", holiday: newHoliday });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get("/manage-employees", verifyToken, async (req, res) => {
+  try {
+    if (!["boss", "admin", "hr"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const employees = await User.find().select("-password").sort({ createdAt: -1 });
+    res.json({ success: true, employees });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to fetch employees" });
+  }
+});
+
+router.put("/manage-employees/:id", verifyToken, async (req, res) => {
+  try {
+    if (!["boss", "admin", "hr"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const { name, email, phone, role, joiningDate, salary, status } = req.body;
+    const employee = await User.findById(req.params.id);
+    if (!employee) return res.status(404).json({ success: false, message: "Employee not found" });
+
+    if (name) employee.name = name;
+    if (email) employee.email = email;
+    if (phone) employee.phone = phone;
+    if (role) employee.role = role;
+    if (joiningDate) employee.joiningDate = joiningDate;
+    if (salary !== undefined) employee.salary = salary;
+    if (status) employee.status = status;
+
+    await employee.save();
+    res.json({ success: true, message: "Employee updated successfully!", employee });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
+  }
+});
+
+router.post("/manage-employees/send-document", verifyToken, upload.single("pdfFile"), async (req, res) => {
+  try {
+    if (!["boss", "admin", "hr"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const { employeeId, docType, monthYear, customMessage } = req.body; 
+    const employee = await User.findById(employeeId);
+    if (!employee || !employee.email) return res.status(404).json({ success: false, message: "Employee/email not found." });
+
+    let subject = docType === "OfferLetter" ? `Official Offer Letter - Crinza` : `Salary Slip for ${monthYear} - Crinza`;
+    let body = `Dear ${employee.name},\n\nPlease find your document attached.\n\n${customMessage || ""}\n\nBest regards,\nCrinza`;
+    let attachments = req.file ? [{ filename: `${docType}.pdf`, content: req.file.buffer, contentType: "application/pdf" }] : [];
+
+    await transporter.sendMail({ from: process.env.EMAIL_USER, to: employee.email, subject, text: body, attachments });
+    res.json({ success: true, message: "Document sent successfully!" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Failed to send email.", error: err.message });
+  }
+});
+
+router.post("/manage-employees/add", verifyToken, async (req, res) => {
+  try {
+    if (!["boss", "admin", "hr"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Access denied!" });
+    }
+    const { name, email, phone, role, password, joiningDate, salary } = req.body;
+    if (!name || !email || !password || !role) return res.status(400).json({ success: false, message: "Required fields missing." });
+
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ success: false, message: "Email already exists." });
+
+    const count = await User.countDocuments();
+    const userId = `CRZ-${String(count + 101).padStart(3, '0')}`;
+    const bcrypt = require("bcryptjs");
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newEmployee = new User({ userId, name, email, phone, role, password: hashedPassword, joiningDate: joiningDate || new Date().toISOString().split('T')[0], salary: salary ? Number(salary) : 0, status: "active" });
+    await newEmployee.save();
+
+    res.json({ success: true, message: "Employee added successfully!", employee: newEmployee });
+  } catch (err) {
+    res.status(500).json({ success: false, message: "Server error", error: err.message });
+  }
+});
+
+// 🌟 Google Gemini AI Instance
+const { GoogleGenAI } = require("@google/genai");
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// 🌟 100% Zero-Headache Dynamic Google Form Sheet Sync + Gemini AI Resume Screening Route
+router.post("/sync-sheet", verifyToken, upload.single("jdPdf"), async (req, res) => {
+  try {
+    if (!["boss", "admin", "hr"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Access denied!" });
+    }
+
+    const { sheetUrl, role } = req.body;
+    const jdFile = req.file; // Uploaded JD PDF file buffer from Multer
+
+    if (!sheetUrl || !role) {
+      return res.status(400).json({ success: false, message: "Google Sheet URL and Role are required." });
+    }
+
+    const match = sheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (!match || !match[1]) {
+      return res.status(400).json({ success: false, message: "Invalid Google Sheet URL format." });
+    }
+    const spreadsheetId = match[1];
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv`;
+
+    const response = await axios.get(csvUrl);
+    const csvData = response.data;
+
+    // Split CSV rows handling commas properly
+    const rows = csvData.split("\n").map(row => {
+      return row.split(",").map(val => val.trim().replace(/^"|"$/g, ""));
+    });
+
+    if (rows.length < 2) {
+      return res.status(400).json({ success: false, message: "Google Sheet is empty or headers are missing." });
+    }
+
+    const headers = rows[0]; 
+    const dataRows = rows.slice(1);
+
+    const emailIdx = headers.findIndex(h => h.toLowerCase().includes("email"));
+    const nameIdx = headers.findIndex(h => h.toLowerCase().includes("name") || h.toLowerCase().includes("full name"));
+
+    if (emailIdx === -1 || nameIdx === -1) {
+      return res.status(400).json({ success: false, message: "Google Sheet must contain 'Name' and 'Email' columns." });
+    }
+
+    let addedCount = 0;
+    let duplicateCount = 0;
+
+    // 🌟 Check if there's a stored JD in database for this role as a fallback
+    const roleKey = role.toLowerCase().trim();
+    const storedJdDoc = await JobDescription.findOne({ role: roleKey });
+
+    for (let row of dataRows) {
+      if (!row[emailIdx]) continue; 
+
+      const name = row[nameIdx];
+      const email = row[emailIdx].toLowerCase();
+
+      const formResponses = {};
+      headers.forEach((header, index) => {
+        if (header && row[index] !== undefined) {
+          formResponses[header] = row[index];
+        }
+      });
+
+      const phoneIdx = headers.findIndex(h => h.toLowerCase().includes("phone") || h.toLowerCase().includes("contact") || h.toLowerCase().includes("number"));
+      const resumeIdx = headers.findIndex(h => h.toLowerCase().includes("resume") || h.toLowerCase().includes("cv") || h.toLowerCase().includes("drive") || h.toLowerCase().includes("file"));
+
+      const phone = phoneIdx !== -1 ? row[phoneIdx] : "";
+      const resumeUrl = resumeIdx !== -1 ? row[resumeIdx] : "";
+
+      const existingCandidate = await Candidate.findOne({ email });
+      if (existingCandidate) {
+        duplicateCount++;
+        continue;
+      }
+
+      // 🌟 AI Resume Screening & Match Score via Google Gemini API with Dynamic JD Lookup
+      let aiMatchScore = "N/A";
+      let aiInsights = "AI evaluation pending.";
+
+      try {
+        const candidateDetailsText = `Candidate Name: ${name}, Role Applied: ${role}, Form Responses & Details: ${JSON.stringify(formResponses)}, Resume Link: ${resumeUrl}`;
+        
+        let contentsArray = [];
+        
+        // Priority 1: User uploaded a fresh JD PDF in modal
+        // Priority 2: Fallback to stored Job Description PDF from database for this role
+        if (jdFile) {
+          contentsArray.push({
+            inlineData: {
+              data: jdFile.buffer.toString("base64"),
+              mimeType: "application/pdf"
+            }
+          });
+        } else if (storedJdDoc && storedJdDoc.jdPdf && storedJdDoc.jdPdf.data) {
+          contentsArray.push({
+            inlineData: {
+              data: storedJdDoc.jdPdf.data.toString("base64"),
+              mimeType: storedJdDoc.jdPdf.contentType || "application/pdf"
+            }
+          });
+        }
+
+        contentsArray.push({
+          text: `You are an expert HR recruitment AI. ${(jdFile || (storedJdDoc && storedJdDoc.jdPdf)) ? "Analyze the attached Job Description PDF and" : ""} evaluate the following candidate profile for the role of '${role}'.
+          Candidate Info: ${candidateDetailsText}
+          Provide a match score percentage (e.g., '85%') and a brief 1-2 line professional insight/review.
+          Format your response strictly as: SCORE|INSIGHT (Example: 88%|Strong technical skills, good project experience, highly recommended.)`
+        });
+
+        const geminiResponse = await ai.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents: contentsArray,
+        });
+
+        const aiText = geminiResponse.text || (geminiResponse.candidates && geminiResponse.candidates[0]?.content?.parts[0]?.text);
+        if (aiText && aiText.includes("|")) {
+          const parts = aiText.split("|");
+          aiMatchScore = parts[0].trim();
+          aiInsights = parts[1].trim();
+        } else if (aiText) {
+          aiInsights = aiText.trim();
+        }
+      } catch (aiErr) {
+        console.error("Gemini AI evaluation error for candidate:", email, aiErr.message);
+      }
+
+      const newCandidate = new Candidate({
+        name,
+        email,
+        phone,
+        appliedFor: role,
+        resumeUrl,
+        formResponses, 
+        aiMatchScore,  
+        aiInsights,    
+        status: "Applied"
+      });
+
+      await newCandidate.save();
+      addedCount++;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Sync & AI Screening completed! Added ${addedCount} new candidates. Skipped ${duplicateCount} duplicates.`
+    });
+
+  } catch (err) {
+    console.error("Error syncing Google Sheet with AI:", err);
+    res.status(500).json({ 
+      success: false, 
+      message: "Failed to sync sheet and run AI screening. Ensure the Google Sheet is public and Gemini API key is valid." 
+    });
+  }
+});
+
+// 🌟 Upload or Update Job Description for any Role
+router.post("/upload-jd", verifyToken, upload.single("jdPdf"), async (req, res) => {
+  try {
+    if (!["boss", "admin", "hr"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Access denied!" });
+    }
+
+    const { role, title } = req.body;
+    const jdFile = req.file;
+
+    if (!role || !title) {
+      return res.status(400).json({ success: false, message: "Role and Title are required." });
+    }
+
+    let updateData = { title, role: role.toLowerCase().trim() };
+    if (jdFile) {
+      updateData.jdPdf = {
+        data: jdFile.buffer,
+        contentType: jdFile.mimetype
+      };
+    }
+
+    const jdDoc = await JobDescription.findOneAndUpdate(
+      { role: role.toLowerCase().trim() },
+      updateData,
+      { upsert: true, new: true }
+    );
+
+    res.status(200).json({ 
+      success: true, 
+      message: `Job Description for '${role}' saved successfully!`, 
+      jdId: jdDoc._id 
+    });
+
+  } catch (err) {
+    console.error("Error saving Job Description:", err);
+    res.status(500).json({ success: false, message: "Failed to save Job Description." });
+  }
+});
+
+// 🌟 Re-evaluate / Screen all N/A Candidates based on current database JDs
+router.post("/candidates/re-evaluate-ai", verifyToken, async (req, res) => {
+  try {
+    if (!["boss", "admin", "hr"].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Access denied!" });
+    }
+
+    // Un sabhi candidates ko uthao jinka score N/A hai aur resume URL maujud hai
+    const candidatesToScreen = await Candidate.find({ 
+      $or: [{ aiMatchScore: "N/A" }, { aiMatchScore: { $exists: false } }],
+      resumeUrl: { $ne: "" }
+    });
+
+    let updatedCount = 0;
+
+    for (let cand of candidatesToScreen) {
+      const roleKey = cand.appliedFor ? cand.appliedFor.toLowerCase().trim() : "";
+      
+      // Database se role ke hisaab se JD dhoondo (agar exact match na ho toh general/intern try karo)
+      let matchedJd = await JobDescription.findOne({ role: roleKey });
+      if (!matchedJd) {
+        // Fallback: Agar role "Intern" hai toh "full stack" ya "technical" JD utha lo
+        matchedJd = await JobDescription.findOne({ role: { $regex: roleKey,$options: 'i' } });
+      }
+
+      if (!matchedJd) continue; // Agar koi bhi JD nahi mila toh skip karo
+
+      try {
+        let contentsArray = [];
+        if (matchedJd.jdPdf && matchedJd.jdPdf.data) {
+          contentsArray.push({
+            inlineData: {
+              data: matchedJd.jdPdf.data.toString("base64"),
+              mimeType: matchedJd.jdPdf.contentType || "application/pdf"
+            }
+          });
+        }
+
+        contentsArray.push({
+          text: `You are an expert HR recruitment AI. Analyze the attached Job Description PDF and evaluate this candidate profile for the role of '${cand.appliedFor}'.
+          Candidate Name: ${cand.name}, Resume Link: ${cand.resumeUrl}, Form Details: ${JSON.stringify(cand.formResponses || {})}.
+          Provide a match score percentage (e.g., '85%') and a brief 1-2 line professional insight/review.
+          Format your response strictly as: SCORE|INSIGHT (Example: 88%|Strong technical skills, highly recommended.)`
+        });
+
+        const geminiResponse = await ai.models.generateContent({
+          model: 'gemini-3.6-flash',
+          contents: contentsArray,
+        });
+
+        const aiText = geminiResponse.text || (geminiResponse.candidates && geminiResponse.candidates[0]?.content?.parts[0]?.text);
+        if (aiText && aiText.includes("|")) {
+          const parts = aiText.split("|");
+          cand.aiMatchScore = parts[0].trim();
+          cand.aiInsights = parts[1].trim();
+          await cand.save();
+          updatedCount++;
+        }
+      } catch (evalErr) {
+        console.error("Error re-evaluating candidate:", cand.email, evalErr.message);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully re-evaluated ${updatedCount} candidates using database JDs!`
+    });
+
+  } catch (err) {
+    console.error("Re-evaluate AI error:", err);
+    res.status(500).json({ success: false, message: "Failed to re-evaluate candidates." });
   }
 });
 

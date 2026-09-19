@@ -314,6 +314,9 @@ const SalespersonForm = ({ userId, username, onLogout }) => {
   new Date().toISOString().split("T")[0] 
 );
 
+const [demoFollowUpDate, setDemoFollowUpDate] = useState("");
+const [demoFollowUpTime, setDemoFollowUpTime] = useState("");
+
   // --- 🌟 Invoice Multi-Step Wizard State ---
   const [invoiceStep, setInvoiceStep] = useState(1);
 
@@ -2246,7 +2249,7 @@ const handlePayDueFromLedger = (deal) => {
 
     setFormData({
       ...initialFormData,
-      existingDealId: deal._id, // 🌟 Yeh line zaroori hai taaki backend ko pata chale yeh installment hai
+      existingDealId: deal._id, // Purane deal ka ID taaki backend ko pata chale yeh installment hai
       instituteName: deal.instituteName || "",
       appName: deal.appName || "",
       categories: deal.categories || (deal.category ? [deal.category] : []),
@@ -2265,7 +2268,7 @@ const handlePayDueFromLedger = (deal) => {
       paidAmount: deal.dueAmount || 0,
     });
 
-    setInvoiceStep(1);
+    setInvoiceStep(2); // 🌟 DIRECT STEP 2 PAR JANE KE LIYE YAHAN 2 KAR DEIN
     setActiveView("invoice-form");
   };
 
@@ -2536,51 +2539,34 @@ const handleUpdateLeadStatus = async (
   newDemoStatus,
   extraPayload = {}
 ) => {
-  if (!updateDiscussionNotes.trim()) {
-    toast.error("Please enter conversation details / discussion notes!");
-    return;
-  }
-
   try {
     const token = localStorage.getItem("token");
     const formDataObj = new FormData();
 
-    formDataObj.append(
-      "leadStatus",
-      newLeadStatus || selectedLead?.leadStatus || "Active"
-    );
-    formDataObj.append(
-      "demoStatus",
-      newDemoStatus || selectedLead?.demoStatus || "Not Given"
-    );
+    formDataObj.append("leadStatus", newLeadStatus || selectedLead?.leadStatus || "Active");
+    formDataObj.append("demoStatus", newDemoStatus || selectedLead?.demoStatus || "Not Given");
 
+    // 🌟 Follow-up Date, Time aur Action (Follow Up / Call Back etc.)
     if (extraPayload.followUpDate) {
       formDataObj.append("followUpDate", extraPayload.followUpDate);
       formDataObj.append("followUpTime", extraPayload.followUpTime || "");
-      formDataObj.append("followUpAction", newLeadStatus);
+      formDataObj.append("followUpAction", extraPayload.followUpAction || newLeadStatus);
     }
 
-    // 🌟 Agar demo status "Completed" hai, toh user ki select ki hui date bhejein
     if (newDemoStatus === "Completed") {
-      formDataObj.append(
-        "demoCompletedAt",
-        extraPayload.demoDoneDate || new Date().toISOString().split("T")[0]
-      );
-      if (extraPayload.reviewNotes) {
-        formDataObj.append("demoReviewNotes", extraPayload.reviewNotes);
-      }
+      formDataObj.append("demoCompletedAt", extraPayload.demoDoneDate || new Date().toISOString().split("T")[0]);
       if (extraPayload.proofFile) {
         formDataObj.append("meetingPhoto", extraPayload.proofFile);
       }
     }
 
-    const timeStamp = new Date().toLocaleString("en-IN");
-    const noteEntry = `[${timeStamp}]: ${updateDiscussionNotes.trim()}`;
-    const finalNotes = selectedLead?.notes
-      ? `${selectedLead.notes}\n${noteEntry}`
-      : noteEntry;
-
-    formDataObj.append("notes", finalNotes);
+    if (updateDiscussionNotes && updateDiscussionNotes.trim() !== "") {
+      const timeStamp = new Date().toLocaleString("en-IN");
+      const noteEntry = `[${timeStamp}]: ${updateDiscussionNotes.trim()}`;
+      const currentLeadObj = selectedLead || myLeads.find((l) => l._id === leadId);
+      const finalNotes = currentLeadObj?.notes ? `${currentLeadObj.notes}\n${noteEntry}` : noteEntry;
+      formDataObj.append("notes", finalNotes);
+    }
 
     const res = await fetch(`${API_BASE}/api/salesperson/leads/${leadId}`, {
       method: "PUT",
@@ -2593,13 +2579,11 @@ const handleUpdateLeadStatus = async (
       fetchTodayPoints();
       if (selectedLead) setSelectedLead(null);
       setActiveModalAction(null);
-      setFollowUpModalAction(null);
-      setModalDate("");
-      setModalTime("");
-      setDemoReviewNotes("");
       setDemoProofFile(null);
       setUpdateDiscussionNotes("");
-      toast.success("Lead updated successfully with discussion notes!");
+      setDemoFollowUpDate("");
+      setDemoFollowUpTime("");
+      toast.success("Lead updated successfully!");
     } else {
       toast.error(data.message || "Failed to update");
     }
@@ -2780,6 +2764,7 @@ const handleUpdateLeadStatus = async (
         setCouponDetails(null);
         setInvoiceStep(1);
         fetchMyDeals();
+        fetchMyLeads();
         fetchTodayPoints();
 
         setTimeout(() => {
@@ -3579,11 +3564,11 @@ const handleUpdateLeadStatus = async (
                   >
                     <div>
                       <h3 className="text-sm sm:text-base font-bold text-[var(--color-heading)] group-hover:text-[var(--color-primary)] transition">
-                        🧾 Submit Installment
+                        🧾 Sales Punch
                       </h3>
-                      <p className="text-xs sm:text-sm text-[var(--color-body)] mt-1">
+                      {/* <p className="text-xs sm:text-sm text-[var(--color-body)] mt-1">
                         Pay due amount & clear balance.
-                      </p>
+                      </p> */}
                     </div>
                     <span className="text-3xl p-3.5 bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shrink-0 transition group-hover:scale-110">
                       💳
@@ -4263,6 +4248,19 @@ const handleUpdateLeadStatus = async (
                   >
                     ✅ Completed (Add Review & Photo)
                   </button>
+                  <button
+    type="button"
+    onClick={() => {
+      handleUpdateLeadStatus(
+        selectedLead._id, 
+        "Not Interested", 
+        selectedLead.demoStatus || "Not Given"
+      );
+    }}
+    className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium border cursor-pointer transition bg-red-500/10 text-red-600 border-red-500/30 hover:bg-red-500/20"
+  >
+    ❌ Not Interested
+  </button>
                 </div>
               </div>
 
@@ -4286,30 +4284,80 @@ const handleUpdateLeadStatus = async (
                 </div>
               )}
 
-              {activeModalAction === "completed" && (
-                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
-                  <p className="text-xs sm:text-sm font-bold text-emerald-700">Demo Completion Details:</p>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">📅 Select Demo Done Date *</label>
-                    <input type="date" value={demoDoneDate} onChange={(e) => setDemoDoneDate(e.target.value)} className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">Client Feedback / Review Notes:</label>
-                    <textarea rows="2" value={demoReviewNotes} onChange={(e) => setDemoReviewNotes(e.target.value)} placeholder="e.g. Client loved the test series feature..." className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm"></textarea>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium mb-1">📸 Upload Demo Verification Photo:</label>
-                    <input type="file" accept="image/jpeg, image/jpg, image/png" onChange={(e) => { const fileItem = e.target.files[0]; if (fileItem && validateImageFile(fileItem)) { setDemoProofFile(fileItem); } else { e.target.value = ""; } }} className="block w-full text-xs text-[var(--color-body)] cursor-pointer" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { handleUpdateLeadStatus(selectedLead._id, selectedLead.leadStatus, "Completed", { reviewNotes: demoReviewNotes, proofFile: demoProofFile, demoDoneDate: demoDoneDate }); }}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[44px]"
-                  >
-                    Save Completed Demo & Upload
-                  </button>
-                </div>
-              )}
+{activeModalAction === "completed" && (
+  <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl space-y-3">
+    <p className="text-xs sm:text-sm font-bold text-emerald-700">Demo Completion Details:</p>
+    
+    <div>
+      <label className="block text-xs font-medium mb-1">📅 Select Demo Done Date *</label>
+      <input 
+        type="date" 
+        value={demoDoneDate} 
+        onChange={(e) => setDemoDoneDate(e.target.value)} 
+        className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm text-[var(--color-heading)]" 
+      />
+    </div>
+
+    {/* 🌟 Naya Section: Client Feedback / Notes ki jagah Follow-up Date & Time */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+      <div>
+        <label className="block text-xs font-medium mb-1">📅 Next Follow-up Date</label>
+        <input 
+          type="date" 
+          value={demoFollowUpDate} 
+          onChange={(e) => setDemoFollowUpDate(e.target.value)} 
+          className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm text-[var(--color-heading)]" 
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium mb-1">⏰ Follow-up Time</label>
+        <input 
+          type="time" 
+          value={demoFollowUpTime} 
+          onChange={(e) => setDemoFollowUpTime(e.target.value)} 
+          className="w-full bg-[var(--color-card)] border border-[var(--color-border)] rounded-xl p-3 text-xs sm:text-sm text-[var(--color-heading)]" 
+        />
+      </div>
+    </div>
+
+    <div>
+      <label className="block text-xs font-medium mb-1">📸 Upload Demo Verification Photo:</label>
+      <input 
+        type="file" 
+        accept="image/jpeg, image/jpg, image/png" 
+        onChange={(e) => { 
+          const fileItem = e.target.files[0]; 
+          if (fileItem && validateImageFile(fileItem)) { 
+            setDemoProofFile(fileItem); 
+          } else { 
+            e.target.value = ""; 
+          } 
+        }} 
+        className="block w-full text-xs text-[var(--color-body)] cursor-pointer" 
+      />
+    </div>
+
+    <button
+      type="button"
+      onClick={() => { 
+        handleUpdateLeadStatus(
+          selectedLead._id, 
+          demoFollowUpDate ? "Follow Up" : selectedLead.leadStatus, 
+          "Completed", 
+          { 
+            proofFile: demoProofFile, 
+            demoDoneDate: demoDoneDate, 
+            followUpDate: demoFollowUpDate, 
+            followUpTime: demoFollowUpTime 
+          }
+        ); 
+      }}
+      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm py-3 rounded-xl font-semibold cursor-pointer min-h-[46px]"
+    >
+      Save Completed Demo & Schedule
+    </button>
+  </div>
+)}
 
               <div>
                 <button
@@ -4333,317 +4381,193 @@ const handleUpdateLeadStatus = async (
   );
 })()}
 
-            {activeView === "kanban" && (
-              <div className="space-y-6">
-                <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                  <div>
-                    <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">
-                      Manage Lead
-                    </h3>
-                    <p className="text-xs sm:text-sm text-[var(--color-body)] mt-0.5">
-                      Visualize and move your leads smoothly across different
-                      stages of conversion.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (dayStatus !== "ACTIVE") {
-                        toast.error("Start day first!");
-                        return;
-                      }
-                      setActiveView("lead-form");
-                    }}
-                    className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]"
+{activeView === "kanban" && (
+  <div className="space-y-6">
+    <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h3 className="text-base sm:text-lg font-bold text-[var(--color-heading)]">
+          Manage Lead Pipeline
+        </h3>
+        <p className="text-xs sm:text-sm text-[var(--color-body)] mt-0.5">
+          Visualize and move your leads smoothly across conversion stages.
+        </p>
+      </div>
+      <button
+        onClick={() => {
+          if (dayStatus !== "ACTIVE") {
+            toast.error("Start day first!");
+            return;
+          }
+          setActiveView("lead-form");
+        }}
+        className="bg-[var(--color-primary)] text-white text-xs sm:text-sm px-5 py-3 rounded-2xl font-semibold cursor-pointer shadow-sm w-full sm:w-auto text-center active:scale-95 transition min-h-[44px]"
+      >
+        ➕ Record Visit / Add Lead
+      </button>
+    </div>
+
+    {/* 🌟 5-COLUMN KANBAN GRID */}
+    <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-5 gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin">
+      
+      {/* 1. NEW LEADS */}
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
+        <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
+          <span className="text-xs sm:text-sm font-bold text-blue-600 uppercase tracking-wider">
+            📥 New Leads
+          </span>
+          <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
+            {activeLeadsList.filter((l) => l.leadStatus === "Active" || !l.leadStatus).length}
+          </span>
+        </div>
+        <div className="space-y-3 min-h-[280px]">
+          {activeLeadsList.filter((l) => l.leadStatus === "Active" || !l.leadStatus).length === 0 ? (
+            <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">No new leads</p>
+          ) : (
+            activeLeadsList
+              .filter((l) => l.leadStatus === "Active" || !l.leadStatus)
+              .map((lead) => (
+                <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words transition hover:border-[var(--color-primary)]/40">
+                  <strong className="text-sm sm:text-base text-[var(--color-heading)] block">{lead.instituteName}</strong>
+                  <p className="text-[var(--color-body)]">👤 {lead.contactPerson} | 📞 {lead.mobileNo}</p>
+                  <button type="button" onClick={() => handleUpdateLeadStatus(lead._id, "Call Back", null)} className="text-xs bg-amber-500/10 text-amber-600 px-3 py-2 rounded-xl font-semibold w-full text-center cursor-pointer">Move to Call Back ➔</button>
+                </div>
+              ))
+          )}
+        </div>
+      </div>
+
+      {/* 2. CALL BACK */}
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
+        <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
+          <span className="text-xs sm:text-sm font-bold text-amber-600 uppercase tracking-wider">
+            📞 Call Back
+          </span>
+          <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
+            {activeLeadsList.filter((l) => l.leadStatus === "Call Back").length}
+          </span>
+        </div>
+        <div className="space-y-3 min-h-[280px]">
+          {activeLeadsList.filter((l) => l.leadStatus === "Call Back").length === 0 ? (
+            <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">No call backs</p>
+          ) : (
+            activeLeadsList
+              .filter((l) => l.leadStatus === "Call Back")
+              .map((lead) => (
+                <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words">
+                  <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
+                  <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
+                  <button type="button" onClick={() => handleUpdateLeadStatus(lead._id, "Demo", null)} className="text-xs bg-indigo-500/10 text-indigo-600 px-3 py-2 rounded-xl font-semibold w-full text-center cursor-pointer">Move to Demo ➔</button>
+                </div>
+              ))
+          )}
+        </div>
+      </div>
+
+      {/* 3. DEMO */}
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
+        <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
+          <span className="text-xs sm:text-sm font-bold text-indigo-600 uppercase tracking-wider">
+            💻 Demo
+          </span>
+          <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
+            {activeLeadsList.filter((l) => l.leadStatus === "Demo" || l.demoStatus === "Completed").length}
+          </span>
+        </div>
+        <div className="space-y-3 min-h-[280px]">
+          {activeLeadsList.filter((l) => l.leadStatus === "Demo" || l.demoStatus === "Completed").length === 0 ? (
+            <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">No demos</p>
+          ) : (
+            activeLeadsList
+              .filter((l) => l.leadStatus === "Demo" || l.demoStatus === "Completed")
+              .map((lead) => (
+                <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words">
+                  <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
+                  <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
+                  <button type="button" onClick={() => handleUpdateLeadStatus(lead._id, "Follow Up", null)} className="text-xs bg-purple-500/10 text-purple-600 px-3 py-2 rounded-xl font-semibold w-full text-center cursor-pointer">Move to Follow Up ➔</button>
+                </div>
+              ))
+          )}
+        </div>
+      </div>
+
+      {/* 4. FOLLOW UP */}
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
+        <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
+          <span className="text-xs sm:text-sm font-bold text-purple-600 uppercase tracking-wider">
+            🔄 Follow Up
+          </span>
+          <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
+            {activeLeadsList.filter((l) => l.leadStatus === "Follow Up").length}
+          </span>
+        </div>
+        <div className="space-y-3 min-h-[280px]">
+          {activeLeadsList.filter((l) => l.leadStatus === "Follow Up").length === 0 ? (
+            <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">No follow-ups</p>
+          ) : (
+            activeLeadsList
+              .filter((l) => l.leadStatus === "Follow Up")
+              .map((lead) => (
+                <div key={lead._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words">
+                  <strong className="text-sm text-[var(--color-heading)] block">{lead.instituteName}</strong>
+                  <p className="text-[var(--color-body)]">📞 {lead.mobileNo}</p>
+                  <button 
+                    type="button" 
+                    onClick={async () => {
+                      await handleUpdateLeadStatus(lead._id, "Deal Close", null);
+                      setFormData((prev) => ({ 
+                        ...prev, 
+                        existingDealId: "",
+                        instituteName: lead.instituteName, 
+                        mobileNo: lead.mobileNo, 
+                        email: lead.email || "", 
+                        address: lead.address || "", 
+                        city: lead.city, 
+                        state: lead.state, 
+                        pincode: lead.pincode 
+                      }));
+                      setInvoiceStep(2);
+                      setActiveView("invoice-form");
+                    }} 
+                    className="text-xs bg-emerald-600 text-white px-3 py-2 rounded-xl font-semibold w-full text-center cursor-pointer"
                   >
-                    ➕ Record Visit / Add Lead
+                    Convert to Deal ➔
                   </button>
                 </div>
-
-                <div className="flex sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-thin">
-                  <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
-                    <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
-                      <span className="text-xs sm:text-sm font-bold text-blue-600 uppercase tracking-wider">
-                        📥 New Leads
-                      </span>
-                      <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
-                        {
-                          activeLeadsList.filter(
-                            (l) => l.leadStatus === "Active",
-                          ).length
-                        }
-                      </span>
-                    </div>
-<div className="space-y-3 min-h-[280px]">
-  {activeLeadsList.filter((l) => l.leadStatus === "Active").length === 0 ? (
-    <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">
-      No new leads
-    </p>
-  ) : (
-    activeLeadsList
-      .filter((l) => l.leadStatus === "Active")
-      .map((lead) => (
-        <div
-          key={lead._id}
-          className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words transition hover:border-[var(--color-primary)]/40"
-        >
-          <div className="flex justify-between items-start gap-2">
-            <strong className="text-sm sm:text-base text-[var(--color-heading)] block">
-              {lead.instituteName}
-            </strong>
-            {/* 🌟 Lead Create hone ki date yahan dikhegi (Jaise: 07-09-26) */}
-            {lead.leadDate && (
-              <span className="text-[10px] font-semibold bg-[var(--color-surface)] border border-[var(--color-border)] px-2.5 py-1 rounded-lg shrink-0">
-                📌 Created: {new Date(lead.leadDate).toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric' })}
-              </span>
-            )}
-          </div>
-
-          <p className="text-[var(--color-body)]">
-            👤 {lead.contactPerson} | 📞 {lead.mobileNo}
-          </p>
-          <p className="text-[var(--color-body)]">
-            📍 {lead.city}, {lead.state}
-          </p>
-
-          <div className="pt-2.5 flex justify-between items-center border-t border-[var(--color-border)] gap-2">
-            <button
-              type="button"
-              onClick={() => handleWhatsAppReminder(lead, "followup")}
-              className="text-xs bg-[#25D366]/10 text-[#25D366] px-3.5 py-2 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition active:scale-95 min-h-[40px]"
-            >
-              <WhatsAppIcon />
-              WhatsApp
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                handleUpdateLeadStatus(
-                  lead._id,
-                  "Call Back",
-                  null
-                )
-              }
-              className="text-xs bg-amber-500/10 text-amber-600 px-3 py-2 rounded-xl font-semibold hover:bg-amber-500/20 cursor-pointer min-h-[40px]"
-            >
-              Move ➔
-            </button>
-          </div>
+              ))
+          )}
         </div>
-      ))
-  )}
-</div>
-                  </div>
+      </div>
 
-                  <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
-                    <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
-                      <span className="text-xs sm:text-sm font-bold text-amber-600 uppercase tracking-wider">
-                        📞 Call Back / Follow Up
-                      </span>
-                      <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
-                        {
-                          activeLeadsList.filter(
-                            (l) =>
-                              l.leadStatus === "Call Back" ||
-                              l.leadStatus === "Follow Up",
-                          ).length
-                        }
-                      </span>
-                    </div>
-                    <div className="space-y-3 min-h-[280px]">
-                      {activeLeadsList.filter(
-                        (l) =>
-                          l.leadStatus === "Call Back" ||
-                          l.leadStatus === "Follow Up",
-                      ).length === 0 ? (
-                        <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">
-                          No follow-ups
-                        </p>
-                      ) : (
-                        activeLeadsList
-                          .filter(
-                            (l) =>
-                              l.leadStatus === "Call Back" ||
-                              l.leadStatus === "Follow Up",
-                          )
-                          .map((lead) => (
-                            <div
-                              key={lead._id}
-                              className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words transition hover:border-[var(--color-primary)]/40"
-                            >
-                              <strong className="text-sm sm:text-base text-[var(--color-heading)] block">
-                                {lead.instituteName}
-                              </strong>
-                              <p className="text-[var(--color-body)]">
-                                📞 {lead.mobileNo}
-                              </p>
-                              {lead.followUpDate && (
-                                <p className="text-amber-600 font-semibold bg-amber-500/10 p-2 rounded-xl">
-                                  📅{" "}
-                                  {new Date(
-                                    lead.followUpDate,
-                                  ).toLocaleDateString("en-IN")}{" "}
-                                  {lead.followUpTime
-                                    ? `@ ${lead.followUpTime}`
-                                    : ""}
-                                </p>
-                              )}
-                              <div className="pt-2.5 flex justify-between items-center border-t border-[var(--color-border)] gap-2">
-                                <button
-                                  onClick={() =>
-                                    handleWhatsAppReminder(lead, "followup")
-                                  }
-                                  className="text-xs bg-[#25D366]/10 text-[#25D366] px-3.5 py-2 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer flex items-center gap-1.5 transition active:scale-95 min-h-[40px]"
-                                >
-                                  <WhatsAppIcon />
-                                  WhatsApp
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleUpdateLeadStatus(
-                                      lead._id,
-                                      lead.leadStatus,
-                                      "Completed",
-                                    )
-                                  }
-                                  className="text-xs bg-blue-500/10 text-blue-600 px-3 py-2 rounded-xl font-semibold hover:bg-blue-500/20 cursor-pointer min-h-[40px]"
-                                >
-                                  Demo Done ➔
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
-                    <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
-                      <span className="text-xs sm:text-sm font-bold text-indigo-600 uppercase tracking-wider">
-                        💻 Demo Completed
-                      </span>
-                      <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
-                        {
-                          activeLeadsList.filter(
-                            (l) => l.demoStatus === "Completed",
-                          ).length
-                        }
-                      </span>
-                    </div>
-                    <div className="space-y-3 min-h-[280px]">
-                      {activeLeadsList.filter(
-                        (l) => l.demoStatus === "Completed",
-                      ).length === 0 ? (
-                        <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">
-                          No completed demos
-                        </p>
-                      ) : (
-                        activeLeadsList
-                          .filter((l) => l.demoStatus === "Completed")
-                          .map((lead) => (
-                            <div
-                              key={lead._id}
-                              className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words transition hover:border-[var(--color-primary)]/40"
-                            >
-                              <strong className="text-sm sm:text-base text-[var(--color-heading)] block">
-                                {lead.instituteName}
-                              </strong>
-                              <p className="text-[var(--color-body)]">
-                                📞 {lead.mobileNo}
-                              </p>
-                              <span className="inline-block bg-indigo-500/10 text-indigo-600 px-2.5 py-1 rounded-lg font-semibold text-xs">
-                                Demo Successful
-                              </span>
-                              <div className="pt-2.5 flex flex-col gap-2.5 border-t border-[var(--color-border)]">
-                                <button
-                                  onClick={() =>
-                                    handleWhatsAppReminder(lead, "followup")
-                                  }
-                                  className="text-xs bg-[#25D366]/10 text-[#25D366] px-3.5 py-2.5 rounded-xl font-bold hover:bg-[#25D366]/20 cursor-pointer text-center flex items-center justify-center gap-1.5 transition active:scale-95 min-h-[40px]"
-                                >
-                                  <WhatsAppIcon />
-                                  WhatsApp Remind
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    if (dayStatus !== "ACTIVE") {
-                                      toast.error("Start day first!");
-                                      return;
-                                    }
-                                    await handleUpdateLeadStatus(
-                                      lead._id,
-                                      "Deal Close",
-                                      null,
-                                    );
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      instituteName: lead.instituteName,
-                                      mobileNo: lead.mobileNo,
-                                      email: lead.email || "",
-                                      address: lead.address || "",
-                                      city: lead.city,
-                                      state: lead.state,
-                                      pincode: lead.pincode,
-                                    }));
-                                    setInvoiceStep(1);
-                                    setActiveView("invoice-form");
-                                  }}
-                                  className="w-full text-center text-xs bg-emerald-600 text-white py-2.5 rounded-xl font-semibold hover:bg-emerald-700 cursor-pointer shadow-sm active:scale-95 transition min-h-[40px]"
-                                >
-                                  Convert to Deal (Invoice)
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink sm:col-span-2 lg:col-span-1">
-                    <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
-                      <span className="text-xs sm:text-sm font-bold text-emerald-600 uppercase tracking-wider">
-                        🎉 Deal Closed
-                      </span>
-                      <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
-                        {myDeals.length}
-                      </span>
-                    </div>
-                    <div className="space-y-3 min-h-[280px]">
-                      {myDeals.length === 0 ? (
-                        <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">
-                          No closed deals yet
-                        </p>
-                      ) : (
-                        myDeals.map((deal) => (
-                          <div
-                            key={deal._id}
-                            className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words transition hover:border-[var(--color-primary)]/40"
-                          >
-                            <strong className="text-sm sm:text-base text-[var(--color-heading)] block">
-                              {deal.instituteName}
-                            </strong>
-                            <p className="text-[var(--color-body)]">
-                              📱 {deal.appName}
-                            </p>
-                            <p className="text-emerald-600 font-extrabold text-sm">
-                              ₹{deal.totalAmount?.toLocaleString("en-IN")}
-                            </p>
-                            <span
-                              className={`inline-block px-3 py-1 rounded-full font-bold text-xs ${
-                                deal.status === "approved"
-                                  ? "bg-emerald-500/10 text-emerald-600"
-                                  : "bg-amber-500/10 text-amber-600"
-                              }`}
-                            >
-                              Status: {deal.status.toUpperCase()}
-                            </span>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
+      {/* 5. DEAL CLOSE */}
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-3xl p-4 sm:p-5 space-y-3.5 min-w-[280px] sm:min-w-0 snap-start shrink-0 sm:shrink">
+        <div className="flex justify-between items-center pb-2.5 border-b border-[var(--color-border)]">
+          <span className="text-xs sm:text-sm font-bold text-emerald-600 uppercase tracking-wider">
+            🎉 Deal Close
+          </span>
+          <span className="text-xs bg-[var(--color-card)] px-3 py-1 rounded-full border border-[var(--color-border)] font-semibold">
+            {myDeals.length}
+          </span>
+        </div>
+        <div className="space-y-3 min-h-[280px]">
+          {myDeals.length === 0 ? (
+            <p className="text-xs sm:text-sm text-[var(--color-body)] text-center py-12">No closed deals</p>
+          ) : (
+            myDeals.map((deal) => (
+              <div key={deal._id} className="bg-[var(--color-card)] border border-[var(--color-border)] p-4 rounded-2xl space-y-2.5 text-xs sm:text-sm shadow-sm break-words">
+                <strong className="text-sm text-[var(--color-heading)] block">{deal.instituteName}</strong>
+                <p className="text-emerald-600 font-extrabold text-sm">₹{deal.totalAmount?.toLocaleString("en-IN")}</p>
+                <span className={`inline-block px-3 py-1 rounded-full font-bold text-xs ${deal.status === "approved" ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"}`}>
+                  Status: {deal.status.toUpperCase()}
+                </span>
               </div>
-            )}
+            ))
+          )}
+        </div>
+      </div>
+
+    </div>
+  </div>
+)}
 
             {activeView === "calendar" && (
               <div className="bg-[var(--color-card)] border border-[var(--color-border)] rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm space-y-4">
