@@ -96,6 +96,9 @@ const HrPortal = ({ userId, username, onLogout }) => {
   const [interviewDate, setInterviewDate] = useState("");
   const [interviewTime, setInterviewTime] = useState("");
 
+  // 🌟 Real HR Name store karne ke liye state
+  const [hrName, setHrName] = useState(username);
+
   // Date Range & Filter States
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -113,6 +116,24 @@ const HrPortal = ({ userId, username, onLogout }) => {
   const [msgTitle, setMsgTitle] = useState("");
   const [msgBody, setMsgBody] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
+
+  const [atsRoleFilter, setAtsRoleFilter] = useState("ALL");
+
+  // 🌟 Active candidates count excluding "Rejected" status
+const activeCandidatesCount = candidates.filter(c => c.status?.toLowerCase() !== 'rejected').length;
+
+// 🌟 Dynamic Role Filtered Candidates List for ATS Tab
+const uniqueRoles = ["ALL", ...new Set(candidates.map(c => c.appliedFor).filter(Boolean))];
+const filteredCandidates = candidates.filter(cand => {
+  if (atsRoleFilter === "ALL") return true;
+  return cand.appliedFor?.toLowerCase().trim() === atsRoleFilter.toLowerCase().trim();
+});
+
+// 🌟 Filter current month leaves for Leaves Tab
+const filteredLeaveList = leaveList.filter(leave => {
+  if (!leave.fromDate) return false;
+  return leave.fromDate.startsWith(`${summaryYear}-${summaryMonth}`);
+});
 
   const API_BASE = import.meta.env.PROD ? "https://crinza-saleshub.onrender.com" : "http://localhost:5000";
 
@@ -135,13 +156,19 @@ const HrPortal = ({ userId, username, onLogout }) => {
           setPerformanceData(perfData.performance);
         }
 
-        const empRes = await fetch(`${API_BASE}/api/hr/employees`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const empData = await empRes.json();
-        if (empRes.ok) {
-          setEmployees(empData);
-        }
+const empRes = await fetch(`${API_BASE}/api/hr/employees`, {
+  headers: { Authorization: `Bearer ${token}` }
+});
+const empData = await empRes.json();
+if (empRes.ok) {
+  setEmployees(empData);
+
+  // 🌟 Yahan logged-in userId (jaise CRZ-HR-01) ko employee list se match karke uska Name nikal rahe hain
+  const loggedInHr = empData.find(emp => emp.userId === userId || emp._id === userId);
+  if (loggedInHr && loggedInHr.name) {
+    setHrName(loggedInHr.name);
+  }
+}
 
         let attUrl = `${API_BASE}/api/hr/attendance?`;
         if (attendanceDate) attUrl += `date=${attendanceDate}`;
@@ -680,8 +707,9 @@ const HrPortal = ({ userId, username, onLogout }) => {
               HR COMMAND CENTER
             </div>
             <h1 className="text-3xl sm:text-4xl font-black text-[var(--color-heading)] tracking-tight">
-              Welcome back, {username || "HR Manager"}! 👋
-            </h1>
+  Welcome back, {hrName || username || "HR Manager"}! 👋
+</h1>
+
             <p className="text-xs sm:text-sm text-[var(--color-body)] max-w-xl">
               Monitor workforce performance, approve daily leaves, track active candidates, and manage enterprise policies securely.
             </p>
@@ -702,7 +730,7 @@ const HrPortal = ({ userId, username, onLogout }) => {
           {[
             { label: "Total Employees", count: employees.length, icon: "👥", color: "text-blue-500", bg: "bg-blue-500/10 border-blue-500/20" },
             { label: "Pending Leaves", count: leaveList.filter(l => l.status === 'Pending').length, icon: "🏖️", color: "text-amber-500", bg: "bg-amber-500/10 border-amber-500/20" },
-            { label: "Active Candidates", count: candidates.length, icon: "🎯", color: "text-purple-500", bg: "bg-purple-500/10 border-purple-500/20" },
+            { label: "Active Candidates", count: activeCandidatesCount, icon: "🎯", color: "text-purple-500", bg: "bg-purple-500/10 border-purple-500/20" },
             { label: "Holidays Set", count: holidays.length, icon: "🎉", color: "text-emerald-500", bg: "bg-emerald-500/10 border-emerald-500/20" },
           ].map((stat, idx) => (
             <motion.div 
@@ -1538,6 +1566,7 @@ const HrPortal = ({ userId, username, onLogout }) => {
             )}
 
             {/* Tab 4: Candidate ATS */}
+            {/* Tab 4: Candidate ATS */}
             {activeTab === "ats" && (
               <motion.div
                 key="ats"
@@ -1552,56 +1581,75 @@ const HrPortal = ({ userId, username, onLogout }) => {
                     <h3 className="text-lg sm:text-xl font-extrabold text-[var(--color-heading)]">👥 Applicant Tracking System (ATS)</h3>
                     <p className="text-xs sm:text-sm text-[var(--color-body)] mt-0.5">Manage job applicants, review resumes, AI match scores, and schedule interviews.</p>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                  
+                  {/* Action & Dynamic Role Filter Controls */}
+                  <div className="flex items-center gap-2.5 flex-wrap w-full sm:w-auto">
+                    {/* 🌟 Dynamic Role Filter Dropdown */}
+                    <select
+                      value={atsRoleFilter}
+                      onChange={(e) => setAtsRoleFilter(e.target.value)}
+                      className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl px-3 py-3 text-xs font-bold text-[var(--color-heading)] outline-none focus:ring-2 focus:ring-[var(--color-primary)] cursor-pointer"
+                    >
+                      {uniqueRoles.map((role, idx) => (
+                        <option key={idx} value={role}>
+                          {role === "ALL" ? "Filter: All Roles" : `Role: ${role}`}
+                        </option>
+                      ))}
+                    </select>
+
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.96 }}
                       onClick={handleReevaluateAi}
-                      className="flex-1 sm:flex-none px-4 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20"
+                      className="px-4 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20"
                       title="Calculate AI Scores for N/A candidates using database JDs"
                     >
                       <span>✨</span> Re-run AI
                     </motion.button>
+                    
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.96 }}
                       onClick={() => setJdUploadModalOpen(true)}
-                      className="flex-1 sm:flex-none px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                      className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
                     >
                       <span>📁</span> Upload JD
                     </motion.button>
+
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.96 }}
                       onClick={() => setSyncSheetModalOpen(true)}
-                      className="flex-1 sm:flex-none px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20"
+                      className="px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-purple-600/20"
                     >
                       <span>📊</span> Sync Sheet
                     </motion.button>
+
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.96 }}
                       onClick={handleSyncGmailCandidates}
-                      className="flex-1 sm:flex-none px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+                      className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
                     >
                       <span>🔄</span> Sync Gmail
                     </motion.button>
+
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.96 }}
                       onClick={() => setShowAddCandidateModal(true)}
-                      className="flex-1 sm:flex-none px-5 py-3 bg-[var(--color-primary)] text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[var(--color-primary)]/20"
+                      className="px-5 py-3 bg-[var(--color-primary)] text-white rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-[var(--color-primary)]/20"
                     >
                       <span>➕</span> Add Candidate
                     </motion.button>
                   </div>
                 </div>
 
-                {candidates.length === 0 ? (
+                {filteredCandidates.length === 0 ? (
                   <div className="text-center py-20 space-y-3">
                     <div className="text-5xl">👥</div>
                     <h4 className="text-base font-bold text-[var(--color-heading)]">No Candidates Found</h4>
-                    <p className="text-xs sm:text-sm text-[var(--color-body)] max-w-sm mx-auto">No job applicants added yet. Click above to add one.</p>
+                    <p className="text-xs sm:text-sm text-[var(--color-body)] max-w-sm mx-auto">No job applicants found for the selected role filter.</p>
                   </div>
                 ) : (
                   <>
@@ -1623,7 +1671,7 @@ const HrPortal = ({ userId, username, onLogout }) => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--color-border)] text-sm text-[var(--color-heading)]">
-                          {candidates.map((cand) => (
+                          {filteredCandidates.map((cand) => (
                             <motion.tr 
                               variants={rowVariants}
                               key={cand._id} 
@@ -1681,12 +1729,14 @@ const HrPortal = ({ userId, username, onLogout }) => {
                                       setCandidateDetailModalOpen(true);
                                     }}
                                     className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition cursor-pointer shadow-sm"
+                                    title="View Details"
                                   >
                                     View
                                   </button>
                                   <button
                                     onClick={() => handleCandidateAction(cand._id, "Shortlisted")}
                                     className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white transition cursor-pointer shadow-sm"
+                                    title="Shortlist"
                                   >
                                     Shortlist
                                   </button>
@@ -1696,18 +1746,21 @@ const HrPortal = ({ userId, username, onLogout }) => {
                                       setInterviewModalOpen(true);
                                     }}
                                     className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition cursor-pointer shadow-sm"
+                                    title="Schedule Interview"
                                   >
                                     Schedule
                                   </button>
                                   <button
                                     onClick={() => handleCandidateAction(cand._id, "Selected")}
                                     className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer shadow-sm"
+                                    title="Select Candidate"
                                   >
                                     Select
                                   </button>
                                   <button
                                     onClick={() => handleCandidateAction(cand._id, "Rejected", { hrReview: "Not meeting requirements." })}
                                     className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-red-600 hover:bg-red-700 text-white transition cursor-pointer shadow-sm"
+                                    title="Reject Candidate"
                                   >
                                     Reject
                                   </button>
@@ -1720,7 +1773,7 @@ const HrPortal = ({ userId, username, onLogout }) => {
                     </div>
 
                     <div className="md:hidden space-y-3">
-                      {candidates.map((cand) => (
+                      {filteredCandidates.map((cand) => (
                         <div key={cand._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] p-4 rounded-2xl space-y-3">
                           <div className="flex justify-between items-start">
                             <div>
@@ -1772,6 +1825,7 @@ const HrPortal = ({ userId, username, onLogout }) => {
                 )}
               </motion.div>
             )}
+
 
             {/* Tab 5: Policy Uploader */}
             {activeTab === "policies" && (

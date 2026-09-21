@@ -1,15 +1,3 @@
-/**
- * =========================================================================
- * 👤 SALESPERSON PORTAL COMPONENT (`SalespersonForm.jsx`)
- * =========================================================================
- * Description: Allows salesperson to manage performance, track deals, create/update
- * leads with live GPS coordinates, schedule follow-ups, submit invoices with
- * database-verified coupon discounts, 18% GST calculation, add-on packages,
- * multi-visit tracking, true partial installment due ledger system,
- * Capacitor native Mock Location / Anti-Bypass security, Kanban Pipeline View,
- * WhatsApp Quick Reminders with Logo, 🔔 Real-time In-App Notifications,
- * 📢 Live Team Broadcast Announcement Listener, and ⏱️ Day Start/End Shift Control.
- */
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { State, City } from "country-state-city";
@@ -30,6 +18,7 @@ import { Capacitor } from "@capacitor/core";
 import { registerPlugin } from "@capacitor/core";
 
 const CallRecording = registerPlugin("CallRecording");
+
 
 // 🌟 Safe fallback for Vite CommonJS interop
 const PhoneInput = ReactPhoneInput.default || ReactPhoneInput;
